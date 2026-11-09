@@ -1,0 +1,22 @@
+# окружение и мусор
+.venv/
+__pycache__/
+*.pyc
+.idea/
+.DS_Store
+*.zip
+# у anm свой git (ветка e3-continual)
+anm/
+# сохранённые мозги: восстанавливаются переобучением до бита (brain_store.py)
+human_brain/brains/
+# результаты опытов в git не отправляются
+results*/
+evolve_results*/
+evolve_addition_results/
+log_*.txt
+*.log
+simple_counter/*.json
+# рабочие заметки с описанием машин — только локально
+CONTEXT.md
+CLAUDE.md
+AGENTS.md
