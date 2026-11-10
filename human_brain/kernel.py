@@ -227,6 +227,9 @@ def step(time,
          # нужно, когда тормозов много (выбор заготовки нейронами). На вычитании
          # (2–3 тормоза) хуже: 8/24 против 15/24, там выключено
          block_collective,
+         # idle_fade: связь без сигнала idle_steps шагов тает (False — не тает:
+         # задержка выученной связи — знание «когда», простой его не стирает)
+         idle_fade,
          # выходы
          fired, delivered, removed, received, confirmed):
     slot = time % RING
@@ -269,11 +272,6 @@ def step(time,
                 received[t] += we
                 if recall[c]:
                     recall_in[t] += we
-        if myelin_timing and not hyp[c] and not assoc[c] and not fixed[c]:
-            late = time - fire_time[t]
-            if late >= 1 and late <= timing_window:
-                # пришёл после срабатывания получателя: ускорить
-                thickness[c] += grow * (1.0 - thickness[c])
         arr_time[c] = time
 
     # заряд после доставки (для метки «помешал») и всё пришедшее обучаемое торможение
@@ -487,6 +485,14 @@ def step(time,
         post_trace[c] *= trace_decay
 
         if myelin_timing:
+            if delivered[c] and not target_fired:
+                # пришёл после срабатывания получателя (и получатель в этот шаг
+                # не сработал): ускорить. Раньше проверялось до срабатывания:
+                # сигнал вовремя для нового срабатывания считался опоздавшим к
+                # прошлому (две «e» подряд: связь «e -> мягкость» ускорялась)
+                late = time - fire_time[t]
+                if late >= 1 and late <= timing_window:
+                    thickness[c] += grow * (1.0 - thickness[c])
             if target_fired:
                 early = time - arr_time[c]
                 if early >= 1 and early <= timing_window:
@@ -495,7 +501,7 @@ def step(time,
                 elif myelin_keep and early == 0:
                     # пришёл вовремя: связь в деле, миелин держится
                     thickness[c] += grow * (1.0 - thickness[c])
-            elif (not delivered[c] and time - arr_time[c] > idle_steps
+            elif (idle_fade and not delivered[c] and time - arr_time[c] > idle_steps
                     and not (reward_only_actions and explores[t])):
                 # тает только у связи, по которой давно не было сигнала (путь к
                 # действию при reward_only_actions не тает: долгий простой между

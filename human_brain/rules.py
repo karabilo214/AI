@@ -65,7 +65,12 @@ def add_soft(b):
     g.sensory_regions = [r for r in g.sensory_regions if r != "слух"]
     # к звукам речи связи растут только от детекторов букв и от звуков: от
     # отдельного нейрона зрения (общего для нескольких букв) — неверный звук
-    g.source_regions = {"слух": ["буквы", "слух"]}
+    g.source_regions = {"слух": ["буквы"]}
+    # и не от других звуков: из частых сочетаний в учебных словах вырастало
+    # «после звука c звучит g», и при чтении ожидание подменяло следующую букву
+    # выученная задержка не тает от простоя (между словами с «e» дни арифметики,
+    # связь «e -> мягкость» простаивала до 1950 шагов и уезжала с 4 на 5)
+    b.idle_fade = False
 
 
 def say_word(b, word, alphabet, with_sound, soft_at=None):
@@ -99,7 +104,11 @@ def exam(b, words, alphabet):
     return ok / len(words)
 
 
-def run(p, seed, days=1000, control=False):
+def rules_name(seed, days=1000):
+    return f"rules_seed{seed}_d{days}"
+
+
+def run(p, seed, days=1000, control=False, save=False):
     path = brain_store.path_for(rd.read_name(seed))
     if not brain_store.exists(path):
         rd.run(p, seed, 800, save=True)
@@ -123,6 +132,9 @@ def run(p, seed, days=1000, control=False):
         else:
             ev, ans, truth = rd.old_day(rng, k // 2)
             ad.day(b, ev, ans, learn=True, truth=truth)
+    if save and not control:
+        brain_store.save(b, rng, {"ступень": "правило чтения", "seed": seed, "days": days,
+                                  "train": train}, brain_store.path_for(rules_name(seed, days)))
     res = {"правило: учебные слова": exam(b, train, alphabet),
            "правило: новые слова": exam(b, new, alphabet),
            "правило: невиданные пары e+g, e+h": exam(b, rule, alphabet)}
