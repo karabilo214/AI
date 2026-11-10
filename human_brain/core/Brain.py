@@ -162,6 +162,16 @@ class Brain:
         # запас торможения (выключатель, 0 = выкл): сумма обучаемых тормозов к
         # одному действию не больше этого (см. _limit_inhibition)
         self.inh_budget = 0.0
+        # «залипание» (стойкая активность): нейроны из persistent, сработавшие
+        # от сильного входа (received >= plateau_entry * «до порога»), переходят
+        # в режим постоянного горения — каждый шаг, когда не отдыхают, доходят
+        # до порога сами; выходят, когда за шаг получили торможение
+        # >= plateau_exit * «до порога». Держит факт без петель, поэтому
+        # правило ослабления связей его не разрушает
+        self.persistent = set()     # номера нейронов, умеющих залипать
+        self.plateau = set()        # номера залипших сейчас
+        self.plateau_entry = 1.4
+        self.plateau_exit = 1.0
         self.confirm = np.zeros(connection_capacity, dtype=np.int64)  # подтверждений подряд
         self.last_share = np.zeros(connection_capacity)  # доля среди сигналов при срабатывании
         self.ban = np.zeros(connection_capacity)  # уверенность запрета «так нельзя»
@@ -534,6 +544,9 @@ class Brain:
             self.latch.before_step()
         if self.units is not None:
             self.units.before_step()
+        for i in self.plateau:
+            if self.refractory[i] == 0:
+                self.potential[i] = max(self.potential[i], self.threshold[i] + 0.5)
         S, M = self.rules["Synapse"], self.rules["Myelin"]
         _, n_removed, n_confirmed = kernel.step(
             self.time,
@@ -591,6 +604,8 @@ class Brain:
 
         if self.familiarity is not None:
             self.familiarity.after_step()
+        if self.persistent:
+            self._update_plateau()
 
         fired = {self.names[i] for i in np.flatnonzero(self._fired[:self.n_neurons])}
 
@@ -612,6 +627,26 @@ class Brain:
 
         self.time += 1
         return fired
+
+    def _update_plateau(self):
+        n, m = self.n_neurons, self.n_conn
+        fired = self._fired[:n]
+        # торможение, пришедшее за этот шаг (тормоз действует в шаг срабатывания источника)
+        inh = np.zeros(n)
+        c = np.flatnonzero(self.alive[:m] & self.inhibitory[:m] & fired[self.src[:m]])
+        if len(c):
+            np.add.at(inh, self.tgt[c], self.weight[c])
+        # выход — от обычного расстояния до порога: порог залипшего нейрона
+        # подстройка поднимает (он горит часто), и тормоз переставал его гасить
+        base = self.rules["Neuron"]["THRESHOLD"] - self.rules["Neuron"]["REST"]
+        for i in list(self.plateau):
+            if inh[i] >= self.plateau_exit * base:
+                self.plateau.discard(i)
+        for i in self.persistent:
+            if (i not in self.plateau and fired[i]
+                    and self.received[i] >= self.plateau_entry * self.reach(i)
+                    and inh[i] < self.plateau_exit * base):
+                self.plateau.add(i)
 
     def _budget_floor(self):
         return float(self.rules["Synapse"]["ACTION_MIN_WEIGHT"]) if self.budget_above_floor else 0.0

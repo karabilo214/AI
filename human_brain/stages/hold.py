@@ -23,6 +23,7 @@
 Запуск из корня проекта:
     .venv/bin/python -m human_brain.stages.hold --ring [--steps 200] [--stop 150]
     .venv/bin/python -m human_brain.stages.hold --random [--seed 0]
+    .venv/bin/python -m human_brain.stages.hold --plateau
 """
 import argparse
 import copy
@@ -41,6 +42,7 @@ INH_IN = 8     # от скольких нейронов памяти кажды�
 INH_OUT = 10   # скольких нейронов памяти каждый тормозной гасит
 INH_W = 1.0    # сила торможения, доля «до порога»
 CUE_HOLD = 1   # сколько шагов подряд показывается факт (ансамбли: несколько)
+PERSIST = False  # нейроны памяти умеют залипать (Brain.persistent)
 
 
 def make_ring_brain(p, seed, full):
@@ -61,6 +63,31 @@ def make_ring_brain(p, seed, full):
         tasks.attach(b, p, seed)
         b.growth.sensory_regions = ["входы"]
     return b
+
+
+def plateau_test(p, seed, steps=1200, stop=1000):
+    """Один залипающий нейрон P: держит ли факт сам и гаснет ли по STOP."""
+    b = Brain()
+    b.add_region("входы")
+    for n in ("CUE", "STOP"):
+        b.add_neuron(n, region="входы")
+    b.add_region("память")
+    b.add_neuron("P", region="память")
+    th = b.reach(b.neurons["P"].index)
+    # факт — сильный вход (вдвое выше порога): залипание включает только он
+    b.connect("CUE", "P", weight=2 * th, myelin_thickness=1.0)
+    b.connect("STOP", "P", weight=2 * th, inhibitory=True, myelin_thickness=1.0)
+    tasks.attach(b, p, seed)
+    b.growth.sensory_regions = ["входы"]
+    b.persistent = {b.neurons["P"].index}
+    b.stimulate("CUE", 20.0)
+    fires = []
+    for t in range(steps):
+        if t == stop:
+            b.stimulate("STOP", 20.0)
+        fires.append("P" in b.step())
+    held = max((t for t in range(stop) if fires[t]), default=-1)
+    return held, sum(fires[:stop]), any(fires[stop + 2:])
 
 
 def ring_test(p, seed, full, steps, stop):
@@ -106,10 +133,12 @@ def make_random_brain(p, seed, g, full):
                 b.connect(m, iname, weight=0.5 * th, myelin_thickness=1.0)
             for m in rnd.sample(mem, INH_OUT):
                 b.connect(iname, m, weight=INH_W * th, inhibitory=True, myelin_thickness=1.0)
+    if PERSIST:
+        b.persistent = {b.neurons[m].index for m in mem}
     order = rnd.sample(mem, 2 * CUE_SIZE)
     for cue, group in (("CUE_A", order[:CUE_SIZE]), ("CUE_B", order[CUE_SIZE:])):
         for m in group:
-            b.connect(cue, m, weight=th + 4.0, myelin_thickness=1.0)
+            b.connect(cue, m, weight=(2 * th if PERSIST else th + 4.0), myelin_thickness=1.0)
     if full:
         tasks.attach(b, p, seed)
         b.growth.sensory_regions = ["входы", "тормоз"]
@@ -121,9 +150,38 @@ def trace(b, cue, steps=HOLD + 10):
     """Показать факт на копии; доля горящих по шагам и кто горел около шага HOLD."""
     t = copy.deepcopy(b)
     t.curiosity = None
+    t.plateau = set()          # проверка одного факта с чистого состояния
     for _ in range(CUE_HOLD - 1):
         t.stimulate(cue, 20.0)
         t.step()
+    t.stimulate(cue, 20.0)
+    frac, late = [], set()
+    for k in range(steps):
+        f = [n for n in t.step() if n.startswith("M")]
+        frac.append(len(f) / N_MEM)
+        if HOLD - 5 <= k <= HOLD + 5:
+            late |= set(f)
+    return frac, late
+
+
+def switch_test(b):
+    """A, через 30 шагов B: что горит около шага HOLD после B — доля следа B
+    и доля следа A среди горящих (следы — при одиночном показе)."""
+    _, la = trace(b, "CUE_A")
+    _, lb = trace(b, "CUE_B")
+    t = copy.deepcopy(b)
+    t.curiosity = None
+    t.plateau = set()
+    t.stimulate("CUE_A", 20.0)
+    for _ in range(30):
+        t.step()
+    _, late = trace_from(t, "CUE_B")
+    if not late:
+        return 0.0, 0.0
+    return round(len(late & lb) / len(late), 2), round(len(late & (la - lb)) / len(late), 2)
+
+
+def trace_from(t, cue, steps=HOLD + 10):
     t.stimulate(cue, 20.0)
     frac, late = [], set()
     for k in range(steps):
@@ -160,12 +218,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ring", action="store_true")
     ap.add_argument("--random", action="store_true")
+    ap.add_argument("--plateau", action="store_true")
     ap.add_argument("--steps", type=int, default=200)
     ap.add_argument("--stop", type=int, default=150)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
     tasks.apply(p)
+    if a.plateau:
+        held, n, after = plateau_test(p, a.seed)
+        print(f"залипающий нейрон: последний раз горел до STOP на шаге {held} (STOP на 1000), "
+              f"срабатываний {n}; после STOP горит: {after}")
+        return
     if a.random:
         print("g, механизмы: (когда, доля горящих около шага 50, наибольшая доля, горит у A, у B, общих)")
         for full in (False, True):
