@@ -33,7 +33,10 @@ import random
 
 from human_brain.stages import tasks
 from human_brain.parts import Head
+from itertools import combinations
+
 from human_brain.core.Brain import Brain
+from human_brain.parts.Recruit import Recruit
 
 OPS = {
     "AND": (lambda a, b: a and b, True),
@@ -47,6 +50,9 @@ CRITIC = __import__("os").environ.get("HB_CRITIC", "1") == "1"
 INH_BUDGET = __import__("os").environ.get("HB_INH_BUDGET", "0") == "1"
 ACTIONS = ("YES", "NO")
 WAIT = 7
+N_VISION = 16          # --pictures: нейронов зрения
+N_SIGN_DETECTORS = 6
+SIGN_LEAD = int(__import__("os").environ.get("HB_SIGN_LEAD", "2"))   # --pictures: свободных нейронов под детекторы картинок
 DIRECT_THICKNESS = 0.75   # задержка 2 шага (myelin.delay)
 SITUATIONAL = True   # --no-situational: скука только от молчания подряд (как раньше)
 SILENCE = False      # --silence: адресное наказание за молчание (Brain.punish_blockers)
@@ -60,12 +66,24 @@ def cases(op):
     return [(False, False), (True, False)]
 
 
-def make_brain(p, seed, hand=False, op=None, signs=False):
+def make_brain(p, seed, hand=False, op=None, signs=False, pictures=False):
     b = Brain()
     b.add_region("входы")
     for n in INPUTS:
         b.add_neuron(n, region="входы")
-    if signs:
+    if signs and pictures:
+        # знаки — картинки: зрение (N_VISION нейронов), картинка знака — набор из
+        # 3 нейронов; детекторы картинок мозг нанимает сам (Recruit), и каждый
+        # детектор — нейрон-контекст. Какой детектор достанется какому знаку и
+        # что знак значит, не задано: смысл учится наградой
+        b.add_region("зрение")
+        for i in range(N_VISION):
+            b.add_neuron(f"V{i}", region="зрение")
+        b.add_region("знаки", learn=0.0, perceptual=True)
+        for k in range(N_SIGN_DETECTORS):
+            b.add_neuron(f"S{k}", context=True, region="знаки")
+        Recruit(b, inputs=["зрение"], memory="знаки")
+    elif signs:
         # знаки операторов — нейроны-контексты (Synapse.CONTEXTS): пока знак
         # недавно горел, у всех связей действует своя добавка к силе, и награда
         # учит именно её. К действиям знаки не ведут, сочетаний из них нет
@@ -114,13 +132,14 @@ def make_brain(p, seed, hand=False, op=None, signs=False):
     b.reward_only_actions = True
     if not hand:
         tasks.attach(b, p, seed)
-        b.neuron_change.make_same(("входы", "действия") + (("знаки",) if signs else ()))
+        b.neuron_change.make_same(("входы", "действия") + (("знаки",) if signs else ())
+                                  + (("зрение",) if pictures else ()))
         b.curiosity.boredom = p.get("boredom", Head.BOREDOM)
         b.curiosity.avoid = p.get("avoid", 3.0)
         # скука по ситуации (Curiosity.situational): молчание в одной ситуации
         # толкает пробовать именно в ней, даже если другие пробы с ответами
         b.curiosity.situational = SITUATIONAL
-        b.growth.sensory_regions = ["входы"] + (["знаки"] if signs else [])
+        b.growth.sensory_regions = ["входы"] + (["знаки"] if signs else []) + (["зрение"] if pictures else [])
         b.growth.max_neurons = b.n_neurons + 12
         b.growth.pair_regions = ["входы"]
         b.growth.new_weight = p["action_min"] + 0.1
@@ -171,8 +190,20 @@ def acted(fired):
     return a[0] if len(a) == 1 else ("оба" if a else None)
 
 
-def trial(b, a, c, sign=None):
-    shown = ["GO"] + (["A"] if a else []) + (["B"] if c else []) + ([f"OP_{sign}"] if sign else [])
+def trial(b, a, c, sign=None, glyphs=None):
+    """sign: оператор, чей знак показан; glyphs: картинки знаков (иначе нейроны OP_*)."""
+    shown = ["GO"] + (["A"] if a else []) + (["B"] if c else [])
+    if sign and glyphs:
+        # картинка знака — за SIGN_LEAD шагов до входов (сначала видно «И», потом
+        # A и B): детектор картинки загорается на шаг позже неё, и без опережения
+        # знак-контекст включался только к самому решению
+        for i in glyphs[sign]:
+            b.stimulate(f"V{i}", 20.0)
+        for _ in range(SIGN_LEAD):
+            if acted(b.step()) is not None:
+                return "рано"
+    elif sign:
+        shown.append(f"OP_{sign}")
     for s in shown:
         b.stimulate(s, 20.0)
     for _ in range(WAIT):
@@ -216,47 +247,60 @@ def train(b, op, trials, rng, control=False):
     return right / trials
 
 
-def exam_mix(b):
+def exam_mix(b, glyphs=None):
     t = copy.deepcopy(b)
     t.curiosity = None
     rows = []
     for op in MIX_OPS:
         f, _ = OPS[op]
         for a, c in cases(op):
-            out = trial(t, a, c, op)
+            out = trial(t, a, c, op, glyphs)
             rest(t)
             rows.append((op, (a, c), "YES" if f(a, c) else "NO", out))
     return rows
 
 
-def train_mix(b, trials, rng, control=False, ops=MIX_OPS):
-    """Один мозг, операторы ops вперемешку; знак оператора показан в каждой пробе."""
+def train_mix(b, trials, rng, control=False, ops=MIX_OPS, glyphs=None):
+    """Один мозг, операторы ops вперемешку; знак оператора показан в каждой пробе.
+    С картинками контроль — картинка случайного знака (не того оператора)."""
     right = 0
     for _ in range(trials):
         op = rng.choice(ops)
         f, _ = OPS[op]
         a, c = rng.choice(cases(op))
-        want = rng.choice(ACTIONS) if control else ("YES" if f(a, c) else "NO")
-        out = trial(b, a, c, op)
+        if glyphs:
+            want = "YES" if f(a, c) else "NO"
+            out = trial(b, a, c, rng.choice(ops) if control else op, glyphs)
+        else:
+            want = rng.choice(ACTIONS) if control else ("YES" if f(a, c) else "NO")
+            out = trial(b, a, c, op)
         right += out == want
         b.reward(1.0 if out == want else (-1.0 if out is not None else 0.0))
         rest(b)
     return right / trials
 
 
-def run_mix(p, seed, trials=6000, control=False, staged=False):
+def make_glyphs(seed):
+    """Картинки знаков И, ИЛИ, НЕ: разные наборы из 3 нейронов зрения."""
+    rnd = random.Random(seed + 500)
+    pics = rnd.sample(list(combinations(range(N_VISION), 3)), len(MIX_OPS))
+    return dict(zip(MIX_OPS, pics))
+
+
+def run_mix(p, seed, trials=6000, control=False, staged=False, pictures=False):
     """staged: ступенями, как в школе — сначала только И, потом И и ИЛИ
     вперемешку, потом все три (по trials / 3 проб на ступень); прежние
     операторы не бросаются, чтобы не забылись."""
     tasks.apply(p)
-    b = make_brain(p, seed, signs=True)
+    b = make_brain(p, seed, signs=True, pictures=pictures)
+    gl = make_glyphs(seed) if pictures else None
     rng = random.Random(seed)
     if staged:
         for k in range(1, len(MIX_OPS) + 1):
-            train_mix(b, trials // len(MIX_OPS), rng, control, MIX_OPS[:k])
+            train_mix(b, trials // len(MIX_OPS), rng, control, MIX_OPS[:k], gl)
     else:
-        train_mix(b, trials, rng, control)
-    rows = exam_mix(b)
+        train_mix(b, trials, rng, control, glyphs=gl)
+    rows = exam_mix(b, gl)
     by_op = {op: all(w == o for q, _, w, o in rows if q == op) for op in MIX_OPS}
     return by_op, rows, b
 
@@ -277,6 +321,7 @@ def main():
     ap.add_argument("--control", action="store_true")
     ap.add_argument("--hand", action="store_true")
     ap.add_argument("--silence", action="store_true")
+    ap.add_argument("--pictures", action="store_true", help="MIX: знаки — картинки, детекторы нанимаются сами")
     ap.add_argument("--staged", action="store_true", help="MIX ступенями: И, потом +ИЛИ, потом +НЕ")
     ap.add_argument("--no-situational", action="store_true")
     a = ap.parse_args()
@@ -286,7 +331,7 @@ def main():
     p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
     tasks.apply(p)
     if a.op == "MIX":
-        by_op, rows, b = run_mix(p, a.seed, a.trials, a.control, a.staged)
+        by_op, rows, b = run_mix(p, a.seed, a.trials, a.control, a.staged, a.pictures)
         print("MIX", " ".join(f"{o}:{'выучен' if v else 'нет'}" for o, v in by_op.items()),
               "ВСЕ" if all(by_op.values()) else "", rows)
         return
