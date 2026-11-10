@@ -235,6 +235,156 @@ def delay_run(p, seed, wait=50, trials=2000, persist=True, control=False):
     return rows
 
 
+def make_multi_brain(p, seed, dims, per=3, spare=4):
+    # Результаты (12 мозгов, 2000 проб, задержка 50, доля верных на экзамене):
+    #   один факт из 2: 12/12 = 1.0; из 3: 12/12; из 4: 11/12 (0.94);
+    #   из 2 с задержкой 100: 12/12; с задержкой 200: 9/12 (0.89);
+    #   два факта сразу (2,2): 0/12 (0.64) — не решено. Перебрано 9 вариантов
+    #   (вопросы в своей области и ответы только своего измерения — оставлены;
+    #   6000 проб, без отрицательной памяти, без ожидания награды, без запаса
+    #   входов): лучший — без ожидания награды, 3-4/12 (0.77), и он портится
+    #   при долгом обучении. Посторонняя память горит вместе с нужной, награда
+    #   делится между ними, нужные пути застревают на минимуме.
+    """Обобщение: dims — число значений у каждого измерения фактов (например
+    [2, 2] — цвет и форма). Значение v измерения d: факт F{d}_{v} возбуждает
+    свою группу из per нейронов памяти (группы не пересекаются) и тормозит
+    группы других значений того же измерения (новый цвет гасит старый цвет,
+    но не форму). Вопрос Q{d} на каждое измерение; ответы — действия
+    R{d}_{v}, все соревнуются. Устройство чтения — как в make_delay_brain."""
+    from human_brain.parts import Head
+    from human_brain.core.RewardPrediction import RewardPrediction
+    rnd = random.Random(seed)
+    b = Brain()
+    b.add_region("входы")
+    facts = [[f"F{d}_{v}" for v in range(n)] for d, n in enumerate(dims)]
+    qs = [f"Q{d}" for d in range(len(dims))]
+    for n in [f for fs in facts for f in fs]:
+        b.add_neuron(n, region="входы")
+    # вопросы — своя область: сочетания растут только «вопрос + память»
+    # (иначе два факта, показанные с промежутком 2-10 шагов, попадали в окно
+    # совпадения, и сочетания «факт + факт» занимали место под рост)
+    b.add_region("вопросы")
+    for n in qs:
+        b.add_neuron(n, region="вопросы")
+    b.add_region("память")
+    n_mem = per * sum(dims) + spare
+    mem = [f"M{k}" for k in range(n_mem)]
+    for n in mem:
+        b.add_neuron(n, region="память")
+    b.add_region("действия")
+    acts = [[f"R{d}_{v}" for v in range(n)] for d, n in enumerate(dims)]
+    all_acts = [a for a_s in acts for a in a_s]
+    for n in all_acts:
+        b.add_neuron(n, explores=True, region="действия")
+    th = b.reach(b.neurons["M0"].index)
+    pool = rnd.sample(mem, per * sum(dims))
+    group = {}
+    k = 0
+    for fs in facts:
+        for f in fs:
+            group[f] = pool[k:k + per]
+            k += per
+    for fs in facts:
+        for f in fs:
+            for g in fs:
+                for m in group[g]:
+                    if g == f:
+                        b.connect(f, m, weight=2 * th, myelin_thickness=1.0, fixed=True)
+                    else:
+                        b.connect(f, m, weight=2 * th, inhibitory=True, myelin_thickness=1.0)
+    # вопрос слабо связан только с ответами своего измерения (на вопрос о
+    # цвете отвечают цветом); от него сочетания «вопрос + память» наследуют
+    # выходы — тоже только к своим ответам
+    for d, q in enumerate(qs):
+        for o in acts[d]:
+            b.connect(q, o, weight=p["action_min"], myelin_thickness=0.75, fixed=True)
+    for i, x in enumerate(all_acts):
+        for y in all_acts[i + 1:]:
+            b.connect(x, y, weight=p["inhibit_weight"], inhibitory=True)
+            b.connect(y, x, weight=p["inhibit_weight"], inhibitory=True)
+    b.inh_window = Head.INH_WINDOW
+    b.inh_delayed = True
+    b.inh_short = True
+    b.reset_eligibility = True
+    b.last_action_only = True
+    b.budget_above_floor = True
+    b.reward_only_actions = True
+    tasks.attach(b, p, seed)
+    b.neuron_change.make_same(("входы", "вопросы", "действия", "память"))
+    b.curiosity.boredom = p.get("boredom", Head.BOREDOM)
+    b.curiosity.avoid = p.get("avoid", 3.0)
+    b.curiosity.gate = qs            # поиск только после любого вопроса
+    b.curiosity.gate_window = GATE_WINDOW
+    b.growth.sensory_regions = ["входы", "вопросы", "память"]
+    b.growth.pair_regions = ["вопросы", "память"]
+    b.growth.pair_partners = {"память": qs, "вопросы": mem}
+    b.growth.max_neurons = b.n_neurons + n_mem * len(qs) + 4
+    b.growth.new_weight = p["action_min"] + 0.1
+    b.growth.pair_window = PAIR_WINDOW
+    b.budget_window = p.get("budget_window", Head.BUDGET_WINDOW)
+    RewardPrediction(b, regions=["входы", "вопросы", "память"])
+    b.persistent = {b.neurons[m].index for m in mem}
+    return b, facts, qs, acts
+
+
+def multi_trial(b, shown, q, wait, acts, learn=False):
+    """shown: [(факт, шагов до следующего)]; потом wait шагов и вопрос q."""
+    names = [a for a_s in acts for a in a_s]
+    def quiet(n):
+        for _ in range(n):
+            if set(names) & b.step() and learn:
+                b.reward(-1.0)
+    for f, gap in shown:
+        b.stimulate(f, 20.0)
+        quiet(gap)
+    quiet(wait)
+    b.stimulate(q, 20.0)
+    for _ in range(7):
+        f = b.step()
+        a = [n for n in names if n in f]
+        if a:
+            out = a[0] if len(a) == 1 else "оба"
+            return out
+    return None
+
+
+def multi_run(p, seed, dims, wait=50, trials=2000, persist=True):
+    b, facts, qs, acts = make_multi_brain(p, seed, dims)
+    if not persist:
+        b.persistent = set()
+    rnd = random.Random(seed + 3)
+    state = [None] * len(dims)
+    def episode(learn, b_, rnd_):
+        # показать значения всех (или части) измерений в случайном порядке
+        order = list(range(len(dims)))
+        rnd_.shuffle(order)
+        shown = []
+        for d in order:
+            v = rnd_.randrange(dims[d])
+            state[d] = v
+            shown.append((facts[d][v], rnd_.randint(2, 10)))
+        d = rnd_.randrange(len(dims))
+        out = multi_trial(b_, shown, qs[d], wait, acts, learn)
+        return out, acts[d][state[d]]
+    for _ in range(trials):
+        out, want = episode(True, b, rnd)
+        b.reward(1.0 if out == want else (-1.0 if out is not None else 0.0))
+        for _ in range(20):
+            if {a for a_s in acts for a in a_s} & b.step():
+                b.reward(-1.0)
+    t = copy.deepcopy(b)
+    t.curiosity = None
+    ex = random.Random(seed + 99)
+    ok = 0
+    n = 40
+    for _ in range(n):
+        out, want = episode(False, t, ex)
+        ok += out == want
+        for _ in range(20):
+            t.step()
+    return ok / n
+
+
 def plateau_test(p, seed, steps=1200, stop=1000):
     """Один залипающий нейрон P: держит ли факт сам и гаснет ли по STOP."""
     b = Brain()
@@ -390,6 +540,7 @@ def main():
     ap.add_argument("--random", action="store_true")
     ap.add_argument("--plateau", action="store_true")
     ap.add_argument("--delay", action="store_true")
+    ap.add_argument("--multi", default="", help="число значений по измерениям, например 4 или 2,2")
     ap.add_argument("--wait", type=int, default=50)
     ap.add_argument("--trials", type=int, default=2000)
     ap.add_argument("--no-persist", action="store_true")
@@ -400,6 +551,11 @@ def main():
     a = ap.parse_args()
     p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
     tasks.apply(p)
+    if a.multi:
+        dims = [int(x) for x in a.multi.split(",")]
+        print("измерения", dims, "задержка", a.wait, "верно на экзамене",
+              multi_run(p, a.seed, dims, a.wait, a.trials, not a.no_persist))
+        return
     if a.delay:
         rows = delay_run(p, a.seed, a.wait, a.trials, not a.no_persist, a.control)
         ok = all(w == o for _, w, o in rows)

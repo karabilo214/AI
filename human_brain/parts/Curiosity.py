@@ -76,8 +76,9 @@ class Curiosity:
         if self.gate is not None:
             # поиск только по вопросу: шум и скука — пока сигнал gate (вопрос)
             # горел не дальше gate_window шагов назад
-            gi = brain.neurons[self.gate].index
-            if brain.time - brain.fire_time[gi] > self.gate_window:
+            gates = [self.gate] if isinstance(self.gate, str) else self.gate
+            last = max(brain.fire_time[brain.neurons[g].index] for g in gates)
+            if brain.time - last > self.gate_window:
                 explorers = explorers[:0]
         if len(explorers):
             brain.potential[explorers] += self.rng.normal(0.0, self.noise, len(explorers))
