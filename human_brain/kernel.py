@@ -279,20 +279,25 @@ def step(time,
     # заряд после доставки (для метки «помешал») и всё пришедшее обучаемое торможение
     pot_before = np.empty(n_neurons if inh_delayed else 0)
     inh_total = np.zeros(n_neurons if (inh_delayed and block_collective) else 0)
+    # сколько обучаемых тормозов пришло к цели (для деления метки «помешал»)
+    inh_cnt = np.zeros(n_neurons if (inh_delayed and inh_share) else 0)
     if inh_delayed:
         for i in range(n_neurons):
             pot_before[i] = potential[i]
-        if block_collective:
+        if block_collective or inh_share:
             for c in range(n_conn):
                 if delivered[c] and alive[c] and inhibitory[c]:
-                    inh_total[tgt[c]] += effective(c, weight, ctx_w, ctx_level, n_active,
-                                                   0.0, max_weight)
+                    if block_collective:
+                        inh_total[tgt[c]] += effective(c, weight, ctx_w, ctx_level, n_active,
+                                                       0.0, max_weight)
+                    if inh_share and weight[c] > 0.0:
+                        inh_cnt[tgt[c]] += 1.0
 
     # 1б. Выбор победителя в группах соревнования
     if pool_on:
         choose_winners(n_neurons, pool, potential, threshold, refractory, recall_in,
                        n_conn, src, tgt, alive, delivered, recall, weight, hyp,
-                       time, fire_time, stim_time)
+                       time, fire_time, stim_time, perceptual)
 
     # 2. Обновляем нейроны
     if has_inhibition:
@@ -402,7 +407,10 @@ def step(time,
                     if wi > 0.0 and pot_before[tgt[c]] + tot >= threshold[tgt[c]]:
                         block_elig[c] += wi / tot   # без торможения цель сработала бы
                 elif wi > 0.0 and pot_before[tgt[c]] + wi >= threshold[tgt[c]]:
-                    block_elig[c] += 1.0     # без этой связи цель сработала бы
+                    # без этой связи цель сработала бы; при inh_share метка делится,
+                    # как и обычная метка торможения (иначе рост +полный шаг против
+                    # ослабления долей: тормоз ползёт вверх и запирает действие)
+                    block_elig[c] += 1.0 / inh_cnt[tgt[c]] if inh_share else 1.0
             continue
         if not alive[c] or inhibitory[c]:
             continue
@@ -566,7 +574,7 @@ def step(time,
 @njit(cache=True)
 def choose_winners(n_neurons, pool, potential, threshold, refractory, recall_in,
                    n_conn, src, tgt, alive, delivered, recall, weight, hyp,
-                   time, fire_time, stim_time):
+                   time, fire_time, stim_time, perceptual):
     """В каждой группе, где никто не дошёл до порога сам, единственный лидер
     по входу вспоминания, получивший сигнал от большинства воспринятого на
     прошлом шаге, доводится до порога (сработает в шаге 2)."""
@@ -576,17 +584,19 @@ def choose_winners(n_neurons, pool, potential, threshold, refractory, recall_in,
             n_pools = pool[i] + 1
     if n_pools == 0:
         return
-    # воспринято на прошлом шаге: сработало от толчка извне (вне групп)
+    # воспринято на прошлом шаге: сработало от толчка извне или нейрон области
+    # восприятия (детектор, чьи входы только от органов чувств), вне групп
     n_sent = 0
     for i in range(n_neurons):
-        if pool[i] < 0 and fire_time[i] == time - 1 and stim_time[i] == time - 1:
+        if pool[i] < 0 and fire_time[i] == time - 1 and (stim_time[i] == time - 1 or perceptual[i]):
             n_sent += 1
     # от скольких из них дошёл сигнал вспоминания до каждого нейрона групп
     got = np.zeros(n_neurons, dtype=np.int64)
     for c in range(n_conn):
         s = src[c]
         if (alive[c] and delivered[c] and recall[c] and not hyp[c] and weight[c] > 0.0
-                and pool[tgt[c]] >= 0 and fire_time[s] == time - 1 and stim_time[s] == time - 1):
+                and pool[tgt[c]] >= 0 and fire_time[s] == time - 1
+                and (stim_time[s] == time - 1 or perceptual[s])):
             got[tgt[c]] += 1
     crossed = np.zeros(n_pools, dtype=np.bool_)
     best = np.full(n_pools, -1, dtype=np.int64)

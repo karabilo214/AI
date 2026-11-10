@@ -83,7 +83,7 @@ def exam_sets(seed, n=30):
     return sets
 
 
-def run(p, seed, days=2000):
+def run(p, seed, days=2000, save=False):
     path = brain_store.path_for(f"mul_seed{seed}_d2000_2000")
     if not brain_store.exists(path):
         mu.run(p, seed, 2000, 2000)
@@ -92,7 +92,15 @@ def run(p, seed, days=2000):
     for k in range(days):
         ev, ans, truth = make_div_day(rng) if k % 2 == 0 else old_day(rng, k // 2)
         ad.day(b, ev, ans, learn=True, truth=truth)
+    if save:
+        brain_store.save(b, rng, {"ступень": "деление", "seed": seed, "days": days,
+                                  "choice": p.get("choice", "rule")},
+                         brain_store.path_for(div_name(seed, days, p.get("choice", "rule"))))
     return {k: sb.exam(b, v) / len(v) for k, v in exam_sets(seed).items()}, b
+
+
+def div_name(seed, days=3000, choice="neural"):
+    return f"div_{choice}_seed{seed}_d{days}"
 
 
 def main():

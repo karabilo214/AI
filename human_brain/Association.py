@@ -23,10 +23,10 @@ class Association:
     Журнал: self.log (выросла / ослабла ассоциация).
     """
 
-    PARAMS = ("window", "min_count", "min_lift", "scale", "external_only")
+    PARAMS = ("window", "min_count", "min_lift", "scale", "external_only", "perceptual_counts")
 
     def __init__(self, brain, group_a, group_b, window=4, min_count=3, min_lift=1.5, scale=None,
-                 external_only=True):
+                 external_only=True, perceptual_counts=False):
         self.brain = brain
         brain.association = self
         self.group_a = self._resolve(group_a)
@@ -37,6 +37,9 @@ class Association:
         gap = brain.rules["Neuron"]["THRESHOLD"] - brain.rules["Neuron"]["REST"]
         self.scale = 0.75 * gap if scale is None else scale
         self.external_only = external_only   # учиться только на увиденном/услышанном, не на эхе
+        # срабатывание нейрона области восприятия (perceptual, например детектор
+        # буквы, у которого входы только от зрения) тоже считать увиденным
+        self.perceptual_counts = perceptual_counts
         self.episodes = {}      # номер нейрона -> сколько раз появлялся
         self.last = {}          # номер нейрона -> когда последний раз срабатывал
         # (a, b) -> [появлений a, рядом с которыми был b; появлений b, рядом с
@@ -66,7 +69,8 @@ class Association:
         ga, gb = self._members(self.group_a), self._members(self.group_b)
         self._ga, self._gb = ga, gb
         fired = [i for i in ga | gb if b._fired[i]
-                 and (not self.external_only or b.stim_time[i] == t)]
+                 and (not self.external_only or b.stim_time[i] == t
+                      or (self.perceptual_counts and b.perceptual[i]))]
         if not fired:
             return
         new_episode = []
