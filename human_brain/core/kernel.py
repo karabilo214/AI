@@ -41,8 +41,8 @@
       гибкой (пластичность relearn_plast): мир изменился, её можно
       переучить. Награда сбрасывает сомнения.
   защита путей к действиям (action_min > 0): связь к выходу-действию
-      (explores) не удаляется как мёртвая, и её общая сила не опускается
-      ниже action_min. Иначе после наказаний мог пропасть единственный путь
+      (explores) не удаляется как мёртвая, и её сила не опускается
+      ниже action_min — ни общая, ни с добавкой любого контекста. Иначе после наказаний мог пропасть единственный путь
       к другому ответу, и переучиться было бы нельзя.
       Отрицательная память: путь, сведённый наказаниями к минимуму,
       закрепляется слабым (пластичность 1), если перед этим было neg_needed
@@ -288,7 +288,9 @@ def step(time,
                     if block_collective:
                         inh_total[tgt[c]] += effective(c, weight, ctx_w, ctx_level, n_active,
                                                        0.0, max_weight)
-                    if inh_share and weight[c] > 0.0:
+                    # сила с добавкой контекста (как и там, где метка ставится)
+                    if inh_share and effective(c, weight, ctx_w, ctx_level, n_active,
+                                               0.0, max_weight) > 0.0:
                         inh_cnt[tgt[c]] += 1.0
 
     # 1б. Выбор победителя в группах соревнования
@@ -549,6 +551,12 @@ def step(time,
         for c in range(n_conn):
             if (alive[c] and not inhibitory[c] and not hyp[c] and not fixed[c]
                     and explores[tgt[c]]):
+                # и ни в одном контексте: добавка контекста не опускает путь
+                # ниже минимума (иначе путь в этом контексте умирал навсегда:
+                # один мозг с тремя операторами, пути к «да» при знаке И = 0)
+                for k in range(MAX_CONTEXTS):
+                    if weight[c] + ctx_w[c, k] < action_min:
+                        ctx_w[c, k] = action_min - min(weight[c], action_min)
                 if weight[c] <= action_min:
                     weight[c] = action_min
                     # «так нельзя» только после neg_needed наказаний подряд,
