@@ -27,15 +27,29 @@ round(m[i]) * R («прибавить содержимое регистра»). 
 0.1, иначе из нуля не сдвинуться). Карточки уходят в регистр (r -> 1), гость
 прибавляет регистр (m -> 1, w -> 0): «каждому по N». Сложение и вычитание —
 частный случай: одна карточка = по 1.
+
+Роль следующего символа (roles=True, общая способность, по умолчанию выключена):
+у каждого «увиденного» символа i есть выученный множитель gain[i] (сначала 1):
+символ j, увиденный сразу после символа i (между ними не было других входов),
+прибавляет round(w[j] * gain[i]) порций. Какой символ какую роль задаёт —
+не задано: множители учатся по той же ошибке после праздника, что и w.
+Если перед символом не было символа (событие мира или начало дня), множитель 1.
+Ошибка в этом режиме считается по тому, что накопитель прибавил на самом деле
+(целыми порциями), а не по дробному прогнозу: иначе дробные вклады (знак -0.2,
+цифра 6 * -0.9 = -5.4) почти точно давали верное число, учёба вставала, а в
+игре порции округлялись по отдельности (0 и -5) и ответ был на 1 больше.
+(Пробовалось: когда целый ответ верен, учиться дальше по дробной ошибке —
+веса уходят от границы округления, но множитель знака сходится медленнее:
+полностью верных мозгов 18/24 против 22/24; откачено.)
 """
 
 
 class Accumulator:
     PARAMS = ("neuron", "inputs", "decrement", "query", "rate", "signed", "neg_neuron",
-              "register", "seen", "plast")
+              "register", "seen", "plast", "roles")
 
     def __init__(self, brain, neuron, inputs, decrement, query, rate=0.5, signed=False,
-                 neg_neuron=None, register=False, seen=(), plast=None):
+                 neg_neuron=None, register=False, seen=(), plast=None, roles=False):
         self.brain = brain
         brain.accumulator = self
         self.neuron = neuron
@@ -53,12 +67,17 @@ class Accumulator:
         # пластичность входа (множитель обучения): закреплённые старые входы
         # учатся медленно, новые — в полную силу (как молодые и закреплённые связи)
         self.plast = dict(plast or {})
+        self.roles = roles
+        self.gain = {}        # символ -> множитель следующего символа (нет записи = 1)
+        self._last = None     # последний сработавший вход за день
+        self._pair = {}       # (предыдущий символ или None, символ) -> сколько раз
         self.w = {name: 0.0 for name in self.inputs}
         self.m = {name: 0.1 if register else 0.0 for name in self.inputs}
         self.r = {name: 0.1 if register else 0.0 for name in self.inputs}
         self.level = 0
         self.reg = 0
         self.counts = {name: 0 for name in self.inputs}
+        self._added = 0
         self._q = {}      # (i, j) -> сумма по появлениям i числа j, бывших до него
         self.mute = False  # вопрос дня отдан нанятой заготовке (Units): накопитель молчит
 
@@ -70,6 +89,12 @@ class Accumulator:
         self.reg = 0
         self.counts = {name: 0 for name in self.inputs}
         self._q = {}
+        self._last = None
+        self._pair = {}
+        self._added = 0
+
+    def g(self, prev):
+        return self.gain.get(prev, 1.0) if prev is not None else 1.0
 
     def before_step(self):
         """Сигнал «отвечай» показан на этом шаге: накопитель отвечает, если не пуст."""
@@ -88,13 +113,22 @@ class Accumulator:
         for name in self.inputs:
             i = b.neurons[name].index
             if b._fired[i] and (b.stim_time[i] == t or name in self.seen):
-                self.level += self.units(name)
+                if self.roles and name in self.seen:
+                    prev = self._last if self._last in self.seen and self._last != name else None
+                    add = int(round(self.w[name] * self.g(prev)))
+                    self._pair[(prev, name)] = self._pair.get((prev, name), 0) + 1
+                else:
+                    add = self.units(name)
+                if self.roles:
+                    self._last = name
                 if self.register:
-                    self.level += int(round(self.m[name])) * self.reg
+                    add += int(round(self.m[name])) * self.reg
                     for j, cnt in self.counts.items():
                         if cnt:
                             self._q[(name, j)] = self._q.get((name, j), 0) + cnt
                     self.reg += int(round(self.r[name]))
+                self.level += add
+                self._added += add
                 self.counts[name] += 1
         for name in self.decrement:
             if b._fired[b.neurons[name].index]:
@@ -107,8 +141,16 @@ class Accumulator:
 
     def learn(self, correct):
         """После праздника: верное число известно, силы входов поправляются."""
-        n = self.counts
+        n = dict(self.counts)
         P = {k: self.plast.get(k, 1.0) for k in self.inputs}
+        gg = {}
+        if self.roles and self._pair:
+            # символ после символа считается с множителем: эффективное число
+            # появлений; производная по множителю i — сумма w[j] по его следующим
+            for (i, j), c in self._pair.items():
+                n[j] += c * (self.g(i) - 1.0)
+                if i is not None:
+                    gg[i] = gg.get(i, 0.0) + c * self.w[j]
         top = max(P.values()) if P else 1.0
         young = [k for k in self.inputs if P[k] >= top]
         if not self.register:
@@ -116,24 +158,29 @@ class Accumulator:
             # закреплённые неизменны (знаменатель только по ним); закреплённые
             # учатся медленно с обычным знаменателем. При равной пластичности —
             # обычное правило
-            denom = sum(n[k] * n[k] for k in self.inputs)
-            denom_y = sum(n[k] * n[k] for k in young)
+            denom = sum(n[k] * n[k] for k in self.inputs) + sum(v * v for v in gg.values())
+            denom_y = sum(n[k] * n[k] for k in young) + sum(v * v for k, v in gg.items() if k in young)
             if denom == 0:
                 return 0.0
             err = sum(self.w[k] * n[k] for k in self.inputs) - correct
+            if self.roles:
+                err = self._error(err, correct)
             for k in self.inputs:
                 d = denom_y if (k in young and denom_y > 0) else denom
                 self.w[k] -= P[k] * self.rate * err * n[k] / d
+            self._learn_gain(gg, P, young, err, denom, denom_y)
             return err
         # с регистром: прогноз = сумма w_i n_i + сумма m_i * сумма_j r_j q_ij
         gm = {i: sum(self.r[j] * q for (ii, j), q in self._q.items() if ii == i) for i in self.inputs}
         gr = {j: sum(self.m[i] * q for (i, jj), q in self._q.items() if jj == j) for j in self.inputs}
         pred = sum(self.w[k] * n[k] for k in self.inputs) + sum(self.m[i] * gm[i] for i in self.inputs)
         err = pred - correct
+        if self.roles:
+            err = self._error(err, correct)
         def sq(k):
             return n[k] * n[k] + (0.0 if k in self.seen else gm[k] * gm[k] + gr[k] * gr[k])
-        denom = sum(sq(k) for k in self.inputs)
-        denom_y = sum(sq(k) for k in young)
+        denom = sum(sq(k) for k in self.inputs) + sum(v * v for v in gg.values())
+        denom_y = sum(sq(k) for k in young) + sum(v * v for k, v in gg.items() if k in young)
         if denom == 0:
             return 0.0
         for k in self.inputs:
@@ -143,13 +190,23 @@ class Accumulator:
             if k not in self.seen:
                 self.m[k] -= k_ * gm[k]
                 self.r[k] -= k_ * gr[k]
+        self._learn_gain(gg, P, young, err, denom, denom_y)
         return err
+
+    def _error(self, frac_err, correct):
+        """Ошибка по сделанному (целые порции)."""
+        return self._added - correct
+
+    def _learn_gain(self, gg, P, young, err, denom, denom_y):
+        for i, v in gg.items():
+            d = denom_y if (i in young and denom_y > 0) else denom
+            self.gain[i] = self.g(i) - P[i] * self.rate * err * v / d
 
     # ---------- сохранение ----------
 
     def state(self):
         return {"params": {k: getattr(self, k) for k in self.PARAMS},
-                "w": self.w, "m": self.m, "r": self.r, "level": self.level, "reg": self.reg,
+                "w": self.w, "m": self.m, "r": self.r, "gain": self.gain, "level": self.level, "reg": self.reg,
                 "counts": self.counts}
 
     @classmethod
@@ -159,6 +216,7 @@ class Accumulator:
         a.m = dict(state.get("m", a.m))
         a.r = dict(state.get("r", a.r))
         a.reg = int(state.get("reg", 0))
+        a.gain = dict(state.get("gain", {}))
         a.level = int(state["level"])
         a.counts = dict(state["counts"])
         return a

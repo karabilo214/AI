@@ -189,7 +189,13 @@ def day(b, events, answer, learn, cap=None, truth=None, show=None):
                 break
         if learn:
             want = "MORE" if more < answer else "DONE"
-            b.reward(1.0 if out == want else (-1.0 if out is not None else 0.0))
+            # молчание, когда спрашивали (silence_penalty, по умолчанию 0): ошибка.
+            # Иначе тормоз, не давший сработать «готово», получал награду каждый
+            # раз, когда верно не давал (правило «помешал»), и ни одного
+            # наказания, когда мешал верному «готово» (мозг просто молчал):
+            # тормоз за один день рос 1.7 -> 20 и запирал «готово»
+            silent = -getattr(b, "silence_penalty", 0.0)
+            b.reward(1.0 if out == want else (-1.0 if out is not None else silent))
         unasked(ANSWER_REST)
         if out == "MORE":
             more += 1

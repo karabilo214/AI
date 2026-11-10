@@ -122,7 +122,11 @@ def exam_expressions(b, gl):
     return rows
 
 
-def run(p, seed, days=1000, control=False):
+def numerals_name(seed, days=1000):
+    return f"numerals_seed{seed}_d{days}"
+
+
+def run(p, seed, days=1000, control=False, save=False):
     path = brain_store.path_for(rules.rules_name(seed))
     if not brain_store.exists(path):
         rules.run(p, seed, 1000, save=True)
@@ -143,6 +147,9 @@ def run(p, seed, days=1000, control=False):
         else:
             ev, ans, truth = rd.old_day(rng, k // 4)
             ad.day(b, ev, ans, learn=True, truth=truth)
+    if save and not control:
+        brain_store.save(b, rng, dict(meta, ступень="цифры", seed=seed, days=days, train=train),
+                         brain_store.path_for(numerals_name(seed, days)))
     rows = exam_expressions(b, gl)
     res = {"выражение a + b": sum(r[2] == r[3] for r in rows) / len(rows)}
     new = rules.make_words(seed + 11, 30, (2, 3, 4, 5), exclude=train)
