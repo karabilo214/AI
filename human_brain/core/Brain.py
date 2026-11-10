@@ -163,7 +163,7 @@ class Brain:
         # одному действию не больше этого (см. _limit_inhibition)
         self.inh_budget = 0.0
         # «залипание» (стойкая активность): нейроны из persistent, сработавшие
-        # от сильного входа (received >= plateau_entry * «до порога»), переходят
+        # от сильного входа извне своей области (>= plateau_entry * «до порога»), переходят
         # в режим постоянного горения — каждый шаг, когда не отдыхают, доходят
         # до порога сами; выходят, когда за шаг получили торможение
         # >= plateau_exit * «до порога». Держит факт без петель, поэтому
@@ -642,9 +642,19 @@ class Brain:
         for i in list(self.plateau):
             if inh[i] >= self.plateau_exit * base:
                 self.plateau.discard(i)
+        # вход в залипание — только от входа извне своей области (органы чувств,
+        # другие области): иначе залипшие соседи вместе давали сильный вход, и
+        # залипание расползалось по всей области, какой бы факт ни показали
+        ext = np.zeros(n)
+        d = np.flatnonzero(self._delivered[:m] & self.alive[:m] & ~self.inhibitory[:m])
+        if len(d):
+            reg = self.region_of
+            d = [k for k in d if reg[self.src[k]] != reg[self.tgt[k]]]
+            if d:
+                np.add.at(ext, self.tgt[d], self.weight[d])
         for i in self.persistent:
             if (i not in self.plateau and fired[i]
-                    and self.received[i] >= self.plateau_entry * self.reach(i)
+                    and ext[i] >= self.plateau_entry * self.reach(i)
                     and inh[i] < self.plateau_exit * base):
                 self.plateau.add(i)
 
