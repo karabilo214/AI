@@ -119,7 +119,11 @@ def add_roles(b, seed):
     acc.role_rng = random.Random(seed + 89)
 
 
-def run(p, seed, days=1000, control=False):
+def minus_name(seed, days=2000):
+    return f"minus_seed{seed}_d{days}"
+
+
+def run(p, seed, days=1000, control=False, save=False):
     path = brain_store.path_for(nm.numerals_name(seed))
     if not brain_store.exists(path):
         nm.run(p, seed, 1000, save=True)
@@ -154,6 +158,9 @@ def run(p, seed, days=1000, control=False):
         else:
             ev, ans, truth = rd.old_day(rng, k // 4)
             ad.day(b, ev, ans, learn=True, truth=truth)
+    if save and not control:
+        brain_store.save(b, rng, dict(meta, ступень="минус", seed=seed, days=days),
+                         brain_store.path_for(minus_name(seed, days)))
     rows = exam_minus(b, show)
     big = [r for r in rows if r[0] > r[1]]
     left = exam_minus(b, show, "ASK_LEFT")

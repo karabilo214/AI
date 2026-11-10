@@ -347,6 +347,29 @@ def multi_trial(b, shown, q, wait, acts, learn=False):
     return None
 
 
+def multi_train(p, seed, dims, wait=50, trials=2000):
+    """Обучить мозг памяти; вернуть (мозг, факты, вопросы, ответы)."""
+    b, facts, qs, acts = make_multi_brain(p, seed, dims)
+    rnd = random.Random(seed + 3)
+    names = {a for a_s in acts for a in a_s}
+    for _ in range(trials):
+        order = list(range(len(dims)))
+        rnd.shuffle(order)
+        shown, state = [], {}
+        for d in order:
+            v = rnd.randrange(dims[d])
+            state[d] = v
+            shown.append((facts[d][v], rnd.randint(2, 10)))
+        d = rnd.randrange(len(dims))
+        out = multi_trial(b, shown, qs[d], wait, acts, True)
+        want = acts[d][state[d]]
+        b.reward(1.0 if out == want else (-1.0 if out is not None else 0.0))
+        for _ in range(20):
+            if names & b.step():
+                b.reward(-1.0)
+    return b, facts, qs, acts
+
+
 def multi_run(p, seed, dims, wait=50, trials=2000, persist=True):
     b, facts, qs, acts = make_multi_brain(p, seed, dims)
     if not persist:
