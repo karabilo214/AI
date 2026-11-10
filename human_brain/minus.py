@@ -132,6 +132,8 @@ def run(p, seed, days=1000, control=False):
     # молчание в ответ на «отвечай» — ошибка (см. addition.day): иначе тормоз к
     # «готово» растёт лавиной и ломает «сколько останется?»
     b.silence_penalty = SILENCE
+    # сомнение в закреплённом пути — не чаще раза за день (см. kernel.reward)
+    b.episode = max(b.episode, 0)
     gl = dict(nm.glyphs(seed), MINUS=minus_glyph(seed))
     show = nm.make_show(gl)
     alphabet = rd.make_alphabet(seed)

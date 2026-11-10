@@ -765,7 +765,8 @@ def reward(value, outcome, n_neurons, n_conn, src, tgt, weight, eligibility, pla
            n_ctx, ctx_slot, ctx_w, ctx_horizon, active, ctx_level, ctx_graded, ctx_trace,
            forget_on, importance, doubt, doubt_needed, relearn_plast, consolidated_rate,
            last_share, confirm, neg_rate, ban_on, ban, ban_up, ban_down, ban_power,
-           learn_gain, decision_ctx, dec_level, dec_active, dec_n, block_elig):
+           learn_gain, decision_ctx, dec_level, dec_active, dec_n, block_elig,
+           doubt_ep, episode):
     """Награда (value > 0) или наказание (value < 0) помеченным связям.
 
     Изменение = rate * value * пластичность * метка (* значимость получателя,
@@ -898,8 +899,15 @@ def reward(value, outcome, n_neurons, n_conn, src, tgt, weight, eligibility, pla
                         confirm[c] = -1   # освобождён: не закрепится слабым снова
             elif outcome < 0 and confirm[c] > 0:
                 confirm[c] = 0
-            if outcome < 0 and part >= 0.3 and doubt[c] >= 0:
+            # episode >= 0 (Brain.doubt_per_episode): сомнение растёт не чаще
+            # раза за эпизод (день): «снова и снова» — это разные случаи, а не
+            # шаги одного неверного счёта (иначе один день с 4 лишними «ещё»
+            # освобождал закреплённый путь, и он рушился за день)
+            if (outcome < 0 and part >= 0.3 and doubt[c] >= 0
+                    and (episode < 0 or doubt_ep[c] != episode)):
                 doubt[c] += 1
+                if episode >= 0:
+                    doubt_ep[c] = episode
                 if doubt[c] >= doubt_needed and plasticity[c] <= 1.0:
                     # закреплённое снова и снова ведёт к наказанию: ошибочное,
                     # освобождаем для переучивания

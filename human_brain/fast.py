@@ -326,7 +326,8 @@ class Sim:
                       P[RELEARN_PLAST], P[CONSOLIDATED_RATE], self.last_share, self.confirm,
                       P[NEG_RATE], P[BAN_ON] > 0, self.ban, P[BAN_UP], P[BAN_DOWN],
                       P[BAN_POWER], self.learn_gain,
-                      False, self.ctx_level, self.active, self.dec_n, self.block_elig)
+                      False, self.ctx_level, self.active, self.dec_n, self.block_elig,
+                      self.doubt, -1)
         if self.budget > 0:
             kernel.limit_inputs(self.n, self.m, self.tgt, self.weight, self.alive,
                                 self.inhib, self.budget, self.input_total, self.plast,

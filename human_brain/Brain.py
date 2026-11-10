@@ -18,7 +18,7 @@ CONNECTION_FIELDS = ("src", "tgt", "weight", "pre_trace", "post_trace", "thickne
                      "alive", "weak_steps", "pending", "plasticity", "eligibility",
                      "inhibitory", "hyp", "hyp_tests", "hyp_hits", "arr_time", "ctx_w",
                      "importance", "doubt", "confirm", "last_share", "ban", "w0", "assoc",
-                     "fixed", "recall", "block_elig")
+                     "fixed", "recall", "block_elig", "doubt_ep")
 
 # Правила (константы классов), которые мозг запоминает при создании
 RULE_CLASSES = {"Neuron": Neuron, "Synapse": Synapse, "Myelin": Myelin}
@@ -155,6 +155,10 @@ class Brain:
         self.ctx_w = np.zeros((connection_capacity, kernel.MAX_CONTEXTS))  # добавки по контекстам
         self.importance = np.zeros(connection_capacity)  # важность (сколько награды принесла)
         self.doubt = np.zeros(connection_capacity, dtype=np.int64)  # наказаний подряд
+        self.doubt_ep = np.zeros(connection_capacity, dtype=np.int64)  # эпизод последнего сомнения
+        # сомнение не чаще раза за эпизод (выключатель; эпизоды считает мир:
+        # new_episode в начале дня). -1 = выключено (каждое наказание считается)
+        self.episode = -1
         self.confirm = np.zeros(connection_capacity, dtype=np.int64)  # подтверждений подряд
         self.last_share = np.zeros(connection_capacity)  # доля среди сигналов при срабатывании
         self.ban = np.zeros(connection_capacity)  # уверенность запрета «так нельзя»
@@ -345,6 +349,7 @@ class Brain:
         self.ctx_w[c, :] = 0.0
         self.importance[c] = 0.0
         self.doubt[c] = 0
+        self.doubt_ep[c] = 0
         self.confirm[c] = 0
         self.last_share[c] = 0.0
         self.ban[c] = 0.0
@@ -390,6 +395,11 @@ class Brain:
         self.potential[i] += push
         self.push_in[i] += push
 
+    def new_episode(self):
+        """Начало эпизода (дня), если включено «сомнение не чаще раза за эпизод»."""
+        if self.episode >= 0:
+            self.episode += 1
+
     def reward(self, value):
         """Награда (value > 0) или наказание (value < 0).
 
@@ -414,7 +424,7 @@ class Brain:
             bool(S["BAN"]), self.ban, float(S["BAN_UP"]), float(S["BAN_DOWN"]),
             float(S["BAN_POWER"]), self.learn_gain,
             bool(self.decision_ctx), self._dec_level, self._dec_active, self._dec_n,
-            self.block_elig,
+            self.block_elig, self.doubt_ep, int(self.episode),
         )
         if self.reset_eligibility:
             # награда «съела» метки: следующая награда не учит прошлую попытку

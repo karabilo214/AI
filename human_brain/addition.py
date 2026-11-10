@@ -157,6 +157,7 @@ def day(b, events, answer, learn, cap=None, truth=None, show=None):
     """Прожить день. Возвращает (ответ мозга, закончил ли «готово», действий не вовремя).
     truth: верное число со знаком для накопителя (по умолчанию = answer)."""
     acc = b.accumulator
+    b.new_episode()
     acc.new_day()
     if b.latch is not None:
         b.latch.new_day()
