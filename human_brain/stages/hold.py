@@ -36,6 +36,10 @@ N_MEM = 40
 OUT = 4
 CUE_SIZE = 5
 HOLD = 50
+N_INH = 0      # тормозных нейронов в области (0 = без торможения)
+INH_IN = 8     # от скольких нейронов памяти каждый тормозной получает возбуждение
+INH_OUT = 10   # скольких нейронов памяти каждый тормозной гасит
+INH_W = 1.0    # сила торможения, доля «до порога»
 
 
 def make_ring_brain(p, seed, full):
@@ -90,13 +94,24 @@ def make_random_brain(p, seed, g, full):
             d = rnd.randint(1, 4)
             b.connect(n, m, weight=g * th * rnd.uniform(0.5, 1.5),
                       myelin_thickness=(5.0 - d) / 4.0)
+    if N_INH:
+        # тормозные нейроны (общий механизм равновесия): их зовут нейроны
+        # памяти, а они гасят случайных соседей — побеждает одна группа
+        b.add_region("тормоз")
+        for k in range(N_INH):
+            iname = f"I{k}"
+            b.add_neuron(iname, region="тормоз")
+            for m in rnd.sample(mem, INH_IN):
+                b.connect(m, iname, weight=0.5 * th, myelin_thickness=1.0)
+            for m in rnd.sample(mem, INH_OUT):
+                b.connect(iname, m, weight=INH_W * th, inhibitory=True, myelin_thickness=1.0)
     order = rnd.sample(mem, 2 * CUE_SIZE)
     for cue, group in (("CUE_A", order[:CUE_SIZE]), ("CUE_B", order[CUE_SIZE:])):
         for m in group:
             b.connect(cue, m, weight=th + 4.0, myelin_thickness=1.0)
     if full:
         tasks.attach(b, p, seed)
-        b.growth.sensory_regions = ["входы"]
+        b.growth.sensory_regions = ["входы", "тормоз"]
         b.growth.pair_regions = []          # без нейронов-сочетаний: смотрим саму область
     return b
 
