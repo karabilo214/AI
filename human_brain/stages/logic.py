@@ -39,6 +39,7 @@ OPS = {
 }
 INPUTS = ("A", "B", "GO")
 MIX_OPS = ("AND", "OR", "NOT")     # --op MIX: один мозг, оператор по знаку
+INH_BUDGET = __import__("os").environ.get("HB_INH_BUDGET", "0") == "1"
 ACTIONS = ("YES", "NO")
 WAIT = 7
 DIRECT_THICKNESS = 0.75   # задержка 2 шага (myelin.delay)
@@ -95,6 +96,10 @@ def make_brain(p, seed, hand=False, op=None, signs=False):
                           plasticity=p.get("sensor_inh_plasticity", 0.0))
         b.inh_window = Head.INH_WINDOW
         b.inh_delayed = True
+        if INH_BUDGET:
+            # запас торможения (Brain._limit_inhibition): сумма тормозов к
+            # действию не больше предела силы одной связи
+            b.inh_budget = p["max_weight"]
     b.connect("YES", "NO", weight=p["inhibit_weight"], inhibitory=True)
     b.connect("NO", "YES", weight=p["inhibit_weight"], inhibitory=True)
     b.inh_short = True

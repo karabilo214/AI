@@ -159,6 +159,9 @@ class Brain:
         # сомнение не чаще раза за эпизод (выключатель; эпизоды считает мир:
         # new_episode в начале дня). -1 = выключено (каждое наказание считается)
         self.episode = -1
+        # запас торможения (выключатель, 0 = выкл): сумма обучаемых тормозов к
+        # одному действию не больше этого (см. _limit_inhibition)
+        self.inh_budget = 0.0
         self.confirm = np.zeros(connection_capacity, dtype=np.int64)  # подтверждений подряд
         self.last_share = np.zeros(connection_capacity)  # доля среди сигналов при срабатывании
         self.ban = np.zeros(connection_capacity)  # уверенность запрета «так нельзя»
@@ -395,6 +398,32 @@ class Brain:
         self.potential[i] += push
         self.push_in[i] += push
 
+    def _limit_inhibition(self):
+        """Запас торможения: сумма обучаемых тормозов (вход/память -> действие) к
+        одному действию не больше inh_budget — и в общей силе, и с добавкой
+        каждого контекста; лишнее срезается пропорционально. Иначе два тормоза
+        по пределу силы (24.3 + 24.3) запирали действие так, что его не могла
+        перебить ни одна возбуждающая связь (не сильнее 24.3)."""
+        n = self.n_conn
+        idx = np.flatnonzero(self.alive[:n] & self.inhibitory[:n]
+                             & self.explores[self.tgt[:n]] & ~self.explores[self.src[:n]]
+                             & (self.plasticity[:n] > 0))
+        if len(idx) == 0:
+            return
+        B = float(self.inh_budget)
+        tg = self.tgt[idx]
+        for t in np.unique(tg):
+            cs = idx[tg == t]
+            w = self.weight[cs]
+            tot = w.sum()
+            if tot > B:
+                self.weight[cs] = w * (B / tot)
+            for k in range(self._n_ctx()):
+                e = np.maximum(0.0, self.weight[cs] + self.ctx_w[cs, k])
+                tot = e.sum()
+                if tot > B:
+                    self.ctx_w[cs, k] = e * (B / tot) - self.weight[cs]
+
     def punish_blockers(self, value):
         """Наказание только тормозам, которые помешали действию (метка «помешал»):
         обычные метки на этот вызов обнуляются, так что ни возбуждение, ни
@@ -454,6 +483,8 @@ class Brain:
                                 bool(self.protect_consolidated), self.hyp, self.assoc,
                                 int(self.budget_window), self.time, self.arr_time, self.fixed,
                                 self._budget_floor(), self.explores)
+        if self.inh_budget > 0:
+            self._limit_inhibition()
         if self.curiosity is not None:
             self.curiosity.on_reward(value)
         if self.familiarity is not None:
