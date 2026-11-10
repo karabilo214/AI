@@ -153,7 +153,7 @@ def acted(fired):
     return a[0] if len(a) == 1 else ("оба" if a else None)
 
 
-def day(b, events, answer, learn, cap=None, truth=None):
+def day(b, events, answer, learn, cap=None, truth=None, show=None):
     """Прожить день. Возвращает (ответ мозга, закончил ли «готово», действий не вовремя).
     truth: верное число со знаком для накопителя (по умолчанию = answer)."""
     acc = b.accumulator
@@ -173,7 +173,10 @@ def day(b, events, answer, learn, cap=None, truth=None):
                     b.reward(-1.0)
 
     for e in events:
-        b.stimulate(e, 20.0)
+        if show is not None and show(b, e):
+            pass                # событие показано как картинка (numerals.py)
+        else:
+            b.stimulate(e, 20.0)
         unasked(EVENT_STEPS)
     cap = answer + 10 if cap is None else cap
     more, done = 0, False

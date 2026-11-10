@@ -32,10 +32,10 @@ round(m[i]) * R («прибавить содержимое регистра»). 
 
 class Accumulator:
     PARAMS = ("neuron", "inputs", "decrement", "query", "rate", "signed", "neg_neuron",
-              "register")
+              "register", "seen", "plast")
 
     def __init__(self, brain, neuron, inputs, decrement, query, rate=0.5, signed=False,
-                 neg_neuron=None, register=False):
+                 neg_neuron=None, register=False, seen=(), plast=None):
         self.brain = brain
         brain.accumulator = self
         self.neuron = neuron
@@ -46,6 +46,13 @@ class Accumulator:
         self.signed = signed
         self.neg_neuron = neg_neuron
         self.register = register
+        # «увиденные» входы (зрительные детекторы): считаются по срабатыванию
+        # (их зажигает зрение, а не толчок извне) и могут только прибавлять
+        # порции (w): в регистр не кладутся и регистр не прибавляют
+        self.seen = list(seen)
+        # пластичность входа (множитель обучения): закреплённые старые входы
+        # учатся медленно, новые — в полную силу (как молодые и закреплённые связи)
+        self.plast = dict(plast or {})
         self.w = {name: 0.0 for name in self.inputs}
         self.m = {name: 0.1 if register else 0.0 for name in self.inputs}
         self.r = {name: 0.1 if register else 0.0 for name in self.inputs}
@@ -80,7 +87,7 @@ class Accumulator:
         t = b.time
         for name in self.inputs:
             i = b.neurons[name].index
-            if b._fired[i] and b.stim_time[i] == t:
+            if b._fired[i] and (b.stim_time[i] == t or name in self.seen):
                 self.level += self.units(name)
                 if self.register:
                     self.level += int(round(self.m[name])) * self.reg
@@ -101,28 +108,41 @@ class Accumulator:
     def learn(self, correct):
         """После праздника: верное число известно, силы входов поправляются."""
         n = self.counts
+        P = {k: self.plast.get(k, 1.0) for k in self.inputs}
+        top = max(P.values()) if P else 1.0
+        young = [k for k in self.inputs if P[k] >= top]
         if not self.register:
-            denom = sum(v * v for v in n.values())
+            # молодые (самые пластичные) входы исправляют ошибку так, как будто
+            # закреплённые неизменны (знаменатель только по ним); закреплённые
+            # учатся медленно с обычным знаменателем. При равной пластичности —
+            # обычное правило
+            denom = sum(n[k] * n[k] for k in self.inputs)
+            denom_y = sum(n[k] * n[k] for k in young)
             if denom == 0:
                 return 0.0
             err = sum(self.w[k] * n[k] for k in self.inputs) - correct
             for k in self.inputs:
-                self.w[k] -= self.rate * err * n[k] / denom
+                d = denom_y if (k in young and denom_y > 0) else denom
+                self.w[k] -= P[k] * self.rate * err * n[k] / d
             return err
         # с регистром: прогноз = сумма w_i n_i + сумма m_i * сумма_j r_j q_ij
         gm = {i: sum(self.r[j] * q for (ii, j), q in self._q.items() if ii == i) for i in self.inputs}
         gr = {j: sum(self.m[i] * q for (i, jj), q in self._q.items() if jj == j) for j in self.inputs}
         pred = sum(self.w[k] * n[k] for k in self.inputs) + sum(self.m[i] * gm[i] for i in self.inputs)
         err = pred - correct
-        denom = (sum(v * v for v in n.values()) + sum(v * v for v in gm.values())
-                 + sum(v * v for v in gr.values()))
+        def sq(k):
+            return n[k] * n[k] + (0.0 if k in self.seen else gm[k] * gm[k] + gr[k] * gr[k])
+        denom = sum(sq(k) for k in self.inputs)
+        denom_y = sum(sq(k) for k in young)
         if denom == 0:
             return 0.0
-        k_ = self.rate * err / denom
         for k in self.inputs:
+            d = denom_y if (k in young and denom_y > 0) else denom
+            k_ = P[k] * self.rate * err / d
             self.w[k] -= k_ * n[k]
-            self.m[k] -= k_ * gm[k]
-            self.r[k] -= k_ * gr[k]
+            if k not in self.seen:
+                self.m[k] -= k_ * gm[k]
+                self.r[k] -= k_ * gr[k]
         return err
 
     # ---------- сохранение ----------
