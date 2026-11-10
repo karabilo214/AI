@@ -40,6 +40,7 @@ N_INH = 0      # тормозных нейронов в области (0 = бе
 INH_IN = 8     # от скольких нейронов памяти каждый тормозной получает возбуждение
 INH_OUT = 10   # скольких нейронов памяти каждый тормозной гасит
 INH_W = 1.0    # сила торможения, доля «до порога»
+CUE_HOLD = 1   # сколько шагов подряд показывается факт (ансамбли: несколько)
 
 
 def make_ring_brain(p, seed, full):
@@ -120,6 +121,9 @@ def trace(b, cue, steps=HOLD + 10):
     """Показать факт на копии; доля горящих по шагам и кто горел около шага HOLD."""
     t = copy.deepcopy(b)
     t.curiosity = None
+    for _ in range(CUE_HOLD - 1):
+        t.stimulate(cue, 20.0)
+        t.step()
     t.stimulate(cue, 20.0)
     frac, late = [], set()
     for k in range(steps):
@@ -131,13 +135,18 @@ def trace(b, cue, steps=HOLD + 10):
 
 
 def random_test(p, seed, g, full, shows=300):
+    """(когда, доля горящих около шага HOLD, наибольшая, горит у A, у B, общих) до и после показов."""
     b = make_random_brain(p, seed, g, full)
     out = []
     for stage in ("до", "после"):
         if stage == "после":
             rnd = random.Random(seed + 1)
             for _ in range(shows):
-                b.stimulate(rnd.choice(("CUE_A", "CUE_B")), 20.0)
+                cue = rnd.choice(("CUE_A", "CUE_B"))
+                for _ in range(CUE_HOLD - 1):    # факт держится на входе несколько шагов
+                    b.stimulate(cue, 20.0)
+                    b.step()
+                b.stimulate(cue, 20.0)
                 for _ in range(HOLD + 30):
                     b.step()
         fa, la = trace(b, "CUE_A")
