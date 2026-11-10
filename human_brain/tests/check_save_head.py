@@ -11,11 +11,10 @@
 В конце каждый сохраняется, и сравнивается весь файл: все массивы нейронов и
 связей, правила и состояния модулей (рост, память слуха, ассоциации, найм,
 ожидание награды, любопытство и т. д.). При расхождении код выхода 1.
-Запуск из папки human_brain: ../.venv/bin/python tests/check_save_head.py
+Запуск из корня проекта: .venv/bin/python -m human_brain.tests.check_save_head
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import os
 import random
 import subprocess
@@ -24,10 +23,10 @@ import tempfile
 
 import numpy as np
 
-import tasks
-import vision_hearing as vh
-from Brain import Brain
-from Head import build_head
+from human_brain.stages import tasks
+from human_brain.stages import vision_hearing as vh
+from human_brain.core.Brain import Brain
+from human_brain.parts.Head import build_head
 
 SEED = 10000
 
@@ -98,8 +97,9 @@ def main():
 
     # 3. отдельный процесс с другими глобальными правилами
     out_child = os.path.join(d, "child.npz")
-    r = subprocess.run([sys.executable, os.path.abspath(__file__), "--child", mid, out_child],
-                       cwd=os.path.dirname(os.path.abspath(__file__)))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    r = subprocess.run([sys.executable, "-m", "human_brain.tests.check_save_head", "--child",
+                        mid, out_child], cwd=root)
     if r.returncode != 0:
         print("процесс с другими правилами упал")
         return 1

@@ -2,11 +2,10 @@
 воспроизведения дефекта, который после исправления должен давать верный ответ.
 
 Номера совпадают с отчётом. При любом провале код выхода 1.
-Запуск из папки human_brain: ../.venv/bin/python tests/check_audit.py
+Запуск из корня проекта: .venv/bin/python -m human_brain.tests.check_audit
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import copy
 import os
 import sys
@@ -14,13 +13,13 @@ import tempfile
 
 import numpy as np
 
-import tasks
-from Brain import Brain
-from Growth import Growth
-from Recruit import Recruit
-from Hearing import Hearing
-from Association import Association
-from Episodes import Episodes, Episode
+from human_brain.stages import tasks
+from human_brain.core.Brain import Brain
+from human_brain.parts.Growth import Growth
+from human_brain.parts.Recruit import Recruit
+from human_brain.parts.Hearing import Hearing
+from human_brain.parts.Association import Association
+from human_brain.parts.Episodes import Episodes, Episode
 
 FAILS = []
 
@@ -254,7 +253,7 @@ def test_first_step_and_episodes():
 # ---------- №12: варианты сравнения различаются ----------
 
 def test_compare():
-    from compare_mechanisms import VARIANTS, check_unique
+    from human_brain.tests.compare_mechanisms import VARIANTS, check_unique
     configs = [{**tasks.PARAMS_DEFAULT, **v} for v in VARIANTS.values()]
     n = len({tuple(sorted(p.items())) for p in configs})
     check("№12 сравнение: все варианты разные", n == len(VARIANTS), f"{n} из {len(VARIANTS)}")
@@ -264,7 +263,7 @@ def test_compare():
 # ---------- №13, №14: быстрый движок ----------
 
 def test_fast():
-    import fast
+    from human_brain.core import fast
     P = fast.params_array(dict(tasks.PARAMS_DEFAULT))
     sim = fast.Sim(4, 1, P)
     sim.add_neuron(False, False)

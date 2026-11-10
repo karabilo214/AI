@@ -1,4 +1,4 @@
-from Brain import Brain
+from human_brain.core.Brain import Brain
 
 # =============================================
 # Создаём маленькую нейронную сеть

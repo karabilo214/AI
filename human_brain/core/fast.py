@@ -15,8 +15,8 @@ import numpy as np
 from numba import njit, int64, float64, boolean
 from numba.experimental import jitclass
 
-import kernel
-from Growth import PAIR_SHARE
+from human_brain.core import kernel
+from human_brain.parts.Growth import PAIR_SHARE
 
 # ---------- параметры: порядок в массиве P ----------
 
@@ -827,7 +827,7 @@ def context_arrays(blocks):
 
 
 def run_context_task(p_or_P, name, seed, n=60):
-    import tasks
+    from human_brain.stages import tasks
     P = p_or_P if isinstance(p_or_P, np.ndarray) else params_array(p_or_P)
     inputs, good, block_of, nb = context_arrays(tasks.CONTEXT_TASKS[name])
     ok, hits, first, _ = run_context_task_fast(P, NC_TASKS, CC_TASKS, seed, inputs, good,
@@ -836,7 +836,7 @@ def run_context_task(p_or_P, name, seed, n=60):
 
 
 def run_task(p_or_P, name, seed):
-    import tasks
+    from human_brain.stages import tasks
     P = p_or_P if isinstance(p_or_P, np.ndarray) else params_array(p_or_P)
     inputs, good = task_arrays(tasks.TASKS[name])
     ok, hits, before, _ = run_reward_task(P, NC_TASKS, CC_TASKS, seed, inputs, good)
@@ -845,7 +845,7 @@ def run_task(p_or_P, name, seed):
 
 def evaluate(p, seeds):
     """Как tasks.evaluate, но быстро."""
-    import tasks
+    from human_brain.stages import tasks
     P = params_array(p)
     detail = {}
     hits, before = [], []

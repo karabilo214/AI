@@ -18,17 +18,17 @@
 скрытые сочетания, гостей 11-20, 21-50, 101-200, карточка 6-9 (не видел).
 --hand: ручная сборка.
 
-Запуск из папки human_brain:
-    ../.venv/bin/python multiplication.py [--seed 0] [--mul-days 2000] [--hand]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.stages.multiplication [--seed 0] [--mul-days 2000] [--hand]
 """
 import argparse
 import copy
 import random
 
-import tasks
-import addition as ad
-import subtraction as sb
-import brain_store
+from human_brain.stages import tasks
+from human_brain.stages import addition as ad
+from human_brain.stages import subtraction as sb
+from human_brain.core import brain_store
 
 CARD_TOP = 5
 

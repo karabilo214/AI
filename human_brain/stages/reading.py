@@ -25,20 +25,20 @@
 было в обучении) и 6-8 (учили на 2-4); вся арифметика. Контроль: звучащее
 слово случайное (не то, что написано) — читать не должно получаться.
 
-Запуск из папки human_brain:
-    ../.venv/bin/python reading.py [--seed 900] [--days 800] [--control]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.stages.reading [--seed 900] [--days 800] [--control]
 """
 import argparse
 import random
 
-import tasks
-import addition as ad
-import subtraction as sb
-import multiplication as mu
-import division as dv
-import brain_store
-from Association import Association
-from Recruit import Recruit
+from human_brain.stages import tasks
+from human_brain.stages import addition as ad
+from human_brain.stages import subtraction as sb
+from human_brain.stages import multiplication as mu
+from human_brain.stages import division as dv
+from human_brain.core import brain_store
+from human_brain.parts.Association import Association
+from human_brain.parts.Recruit import Recruit
 
 LETTERS = "abcdefgh"
 N_VISION = 16

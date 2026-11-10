@@ -28,21 +28,21 @@
 (Прежний контроль — случайная цифра после «−» — для ролей ничего не
 проверял: конфеты всё равно уходили, и роль «отнять» оставалась верной.)
 
-Запуск из папки human_brain:
-    ../.venv/bin/python minus.py [--seed 1000] [--days 1000] [--control]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.stages.minus [--seed 1000] [--days 1000] [--control]
 """
 import argparse
 import random
 from itertools import combinations
 
-import tasks
-import addition as ad
-import subtraction as sb
-import division as dv
-import reading as rd
-import rules
-import numerals as nm
-import brain_store
+from human_brain.stages import tasks
+from human_brain.stages import addition as ad
+from human_brain.stages import subtraction as sb
+from human_brain.stages import division as dv
+from human_brain.stages import reading as rd
+from human_brain.stages import rules
+from human_brain.stages import numerals as nm
+from human_brain.core import brain_store
 
 SILENCE = float(__import__("os").environ.get("HB_SILENCE", "1.0"))
 DOUBT_PER_DAY = __import__("os").environ.get("HB_DOUBT", "1") == "1"

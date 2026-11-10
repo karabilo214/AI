@@ -12,7 +12,7 @@
                     их активность считается восприятием
 
 Использование:
-    from Regions import add_standard_regions
+    from human_brain.core.Regions import add_standard_regions
     add_standard_regions(brain)
     brain.add_neuron("M1", region="память")
 """

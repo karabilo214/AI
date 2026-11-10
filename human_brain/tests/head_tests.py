@@ -5,21 +5,20 @@
 правильные действия: L = D0, R = D1 (D2, D3 — неверные). Паузы между
 попытками те же, что в ручных проверках.
 
-Запуск из папки human_brain: ../.venv/bin/python tests/head_tests.py [число запусков]
+Запуск из корня проекта: .venv/bin/python -m human_brain.tests.head_tests [число запусков]
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import sys
 
 import numpy as np
 
 import os
 
-import tasks
-import vision_hearing as vh
-import Head
-from Head import build_head, see, hear, action, quiet_copy
+from human_brain.stages import tasks
+from human_brain.stages import vision_hearing as vh
+from human_brain.parts import Head
+from human_brain.parts.Head import build_head, see, hear, action, quiet_copy
 
 PIC = {"S1": (0, 1), "S2": (2, 3), "C1": (4, 5), "C2": (6, 7)}
 ACT = {"L": "D0", "R": "D1"}

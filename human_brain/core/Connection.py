@@ -1,5 +1,5 @@
-from Myelin import Myelin
-from Synapse import Synapse
+from human_brain.core.Myelin import Myelin
+from human_brain.core.Synapse import Synapse
 
 
 class Connection:

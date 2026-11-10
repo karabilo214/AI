@@ -19,19 +19,19 @@
 Контроль: те же показы, но слово к картинке подбирается случайно.
 Знакомость выключена (за 80 показов картинки приелись бы).
 
-Запуск из папки human_brain: ../.venv/bin/python vision_hearing.py
+Запуск из корня проекта: .venv/bin/python -m human_brain.stages.vision_hearing
 """
 import copy
 import random
 
 import numpy as np
 
-import tasks
-from Brain import Brain
-from Regions import add_standard_regions
-from Association import Association
-from Hearing import Hearing
-from Neuron import Neuron
+from human_brain.stages import tasks
+from human_brain.core.Brain import Brain
+from human_brain.core.Regions import add_standard_regions
+from human_brain.parts.Association import Association
+from human_brain.parts.Hearing import Hearing
+from human_brain.core.Neuron import Neuron
 
 USE_ASSOCIATION = True   # правило «бывает вместе» между зрением и слухом
 USE_HEARING = True       # память слуха: нейроны порядка звуков; зрение связывается с ними

@@ -27,19 +27,19 @@
 101-1000. Рядом ленивая «всегда 0».
 --hand: ручная сборка (сочетания заданы руками; заведомо решаемая проверка).
 
-Запуск из папки human_brain:
-    ../.venv/bin/python subtraction.py [--seed 0] [--add-days 300] [--sub-days 1000] [--hand]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.stages.subtraction [--seed 0] [--add-days 300] [--sub-days 1000] [--hand]
 """
 import argparse
 import copy
 import random
 
-import tasks
-import Head
-import addition as ad
-from Brain import Brain
-from Accumulator import Accumulator
-from Latch import Latch
+from human_brain.stages import tasks
+from human_brain.parts import Head
+from human_brain.stages import addition as ad
+from human_brain.core.Brain import Brain
+from human_brain.parts.Accumulator import Accumulator
+from human_brain.parts.Latch import Latch
 
 EVENTS = ("CARD", "CANDY", "DOOR", "GUEST", "ASK", "ASK_LEFT")
 READ = ("GO", "ACC", "ACC_NEG", "M_BRING", "M_LEFT")

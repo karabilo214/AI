@@ -33,7 +33,7 @@ fam_dishabituation, fam_recovery). Победителя никто не назн
 одной», то есть такой же счётчик. Иначе его «минус» на чужом вопросе давал
 сочетание, выучившее тормоз против «ещё», и ответы на деление качались.
 """
-from Units import VARIANTS
+from human_brain.parts.Units import VARIANTS
 
 
 class Candidate:

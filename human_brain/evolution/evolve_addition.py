@@ -12,9 +12,9 @@
 не пересекаются. Исходные значения (tasks.PARAMS_DEFAULT) не меняются:
 победителя принимает владелец.
 
-Запуск из папки human_brain:
-    ../.venv/bin/python evolve_addition.py --minutes 40
-Результаты: evolve_addition_results/log.txt, best.json
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.evolution.evolve_addition --minutes 40
+Результаты: human_brain/data/evolve_addition_results/log.txt, best.json
 """
 import argparse
 import json
@@ -24,12 +24,12 @@ import random
 import time
 from multiprocessing import Pool
 
-import tasks
-import fast
-import addition
-import Head
+from human_brain.stages import tasks
+from human_brain.core import fast
+from human_brain.stages import addition
+from human_brain.parts import Head
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # human_brain
 EXTRA_DEFAULT = {"inhibit_on": False, "inh_plasticity": Head.INH_PLASTICITY,
                  "boredom": Head.BOREDOM}
 SPACE = dict(tasks.SPACE)
@@ -94,7 +94,7 @@ def main():
     ap.add_argument("--workers", type=int, default=9)
     ap.add_argument("--minutes", type=float, default=40.0)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--out", default=os.path.join(HERE, "evolve_addition_results"))
+    ap.add_argument("--out", default=os.path.join(HERE, "data", "evolve_addition_results"))
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     log = open(os.path.join(a.out, "log.txt"), "w")

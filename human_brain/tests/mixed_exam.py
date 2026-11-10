@@ -10,23 +10,22 @@
     чтение — слова не из учебных наборов, половина с парами «e+g», «e+h»,
     которых в обучении не было ни разу (мягкость после e обозначена «'»).
 
-Запуск из папки human_brain:
-    ../.venv/bin/python tests/mixed_exam.py [--seed 1000] [--order 7]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.tests.mixed_exam [--seed 1000] [--order 7]
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import argparse
 import random
 
-import tasks
-import addition as ad
-import subtraction as sb
-import multiplication as mu
-import division as dv
-import reading as rd
-import rules
-import brain_store
+from human_brain.stages import tasks
+from human_brain.stages import addition as ad
+from human_brain.stages import subtraction as sb
+from human_brain.stages import multiplication as mu
+from human_brain.stages import division as dv
+from human_brain.stages import reading as rd
+from human_brain.stages import rules
+from human_brain.core import brain_store
 
 
 def groups_of(events):

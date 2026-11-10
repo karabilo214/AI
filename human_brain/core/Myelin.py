@@ -1,4 +1,4 @@
-from kernel import delay
+from human_brain.core.kernel import delay
 
 
 class Myelin:

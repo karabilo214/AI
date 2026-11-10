@@ -9,11 +9,11 @@ import json
 import os
 import random
 
-from Brain import Brain
+from human_brain.core.Brain import Brain
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # human_brain
 # HB_BRAINS: другая папка мозгов (проверка цепочки с нуля, не трогая сохранённые)
-DIR = os.environ.get("HB_BRAINS") or os.path.join(HERE, "brains")
+DIR = os.environ.get("HB_BRAINS") or os.path.join(HERE, "data", "brains")
 
 
 def path_for(name):

@@ -19,9 +19,9 @@
 Оценка по умолчанию быстрая (fast.py, весь цикл в Numba; без шума совпадает
 с обычной версией до бита, см. check_fast.py). --slow: обычная версия.
 
-Запуск (из папки human_brain):
-    ../.venv/bin/python evolve.py --generations 100 --minutes 20
-Результаты: evolve_results/log.txt, history.json, best.json, validation.json
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.evolution.evolve --generations 100 --minutes 20
+Результаты: human_brain/data/evolve_results/log.txt, history.json, best.json, validation.json
 """
 import argparse
 import json
@@ -31,10 +31,10 @@ import random
 import time
 from multiprocessing import Pool
 
-import tasks
-import fast
+from human_brain.stages import tasks
+from human_brain.core import fast
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # human_brain
 
 
 FIXED = set()   # параметры, которые эволюция не меняет (--fix)
@@ -104,7 +104,7 @@ def main():
                     help="json с набором (поле params), с которого начать вместо текущих значений")
     ap.add_argument("--slow", action="store_true",
                     help="оценивать обычной версией (Brain), а не быстрой (fast.py)")
-    ap.add_argument("--out", default=os.path.join(HERE, "evolve_results"))
+    ap.add_argument("--out", default=os.path.join(HERE, "data", "evolve_results"))
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)

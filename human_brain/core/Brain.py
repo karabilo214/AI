@@ -2,11 +2,11 @@ import json
 
 import numpy as np
 
-import kernel
-from Neuron import Neuron
-from Connection import Connection
-from Synapse import Synapse
-from Myelin import Myelin
+from human_brain.core import kernel
+from human_brain.core.Neuron import Neuron
+from human_brain.core.Connection import Connection
+from human_brain.core.Synapse import Synapse
+from human_brain.core.Myelin import Myelin
 
 # Массивы, из которых состоит мозг (всё, что он знает и делает)
 NEURON_FIELDS = ("potential", "refractory", "spikes", "threshold", "received", "explores",
@@ -709,43 +709,43 @@ class Brain:
         for c in range(m):
             brain._register_connection(c)
         if growth is not None:
-            from Growth import Growth
+            from human_brain.parts.Growth import Growth
             Growth.from_state(brain, growth)
         if curiosity is not None:
-            from Curiosity import Curiosity
+            from human_brain.parts.Curiosity import Curiosity
             Curiosity.from_state(brain, curiosity)
         if change is not None:
-            from NeuronChange import NeuronChange
+            from human_brain.core.NeuronChange import NeuronChange
             NeuronChange.from_state(brain, change)
         if fam is not None:
-            from Familiarity import Familiarity
+            from human_brain.parts.Familiarity import Familiarity
             Familiarity.from_state(brain, fam)
         if eps is not None:
-            from Episodes import Episodes
+            from human_brain.parts.Episodes import Episodes
             Episodes.from_state(brain, eps)
         if rec is not None:
-            from Recruit import Recruit
+            from human_brain.parts.Recruit import Recruit
             Recruit.from_state(brain, rec)
         if critic is not None:
-            from RewardPrediction import RewardPrediction
+            from human_brain.core.RewardPrediction import RewardPrediction
             RewardPrediction.from_state(brain, critic)
         if hear is not None:
-            from Hearing import Hearing
+            from human_brain.parts.Hearing import Hearing
             Hearing.from_state(brain, hear)
         if assoc is not None:
-            from Association import Association
+            from human_brain.parts.Association import Association
             Association.from_state(brain, assoc)
         if acc is not None:
-            from Accumulator import Accumulator
+            from human_brain.parts.Accumulator import Accumulator
             Accumulator.from_state(brain, acc)
         if latch is not None:
-            from Latch import Latch
+            from human_brain.parts.Latch import Latch
             Latch.from_state(brain, latch)
         if units is not None:
             if units.get("kind") == "neural":
-                from NeuralChoice import NeuralChoice
+                from human_brain.parts.NeuralChoice import NeuralChoice
                 NeuralChoice.from_state(brain, units)
             else:
-                from Units import Units
+                from human_brain.parts.Units import Units
                 Units.from_state(brain, units)
         return brain

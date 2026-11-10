@@ -12,17 +12,16 @@
 4. Важное не удаляется: у выученной важной связи сила падает ниже порога
    «мёртвой»; удалится ли она.
 
-Запуск из папки human_brain: ../.venv/bin/python tests/memory_tests.py
+Запуск из корня проекта: .venv/bin/python -m human_brain.tests.memory_tests
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import random
 
 import numpy as np
 
-import tasks
-from Episodes import Episodes
+from human_brain.stages import tasks
+from human_brain.parts.Episodes import Episodes
 
 
 def with_params(**kw):

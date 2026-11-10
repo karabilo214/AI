@@ -20,16 +20,16 @@
 A+B -> YES; ИЛИ — A -> YES и B -> YES; НЕ — GO -> YES и тормоз A -> YES;
 GO -> NO слабее (побеждает, когда YES не зовут).
 
-Запуск из папки human_brain:
-    ../.venv/bin/python logic.py [--op AND] [--seed 0] [--trials 2000] [--control] [--hand]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.stages.logic [--op AND] [--seed 0] [--trials 2000] [--control] [--hand]
 """
 import argparse
 import copy
 import random
 
-import tasks
-import Head
-from Brain import Brain
+from human_brain.stages import tasks
+from human_brain.parts import Head
+from human_brain.core.Brain import Brain
 
 OPS = {
     "AND": (lambda a, b: a and b, True),

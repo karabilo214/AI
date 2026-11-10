@@ -8,20 +8,19 @@
 3. Скорость оценки одного набора.
 
 При расхождении в части 1 код выхода 1. --quick: только часть 1.
-Запуск из папки human_brain: ../.venv/bin/python tests/check_fast.py
+Запуск из корня проекта: .venv/bin/python -m human_brain.tests.check_fast
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import random
 import sys
 import time
 
 import numpy as np
 
-import tasks
-import fast
-from evolve import mutate
+from human_brain.stages import tasks
+from human_brain.core import fast
+from human_brain.evolution.evolve import mutate
 
 
 def python_task(p, name, seed):

@@ -14,7 +14,7 @@
 """
 import numpy as np
 
-import kernel
+from human_brain.core import kernel
 
 
 class RewardPrediction:

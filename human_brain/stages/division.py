@@ -17,19 +17,19 @@ g от 2 до 10), вопрос ASK_EACH «сколько каждому?» = c 
 скрытые, конфет 11-20, 21-50 (гостей до 10). Сохранения мозгов не меняются
 (учится копия).
 
-Запуск из папки human_brain:
-    ../.venv/bin/python division.py [--seed 800] [--days 2000]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.stages.division [--seed 800] [--days 2000]
 """
 import argparse
 import random
 
-import tasks
-import addition as ad
-import subtraction as sb
-import multiplication as mu
-import brain_store
-from Units import Units
-from NeuralChoice import NeuralChoice
+from human_brain.stages import tasks
+from human_brain.stages import addition as ad
+from human_brain.stages import subtraction as sb
+from human_brain.stages import multiplication as mu
+from human_brain.core import brain_store
+from human_brain.parts.Units import Units
+from human_brain.parts.NeuralChoice import NeuralChoice
 
 
 def make_div_day(rng, top=10, low=0, want_hidden=False):

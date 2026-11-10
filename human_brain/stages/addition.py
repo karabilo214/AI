@@ -35,8 +35,8 @@ reward_only_actions (пути к действиям меняются тольк�
 стратегия «всегда 0» (для сложения всегда 0%, гостей не меньше 4).
 --hand: ручная сборка (заведомо решаемая проверка).
 
-Запуск из папки human_brain:
-    ../.venv/bin/python addition.py [--seed 0] [--days 300] [--hand]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.stages.addition [--seed 0] [--days 300] [--hand]
 """
 import argparse
 import copy
@@ -44,10 +44,10 @@ import os
 import random
 import time
 
-import tasks
-import Head
-from Brain import Brain
-from Accumulator import Accumulator
+from human_brain.stages import tasks
+from human_brain.parts import Head
+from human_brain.core.Brain import Brain
+from human_brain.parts.Accumulator import Accumulator
 
 EVENTS = ("CARD", "CANDY", "DOOR", "GUEST", "ASK")
 ACTIONS = ("MORE", "DONE")

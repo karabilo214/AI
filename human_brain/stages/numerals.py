@@ -18,20 +18,20 @@ rules.py). Новое:
 и карточки. Контроль: в ступени «цифры» картинка показывается рядом со
 случайным числом гостей (её значение ничему не соответствует).
 
-Запуск из папки human_brain:
-    ../.venv/bin/python numerals.py [--seed 1000] [--days 1000] [--control]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.stages.numerals [--seed 1000] [--days 1000] [--control]
 """
 import argparse
 import random
 from itertools import combinations
 
-import tasks
-import addition as ad
-import subtraction as sb
-import division as dv
-import reading as rd
-import rules
-import brain_store
+from human_brain.stages import tasks
+from human_brain.stages import addition as ad
+from human_brain.stages import subtraction as sb
+from human_brain.stages import division as dv
+from human_brain.stages import reading as rd
+from human_brain.stages import rules
+from human_brain.core import brain_store
 
 DIGITS = (2, 3, 4, 5, 6)
 EXTRA_DETECTORS = 12

@@ -20,18 +20,18 @@
 
 Мозг берётся из сохранения после первой ступени чтения (reading.py);
 каждый второй день — правило, остальные — прежняя арифметика.
-Запуск из папки human_brain:
-    ../.venv/bin/python rules.py [--seed 900] [--days 1000]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.stages.rules [--seed 900] [--days 1000]
 """
 import argparse
 import random
 
-import tasks
-import addition as ad
-import subtraction as sb
-import division as dv
-import reading as rd
-import brain_store
+from human_brain.stages import tasks
+from human_brain.stages import addition as ad
+from human_brain.stages import subtraction as sb
+from human_brain.stages import division as dv
+from human_brain.stages import reading as rd
+from human_brain.core import brain_store
 
 GAP = 3            # шагов между буквами
 SAY = 2            # через сколько шагов после показа буквы звучит её звук

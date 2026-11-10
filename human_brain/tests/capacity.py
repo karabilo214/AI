@@ -17,23 +17,22 @@
 Проверка самого замера: --check повторяет vision_hearing (8 зрения, 6 звуков,
 исходные 4 пары), должно получиться как там (40/40).
 
-Запуск из папки human_brain:
-    ../.venv/bin/python tests/capacity.py N [запусков] [--control] [--check]
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.tests.capacity N [запусков] [--control] [--check]
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import copy
 import random
 import sys
 from itertools import combinations, permutations
 
-import tasks
-import vision_hearing as vh
-from Brain import Brain
-from Regions import add_standard_regions
-from Association import Association
-from Hearing import Hearing
+from human_brain.stages import tasks
+from human_brain.stages import vision_hearing as vh
+from human_brain.core.Brain import Brain
+from human_brain.core.Regions import add_standard_regions
+from human_brain.parts.Association import Association
+from human_brain.parts.Hearing import Hearing
 
 N_VISION = 32
 N_SOUNDS = 16

@@ -11,18 +11,17 @@
 2. Быстрая память: один показ пары X -> F. Через 20 шагов X сам зажигает F?
    Через 100 и 300? Сравнение с обычной областью (1 и 10 показов).
 
-Запуск из папки human_brain: ../.venv/bin/python tests/region_tests.py
+Запуск из корня проекта: .venv/bin/python -m human_brain.tests.region_tests
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import copy
 
 import numpy as np
 
-import tasks
-from Brain import Brain
-from Regions import add_standard_regions
+from human_brain.stages import tasks
+from human_brain.core.Brain import Brain
+from human_brain.core.Regions import add_standard_regions
 
 
 def params(**kw):

@@ -36,14 +36,14 @@ evaluate(p, seeds) оценка набора: сумма долей пройде
 import copy
 import random
 
-from Brain import Brain
-from Neuron import Neuron
-from Synapse import Synapse
-from Myelin import Myelin
-from Curiosity import Curiosity
-from Growth import Growth
-from NeuronChange import NeuronChange
-from Familiarity import Familiarity
+from human_brain.core.Brain import Brain
+from human_brain.core.Neuron import Neuron
+from human_brain.core.Synapse import Synapse
+from human_brain.core.Myelin import Myelin
+from human_brain.parts.Curiosity import Curiosity
+from human_brain.parts.Growth import Growth
+from human_brain.core.NeuronChange import NeuronChange
+from human_brain.parts.Familiarity import Familiarity
 
 PARAMS_DEFAULT = {
     # нейрон

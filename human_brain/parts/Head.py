@@ -68,14 +68,14 @@ import copy
 
 import numpy as np
 
-import tasks
-from Brain import Brain
-from Neuron import Neuron
-from Regions import add_standard_regions
-from Hearing import Hearing
-from Association import Association
-from RewardPrediction import RewardPrediction
-from Recruit import Recruit
+from human_brain.stages import tasks
+from human_brain.core.Brain import Brain
+from human_brain.core.Neuron import Neuron
+from human_brain.core.Regions import add_standard_regions
+from human_brain.parts.Hearing import Hearing
+from human_brain.parts.Association import Association
+from human_brain.core.RewardPrediction import RewardPrediction
+from human_brain.parts.Recruit import Recruit
 
 N_VISION = 8
 SOUNDS = "abcdef"

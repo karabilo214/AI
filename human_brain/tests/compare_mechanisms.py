@@ -1,19 +1,18 @@
 """Сравнение механизмов (гипотезы, заслуга, миелин по времени, знакомость)
 на наборе задач tasks.py быстрой оценкой, на новых запусках.
 
-Запуск из папки human_brain: ../.venv/bin/python tests/compare_mechanisms.py
+Запуск из корня проекта: .venv/bin/python -m human_brain.tests.compare_mechanisms
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import json
 import os
 import sys
 import time
 from multiprocessing import Pool
 
-import tasks
-import fast
+from human_brain.stages import tasks
+from human_brain.core import fast
 
 # У каждого варианта полный набор сравниваемых переключателей: контроль явно
 # выключает все три (в текущих параметрах они уже включены, и прежний вариант

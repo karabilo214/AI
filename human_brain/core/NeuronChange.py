@@ -1,6 +1,6 @@
 import numpy as np
 
-from Neuron import Neuron
+from human_brain.core.Neuron import Neuron
 
 
 class NeuronChange:

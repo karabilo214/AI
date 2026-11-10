@@ -10,12 +10,11 @@
 4. Задачи вне оценки: три задачи подряд (и зеркально), переучивание
    S1: L -> R за 60 попыток, задача A при 10% перепутанных наград.
 
-Запуск из папки human_brain:
-    ../.venv/bin/python tests/problem_tests.py evolve_results_new_on/best.json evolve_results_new_off/best.json
+Запуск из корня проекта:
+    .venv/bin/python -m human_brain.tests.problem_tests evolve_results_new_on/best.json evolve_results_new_off/best.json
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import copy
 import json
 import random
@@ -23,9 +22,9 @@ import sys
 
 import numpy as np
 
-import tasks
-import fast
-from Brain import Brain
+from human_brain.stages import tasks
+from human_brain.core import fast
+from human_brain.core.Brain import Brain
 
 
 def load(path):

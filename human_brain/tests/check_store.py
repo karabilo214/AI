@@ -3,21 +3,20 @@
 Мозг вычитания учится 300 + 200 дней, сохраняется (brain_store), загружается и
 учится ещё 200 дней; рядом тот же мозг учится 300 + 400 дней подряд. Сравниваются
 файлы сохранения целиком. Код выхода 1 при расхождении.
-Запуск из папки human_brain: ../.venv/bin/python tests/check_store.py
+Запуск из корня проекта: .venv/bin/python -m human_brain.tests.check_store
 """
 import os as _os
 import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import os
 import random
 import sys
 import tempfile
 
-import tasks
-import addition as ad
-import subtraction as sb
-import brain_store
-from check_save_head import compare_files
+from human_brain.stages import tasks
+from human_brain.stages import addition as ad
+from human_brain.stages import subtraction as sb
+from human_brain.core import brain_store
+from human_brain.tests.check_save_head import compare_files
 
 
 def more_days(b, rng, n):
