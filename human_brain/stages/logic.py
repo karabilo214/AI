@@ -6,6 +6,10 @@
     входы A, B и сигнал «отвечай» (GO, есть в каждой пробе — иначе при «ни A,
     ни B» нечему вызвать ответ, а НЕ без него не проверить);
     действия YES и NO соревнуются (взаимное торможение).
+Ожидание награды (RewardPrediction, HB_CRITIC=1 по умолчанию): связи учатся
+на ошибку предсказания — ожидаемая награда не усиливает путь дальше,
+неожиданное наказание ослабляет в полную силу. Без него «отвечай -> да» при
+ИЛИ стоял на пределе (3 награды на 1 наказание) и в пустом случае выигрывал.
 Проба: показаны GO и те из A, B, что «истинны»; ответ — первое действие за 7
 шагов; награда +1 за верный ответ, -1 за неверный, 0 за молчание.
 Операторы (свой свежий мозг на каждый):
@@ -39,6 +43,7 @@ OPS = {
 }
 INPUTS = ("A", "B", "GO")
 MIX_OPS = ("AND", "OR", "NOT")     # --op MIX: один мозг, оператор по знаку
+CRITIC = __import__("os").environ.get("HB_CRITIC", "1") == "1"
 INH_BUDGET = __import__("os").environ.get("HB_INH_BUDGET", "0") == "1"
 ACTIONS = ("YES", "NO")
 WAIT = 7
@@ -121,6 +126,13 @@ def make_brain(p, seed, hand=False, op=None, signs=False):
         b.growth.new_weight = p["action_min"] + 0.1
         b.growth.inherit_inhibition = p.get("inh_plasticity", Head.INH_PLASTICITY)
         b.budget_window = p.get("budget_window", Head.BUDGET_WINDOW)
+        if CRITIC:
+            # ожидание награды (RewardPrediction): связи учатся на ошибку
+            # предсказания. Иначе «отвечай -> да» при ИЛИ получал 3 награды на
+            # 1 наказание (GO есть в каждой пробе, «да» верно в 3 из 4) и стоял
+            # на пределе, а в пустом случае ничья с «отвечай -> нет» давала «да»
+            from human_brain.core.RewardPrediction import RewardPrediction
+            RewardPrediction(b, regions=["входы"] + (["знаки"] if signs else []))
     return b
 
 
