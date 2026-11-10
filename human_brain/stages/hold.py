@@ -77,6 +77,7 @@ def make_ring_brain(p, seed, full):
 
 
 N_DMEM = 10
+SITUATIONAL = __import__("os").environ.get("HB_SITUATIONAL", "0") == "1"
 PAIR_WINDOW = int(__import__("os").environ.get("HB_PAIR_WINDOW", "3"))
 DMEM_IN = 3
 
@@ -108,7 +109,11 @@ def make_delay_brain(p, seed, persist=True):
                 b.connect(cue, m, weight=2 * th, inhibitory=True, myelin_thickness=1.0)
     for s in mem + ["GO"]:
         for o in ("YES", "NO"):
-            b.connect(s, o, weight=p["init_weight"], myelin_thickness=1.0 if s != "GO" else 0.75,
+            # память горит постоянно: её прямые связи к ответам стартуют с
+            # минимума путей к действиям, а не с обычной начальной силы (14) —
+            # иначе каждая вспышка памяти сама поджигала и «да», и «нет»
+            w0 = p["action_min"] if s != "GO" else p["init_weight"]
+            b.connect(s, o, weight=w0, myelin_thickness=1.0 if s != "GO" else 0.75,
                       plasticity=p["init_plasticity"])
             # тормоз от постоянно горящей памяти и от GO не учится (как у датчиков
             # в мозге вычитания): иначе память, чтобы не отвечать без вопроса,
@@ -128,7 +133,10 @@ def make_delay_brain(p, seed, persist=True):
     b.neuron_change.make_same(("входы", "действия"))
     b.curiosity.boredom = p.get("boredom", Head.BOREDOM)
     b.curiosity.avoid = p.get("avoid", 3.0)
-    b.curiosity.situational = True
+    # скука по ситуации здесь выключена: наказание за действие без вопроса
+    # прибавляло к скуке ситуации «горит память», скука толкала действия, и
+    # те снова срабатывали без вопроса (лавина, ~14 лишних действий на пробу)
+    b.curiosity.situational = SITUATIONAL
     b.growth.sensory_regions = ["входы", "память"]
     # ответ должен зависеть от «вопрос И память»: сочетания нейронов памяти с GO
     # (память горит всю задержку, сама по себе она не повод отвечать); между
