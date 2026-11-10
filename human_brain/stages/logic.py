@@ -217,11 +217,11 @@ def exam_mix(b):
     return rows
 
 
-def train_mix(b, trials, rng, control=False):
-    """Один мозг, три оператора вперемешку; знак оператора показан в каждой пробе."""
+def train_mix(b, trials, rng, control=False, ops=MIX_OPS):
+    """Один мозг, операторы ops вперемешку; знак оператора показан в каждой пробе."""
     right = 0
     for _ in range(trials):
-        op = rng.choice(MIX_OPS)
+        op = rng.choice(ops)
         f, _ = OPS[op]
         a, c = rng.choice(cases(op))
         want = rng.choice(ACTIONS) if control else ("YES" if f(a, c) else "NO")
@@ -232,10 +232,18 @@ def train_mix(b, trials, rng, control=False):
     return right / trials
 
 
-def run_mix(p, seed, trials=6000, control=False):
+def run_mix(p, seed, trials=6000, control=False, staged=False):
+    """staged: ступенями, как в школе — сначала только И, потом И и ИЛИ
+    вперемешку, потом все три (по trials / 3 проб на ступень); прежние
+    операторы не бросаются, чтобы не забылись."""
     tasks.apply(p)
     b = make_brain(p, seed, signs=True)
-    train_mix(b, trials, random.Random(seed), control)
+    rng = random.Random(seed)
+    if staged:
+        for k in range(1, len(MIX_OPS) + 1):
+            train_mix(b, trials // len(MIX_OPS), rng, control, MIX_OPS[:k])
+    else:
+        train_mix(b, trials, rng, control)
     rows = exam_mix(b)
     by_op = {op: all(w == o for q, _, w, o in rows if q == op) for op in MIX_OPS}
     return by_op, rows, b
@@ -257,6 +265,7 @@ def main():
     ap.add_argument("--control", action="store_true")
     ap.add_argument("--hand", action="store_true")
     ap.add_argument("--silence", action="store_true")
+    ap.add_argument("--staged", action="store_true", help="MIX ступенями: И, потом +ИЛИ, потом +НЕ")
     ap.add_argument("--no-situational", action="store_true")
     a = ap.parse_args()
     global SILENCE, SITUATIONAL
@@ -265,7 +274,7 @@ def main():
     p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
     tasks.apply(p)
     if a.op == "MIX":
-        by_op, rows, b = run_mix(p, a.seed, a.trials, a.control)
+        by_op, rows, b = run_mix(p, a.seed, a.trials, a.control, a.staged)
         print("MIX", " ".join(f"{o}:{'выучен' if v else 'нет'}" for o, v in by_op.items()),
               "ВСЕ" if all(by_op.values()) else "", rows)
         return

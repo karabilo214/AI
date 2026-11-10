@@ -398,6 +398,34 @@ class Brain:
         self.potential[i] += push
         self.push_in[i] += push
 
+    def _limit_inputs_ctx(self):
+        """Запас входов и с добавкой каждого контекста (kernel.limit_inputs
+        считает только общую силу): сумма возбуждающих входов нейрона сверх
+        минимума путей к действиям не больше input_budget в любом контексте;
+        лишнее срезается с добавок пропорционально. Иначе в контексте
+        запас не действовал: у «нет» при знаке И пять путей по 24 (около 120),
+        и тормоз «A+B -> нет» (не больше 24.3) не мог его погасить."""
+        n = self.n_conn
+        m = (self.alive[:n] & ~self.inhibitory[:n] & ~self.hyp[:n] & ~self.assoc[:n]
+             & ~self.fixed[:n])
+        if self.budget_window > 0:
+            m &= (self.time - self.arr_time[:n]) <= self.budget_window
+        idx = np.flatnonzero(m)
+        if len(idx) == 0:
+            return
+        tg = self.tgt[idx]
+        floor = self._budget_floor()
+        base = np.where(self.explores[tg], floor, 0.0) if floor > 0 else np.zeros(len(idx))
+        B = float(self.input_budget)
+        for k in range(self._n_ctx()):
+            eff = self.weight[idx] + self.ctx_w[idx, k]
+            x = np.maximum(0.0, eff - base)
+            tot = np.bincount(tg, weights=x, minlength=self.n_neurons)
+            over = tot[tg] > B
+            if over.any():
+                new = base[over] + x[over] * (B / tot[tg][over])
+                self.ctx_w[idx[over], k] = new - self.weight[idx[over]]
+
     def _limit_inhibition(self):
         """Запас торможения: сумма обучаемых тормозов (вход/память -> действие) к
         одному действию не больше inh_budget — и в общей силе, и с добавкой
@@ -483,6 +511,8 @@ class Brain:
                                 bool(self.protect_consolidated), self.hyp, self.assoc,
                                 int(self.budget_window), self.time, self.arr_time, self.fixed,
                                 self._budget_floor(), self.explores)
+        if self.input_budget > 0 and self._n_ctx() > 0:
+            self._limit_inputs_ctx()
         if self.inh_budget > 0:
             self._limit_inhibition()
         if self.curiosity is not None:
