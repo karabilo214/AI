@@ -1,9 +1,12 @@
-"""Проверки по отчёту CODE_AUDIT_REPORT.md: каждая — короткий сценарий
+"""Проверки по отчёту docs/CODE_AUDIT_REPORT.md: каждая — короткий сценарий
 воспроизведения дефекта, который после исправления должен давать верный ответ.
 
 Номера совпадают с отчётом. При любом провале код выхода 1.
-Запуск из папки human_brain: ../.venv/bin/python check_audit.py
+Запуск из папки human_brain: ../.venv/bin/python tests/check_audit.py
 """
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import copy
 import os
 import sys

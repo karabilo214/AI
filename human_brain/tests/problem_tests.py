@@ -11,8 +11,11 @@
    S1: L -> R за 60 попыток, задача A при 10% перепутанных наград.
 
 Запуск из папки human_brain:
-    ../.venv/bin/python problem_tests.py evolve_results_new_on/best.json evolve_results_new_off/best.json
+    ../.venv/bin/python tests/problem_tests.py evolve_results_new_on/best.json evolve_results_new_off/best.json
 """
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import copy
 import json
 import random

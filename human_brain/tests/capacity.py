@@ -18,8 +18,11 @@
 исходные 4 пары), должно получиться как там (40/40).
 
 Запуск из папки human_brain:
-    ../.venv/bin/python capacity.py N [запусков] [--control] [--check]
+    ../.venv/bin/python tests/capacity.py N [запусков] [--control] [--check]
 """
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import copy
 import random
 import sys

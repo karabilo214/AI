@@ -11,8 +11,11 @@
     которых в обучении не было ни разу (мягкость после e обозначена «'»).
 
 Запуск из папки human_brain:
-    ../.venv/bin/python mixed_exam.py [--seed 1000] [--order 7]
+    ../.venv/bin/python tests/mixed_exam.py [--seed 1000] [--order 7]
 """
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import argparse
 import random
 
@@ -109,11 +112,87 @@ def run_exam(seed, order=7):
     return rows, score
 
 
+def write_report(seed, order, path):
+    """Отчёт о мозге в файл (Markdown): как учился, проверка вперемешку, широкий экзамен."""
+    import datetime
+    rows, score = run_exam(seed, order)
+    b, _, meta = brain_store.load(brain_store.path_for(rules.rules_name(seed)))
+    alphabet = rd.make_alphabet(seed)
+    train_words = rd.make_words(seed, 40, (2, 3, 4)) + rules.make_words(seed + 10, 40, (2, 3, 4, 5))
+    new = rules.make_words(seed + 11, 30, (2, 3, 4, 5), exclude=train_words)
+    rule = rules.make_words(seed + 12, 20, (2, 3, 4, 5), exclude=train_words,
+                            need=rules.HOLD_OUT, forbid=())
+    wide = {k: sb.exam(b, v) / len(v) for k, v in dv.exam_sets(seed).items()}
+    wide["чтение: новые слова (с правилом)"] = rules.exam(b, new, alphabet)
+    wide["чтение: невиданные пары e+g, e+h"] = rules.exam(b, rule, alphabet)
+    u = b.units
+    chosen = {q: f"{u.names[k]} ({u.cands[k].variant}, регистр {u.cands[k].reg_event})"
+              for q, k in u.chosen.items()}
+    acc = b.accumulator
+    grown = sum(1 for e in b.growth.log if e["kind"] == "вырос нейрон")
+    L = []
+    L.append(f"# Отчёт: мозг {seed}")
+    L.append("")
+    L.append(f"Дата: {datetime.date.today()}. Мозг обучен с нуля и проверен без обучения "
+             f"(копия без шума). Файл мозга: `human_brain/brains/{rules.rules_name(seed)}.npz`.")
+    L.append("")
+    L.append("## Как учился")
+    L.append("")
+    L.append("| ступень | дней | чему учился | примеры в обучении |")
+    L.append("|---|---|---|---|")
+    L.append("| сложение | 300 | «сколько принести» (гости группами) | числа до 10 |")
+    L.append("| вычитание | 2000 | «сколько не хватило», «сколько останется»; каждый второй день сложение | числа до 10, часть сочетаний скрыта |")
+    L.append("| умножение | 2000 | «каждому по N»; каждый второй день прежнее | N 2-5, гостей до 10 |")
+    L.append("| деление | 3000 | «сколько каждому»; заготовку выбирает сеть, закрепляет правило после 10 удач; каждый второй день прежнее | конфет до 10 |")
+    L.append("| чтение | 800 | буква -> звук из целых слов (звук не в такт); каждый второй день арифметика | 40 слов из 2-4 букв |")
+    L.append("| правило чтения | 1000 | «после e буква мягкая»; каждый второй день арифметика | 40 слов, без пар e+g, e+h |")
+    L.append("")
+    L.append(f"Врождённое: накопитель со знаком и регистром, защёлка вопроса, 14 заготовок "
+             f"(«по одной» / «по регистру»), найм детекторов букв. Выросло само: "
+             f"{grown} нейронов-сочетаний (рост), {len(b.recruit.owner)} детекторов букв "
+             f"(найм), {len(b.connections)} живых связей. "
+             f"Выбор для деления: {chosen or 'не закреплён'}. Накопитель: гость прибавляет регистр "
+             f"(m={acc.m['GUEST']:.2f}), карточка кладётся в регистр (r={acc.r['CARD']:.2f}), "
+             f"конфета {acc.w['CANDY']:.2f}.")
+    L.append("")
+    L.append("## Проверка вперемешку: 50 заданий, все вне обучения")
+    L.append("")
+    L.append("Числа 11-50 (обучение до 10), в умножении и карточки 6-9; вычитание только с ответом "
+             "не 0; слова не из учебных, половина с невиданными парами e+g, e+h (мягкость — «'»).")
+    L.append("")
+    L.append("| № | действие | пример | верно | мозг | |")
+    L.append("|---|---|---|---|---|---|")
+    for r in rows:
+        L.append("| " + " | ".join(map(str, r)) + " |")
+    L.append("")
+    L.append("| действие | верно |")
+    L.append("|---|---|")
+    for kind in ("сложение", "вычитание", "умножение", "деление", "чтение"):
+        L.append(f"| {kind} | {score[kind][0]}/{score[kind][1]} |")
+    total = sum(v[0] for v in score.values())
+    L.append(f"| **всего** | **{total}/{sum(v[1] for v in score.values())}** |")
+    L.append("")
+    L.append("## Широкий экзамен (те же навыки, больше примеров)")
+    L.append("")
+    L.append("| набор | доля верных |")
+    L.append("|---|---|")
+    for k, v in wide.items():
+        L.append(f"| {k} | {v:.2f} |")
+    L.append("")
+    open(path, "w").write("\n".join(L))
+    return total
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1000)
     ap.add_argument("--order", type=int, default=7, help="перемешивание заданий")
+    ap.add_argument("--report", default="", help="записать отчёт в этот файл (Markdown)")
     a = ap.parse_args()
+    if a.report:
+        total = write_report(a.seed, a.order, a.report)
+        print(f"отчёт: {a.report}, верно {total}/50")
+        return
     p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
     path = brain_store.path_for(rules.rules_name(a.seed))
     if not brain_store.exists(path):

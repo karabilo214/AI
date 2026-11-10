@@ -11,8 +11,11 @@
 В конце каждый сохраняется, и сравнивается весь файл: все массивы нейронов и
 связей, правила и состояния модулей (рост, память слуха, ассоциации, найм,
 ожидание награды, любопытство и т. д.). При расхождении код выхода 1.
-Запуск из папки human_brain: ../.venv/bin/python check_save_head.py
+Запуск из папки human_brain: ../.venv/bin/python tests/check_save_head.py
 """
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import os
 import random
 import subprocess

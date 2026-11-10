@@ -5,8 +5,11 @@
 правильные действия: L = D0, R = D1 (D2, D3 — неверные). Паузы между
 попытками те же, что в ручных проверках.
 
-Запуск из папки human_brain: ../.venv/bin/python head_tests.py [число запусков]
+Запуск из папки human_brain: ../.venv/bin/python tests/head_tests.py [число запусков]
 """
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import sys
 
 import numpy as np

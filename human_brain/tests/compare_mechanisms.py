@@ -1,8 +1,11 @@
 """Сравнение механизмов (гипотезы, заслуга, миелин по времени, знакомость)
 на наборе задач tasks.py быстрой оценкой, на новых запусках.
 
-Запуск из папки human_brain: ../.venv/bin/python compare_mechanisms.py
+Запуск из папки human_brain: ../.venv/bin/python tests/compare_mechanisms.py
 """
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import json
 import os
 import sys

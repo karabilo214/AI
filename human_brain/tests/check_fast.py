@@ -8,8 +8,11 @@
 3. Скорость оценки одного набора.
 
 При расхождении в части 1 код выхода 1. --quick: только часть 1.
-Запуск из папки human_brain: ../.venv/bin/python check_fast.py
+Запуск из папки human_brain: ../.venv/bin/python tests/check_fast.py
 """
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # модули мозга
 import random
 import sys
 import time
