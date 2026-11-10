@@ -4,11 +4,14 @@
 Новое:
     картинка знака «−» (3 нейрона зрения, не совпадает с буквами, цифрами и
         «+»); детектор для неё мозг нанимает сам (Recruit), как для букв;
-    общая способность накопителя «символ задаёт роль следующего» (Accumulator,
-        roles): символ, увиденный сразу после другого символа, прибавляет
-        свои порции, умноженные на выученный множитель того символа. Она не про
-        минус: множитель есть у каждого символа (буквы, цифры, «+», «−»), и
-        какой символ какую роль задаёт, мозг учит сам по ошибке после праздника.
+    нейроны ролей (Accumulator, role_of): по нейрону на каждое событие мира,
+        которое знает накопитель (карточка, конфета, дверь, гость, вопросы);
+        связи к ним от всех символов (буквы, цифры, «+», «−») — синапсы с силой
+        0. Общая врождённая способность: цифра, увиденная после сработавшего
+        нейрона роли события e, работает как столько-то раз e. Какой символ
+        какую роль включает, мозг находит сам: пробует, и после праздника
+        использованная связь крепнет, если число сошлось, и слабеет, если нет.
+        Про минус в этом ничего нет.
 Ступень «минус»: дни вычитания (у меня c конфет, пришли g гостей, вопрос
 «сколько не хватило?» или «сколько останется?»), где конфеты часто записаны:
 картинка «−», затем цифра c, вместо c конфет по одной. Что значит «−», никто
@@ -18,8 +21,12 @@
 хватило?» — без карточки, конфет и гостей; ответ max(a - b, 0). Отдельно
 пары a > b (ленивое «всегда 0» там 0). Второй вопрос к тому же выражению —
 «сколько лишнего?» (ответ max(b - a, 0)): с одним «не хватило» любой уровень
-ниже нуля даёт 0, и вычитание 6 при a > b не проверялось бы вовсе. Контроль: после «−» стоит случайная
-цифра, не равная числу конфет (знак ничему не соответствует).
+ниже нуля даёт 0, и вычитание 6 при a > b не проверялось бы вовсе. «−4» в обучении не
+встречается никогда (HOLD): «a − 4» проверяет знак, а не выученные пары.
+Контроль: знак рядом со случайной операцией — в половине дней с записью
+«−, цифра k» означает ещё k гостей (прибавить), в половине — k конфет.
+(Прежний контроль — случайная цифра после «−» — для ролей ничего не
+проверял: конфеты всё равно уходили, и роль «отнять» оставалась верной.)
 
 Запуск из папки human_brain:
     ../.venv/bin/python minus.py [--seed 1000] [--days 1000] [--control]
@@ -46,13 +53,21 @@ def minus_glyph(seed):
     return random.Random(seed + 51).choice(free)
 
 
+HOLD = 4      # «−4» в обучении не встречается никогда (конфет 4 — всегда предметами)
+
+
 def minus_day(rng, control=False):
-    """Вычитание, где конфеты часто записаны «−, цифра»; гости — как в днях цифр."""
+    """Вычитание, где конфеты часто записаны «−, цифра»; гости — как в днях цифр.
+    Контроль: знак рядом со случайной операцией — в половине дней с записью
+    «−, цифра k» означает ещё k гостей (прибавить), а конфеты показаны предметами."""
     c, g = rng.randint(0, 10), rng.randint(2, 10)
     ev = ["CARD"]
-    if c in nm.DIGITS and rng.random() < 0.6:
-        shown = rng.choice([d for d in nm.DIGITS if d != c]) if control else c
-        ev += ["MINUS", f"D{shown}"]
+    extra = 0
+    if control and rng.random() < 0.5 * 0.6:
+        extra = rng.choice([d for d in nm.DIGITS if d != HOLD])
+        ev += ["CANDY"] * c + ["MINUS", f"D{extra}"]
+    elif c in nm.DIGITS and c != HOLD and rng.random() < 0.6:
+        ev += ["MINUS", f"D{c}"]
     else:
         ev += ["CANDY"] * c
     groups = ad.groups(g, rng, at_least=1)
@@ -67,6 +82,7 @@ def minus_day(rng, control=False):
         else:
             ev += groups[k:j]
         k = j
+    g += extra
     q = rng.choice(("ASK", "ASK_LEFT"))
     ans = max(g - c, 0) if q == "ASK" else max(c - g, 0)
     return ev + [q], ans, g - c
@@ -84,6 +100,24 @@ def exam_minus(b, show, q="ASK"):
     return rows
 
 
+def add_roles(b, seed):
+    """Нейроны ролей и связи к ним от всех символов (сила 0)."""
+    acc = b.accumulator
+    events = [n for n in acc.inputs if n not in acc.seen]
+    b.add_region("роли", learn=0.0)
+    for e in events:
+        b.add_neuron(f"R_{e}", region="роли")
+    if b.neuron_change is not None:
+        b.neuron_change.make_same(("роли",))
+    g = b.growth
+    g.sensory_regions = sorted(set(g.sensory_regions or []) | {"роли"})
+    for sym in acc.seen:
+        for e in events:
+            b.connect(sym, f"R_{e}", weight=0.0, myelin_thickness=1.0, fixed=True)
+    acc.role_of = {f"R_{e}": e for e in events}
+    acc.role_rng = random.Random(seed + 89)
+
+
 def run(p, seed, days=1000, control=False):
     path = brain_store.path_for(nm.numerals_name(seed))
     if not brain_store.exists(path):
@@ -94,7 +128,7 @@ def run(p, seed, days=1000, control=False):
     free = {n for n in acc.seen if b.neurons[n].index not in b.recruit.owner}
     for n in acc.inputs:          # всё выученное раньше закреплено; свободные детекторы — новые
         acc.plast[n] = 1.0 if n in free else slow
-    acc.roles = True
+    add_roles(b, seed)
     # молчание в ответ на «отвечай» — ошибка (см. addition.day): иначе тормоз к
     # «готово» растёт лавиной и ломает «сколько останется?»
     b.silence_penalty = SILENCE
@@ -118,9 +152,11 @@ def run(p, seed, days=1000, control=False):
             ad.day(b, ev, ans, learn=True, truth=truth)
     rows = exam_minus(b, show)
     big = [r for r in rows if r[0] > r[1]]
-    res = {"выражение a − b (все 25)": sum(r[2] == r[3] for r in rows) / len(rows),
-           "выражение a − b, a > b": sum(r[2] == r[3] for r in big) / len(big)}
     left = exam_minus(b, show, "ASK_LEFT")
+    held = [x[2] == x[3] and y[2] == y[3] for x, y in zip(rows, left) if x[1] == HOLD]
+    res = {"выражение a − 4 (не было после «−»)": sum(held) / len(held),
+           "выражение a − b (все 25)": sum(r[2] == r[3] for r in rows) / len(rows),
+           "выражение a − b, a > b": sum(r[2] == r[3] for r in big) / len(big)}
     small = [r for r in left if r[0] < r[1]]
     res["выражение a − b, лишнее, a < b"] = sum(r[2] == r[3] for r in small) / len(small)
     both = [x[2] == x[3] and y[2] == y[3] for x, y in zip(rows, left)]
@@ -151,8 +187,11 @@ def main():
     res, b, rows, gl = run(p, a.seed, a.days, a.control)
     acc = b.accumulator
     names = {owner_name(b, pic): g for g, pic in gl.items()}
-    print("символы (вес, множитель следующего):",
-          {g: (round(acc.w[n], 2), round(acc.g(n), 2)) for n, g in names.items() if n})
+    roles = {}
+    for c in b.connections:
+        if c.target in acc.role_of and c.source in names and c.synapse.weight > 0.01:
+            roles.setdefault(names[c.source], {})[acc.role_of[c.target]] = round(c.synapse.weight, 1)
+    print("символ -> роль (сила; срабатывает от", round(b.reach(b.neurons["R_CANDY"].index), 1), "):", roles)
     print("выражения (a, b, верно, мозг):", rows)
     for k, v in res.items():
         if not k.startswith(("сложение", "не хватило", "осталось", "умножение", "деление")):
