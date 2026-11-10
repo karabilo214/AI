@@ -169,7 +169,7 @@ class Units:
         lvl = self.brain.accumulator.level
         return max(-lvl, 0) if self._question == "ASK_LEFT" else max(lvl, 0)
 
-    def after_day(self, answer, truth, learn):
+    def after_day(self, answer, truth, learn, result=None):
         """Конец дня: обучение устройства вопроса, учёт ошибок, найм/увольнение."""
         if not learn:
             return

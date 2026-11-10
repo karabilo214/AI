@@ -29,6 +29,7 @@ import subtraction as sb
 import multiplication as mu
 import brain_store
 from Units import Units
+from NeuralChoice import NeuralChoice
 
 
 def make_div_day(rng, top=10, low=0, want_hidden=False):
@@ -57,7 +58,10 @@ def add_question(b, p):
     b.latch.inputs.append("ASK_EACH")
     b.latch.outputs.append("M_EACH")
     b.growth.max_neurons += 12
-    if p.get("units", True):
+    if p.get("choice", "rule") == "neural":
+        # выбор делает сеть: все заготовки сразу, сочетания «выход + вопрос»
+        NeuralChoice(b, inputs=acc.inputs, own=["ASK", "ASK_LEFT"])
+    elif p.get("units", True):
         # найм заготовок: прежний накопитель владеет прежними вопросами
         Units(b, inputs=acc.inputs, own=["ASK", "ASK_LEFT"], seed=p.get("units_seed", 0))
 

@@ -78,7 +78,8 @@ class Growth:
                  dead_patience=92,
                  pair_regions=None,
                  sensory_regions=None,
-                 inherit_inhibition=False):
+                 inherit_inhibition=False,
+                 pair_partners=None):
         self.brain = brain
         brain.growth = self
         brain.dead_weight = dead_weight      # ниже этой силы связь считается слабой
@@ -113,6 +114,9 @@ class Growth:
         # одному входу. False = нет; True = пластичность как у родителя; число =
         # такая пластичность (родительские тогда могут вовсе не учиться)
         self.inherit_inhibition = inherit_inhibition
+        # ограничение сочетаний: {область: [имена]} — нейрон этой области может
+        # образовать сочетание только с нейронами из списка (и ни с кем больше)
+        self.pair_partners = pair_partners
         brain.hyp_needed = hyp_needed if hypotheses else 0
         brain.hyp_min_rel = hyp_min_rel
         brain.hyp_lift = hyp_lift
@@ -170,7 +174,7 @@ class Growth:
               "explain_weight", "neuron_threshold", "max_gap", "new_weight",
               "young_plasticity", "pair_weight", "max_neurons", "inherit_outputs",
               "fast_new_outputs", "hypotheses", "hyp_needed", "hyp_min_rel", "hyp_lift",
-              "pair_regions", "sensory_regions", "inherit_inhibition")
+              "pair_regions", "sensory_regions", "inherit_inhibition", "pair_partners")
 
     def state(self):
         return {
@@ -260,12 +264,23 @@ class Growth:
                 pair = (first, second)
                 if pair in self.pair_neurons:
                     continue
+                if self.pair_partners is not None and not self._pair_allowed(first, second):
+                    continue
                 self.together_counts[pair] = self.together_counts.get(pair, 0) + 1
                 if self.together_counts[pair] >= self.neuron_threshold:
                     self._grow_neuron(pair, self.together_counts[pair])
                     del self.together_counts[pair]
 
         self.history.append(fired_all)
+
+    def _pair_allowed(self, a, b):
+        brain = self.brain
+        for x, y in ((a, b), (b, a)):
+            allowed = self.pair_partners.get(brain.region_of[brain.neurons[x].index])
+            if allowed is not None and y not in allowed:
+                return False
+        # нейрон из списка партнёров не сочетается с другим ограниченным
+        return True
 
     def _grow_connection(self, source, target, gap):
         # Задержка = round(5 - 4 * толщина), подбираем толщину под промежуток

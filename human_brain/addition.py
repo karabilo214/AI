@@ -194,7 +194,8 @@ def day(b, events, answer, learn, cap=None, truth=None):
             done = out == "DONE"
             break
     if b.units is not None:
-        b.units.after_day(answer, answer if truth is None else truth, learn)
+        b.units.after_day(answer, answer if truth is None else truth, learn,
+                          result=(more, done))
     elif learn:
         acc.learn(answer if truth is None else truth)
     unasked(20)

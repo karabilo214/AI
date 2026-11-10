@@ -217,6 +217,16 @@ def step(time,
          # и их миелин не тает от простоя: иначе сотни повторов без наград
          # превращают выбор в привычку, а долгий простой сбивает такт
          reward_only_actions,
+         # inh_share: метка обучаемого торможения делится поровну между всеми
+         # тормозящими связями, участвовавшими в срабатывании цели (как доля
+         # заслуги у возбуждающих); иначе при десятках источников одно
+         # наказание добавляет каждому полный шаг, и торможение взрывается
+         inh_share,
+         # block_collective: метка «помешал» по всему пришедшему обучаемому
+         # торможению (без него цель сработала бы), каждой связи по доле силы;
+         # нужно, когда тормозов много (выбор заготовки нейронами). На вычитании
+         # (2–3 тормоза) хуже: 8/24 против 15/24, там выключено
+         block_collective,
          # выходы
          fired, delivered, removed, received, confirmed):
     slot = time % RING
@@ -266,11 +276,17 @@ def step(time,
                 thickness[c] += grow * (1.0 - thickness[c])
         arr_time[c] = time
 
-    # заряд после доставки (для метки «помешал»)
+    # заряд после доставки (для метки «помешал») и всё пришедшее обучаемое торможение
     pot_before = np.empty(n_neurons if inh_delayed else 0)
+    inh_total = np.zeros(n_neurons if (inh_delayed and block_collective) else 0)
     if inh_delayed:
         for i in range(n_neurons):
             pot_before[i] = potential[i]
+        if block_collective:
+            for c in range(n_conn):
+                if delivered[c] and alive[c] and inhibitory[c]:
+                    inh_total[tgt[c]] += effective(c, weight, ctx_w, ctx_level, n_active,
+                                                   0.0, max_weight)
 
     # 1б. Выбор победителя в группах соревнования
     if pool_on:
@@ -353,6 +369,14 @@ def step(time,
                 syn_drive[tgt[c]] += effective(c, weight, ctx_w, ctx_level, n_active,
                                                min_weight, max_weight) * pre_trace[c]
 
+    # число обучаемых тормозящих связей, участвовавших в срабатывании цели
+    inh_part = np.zeros(n_neurons if (inh_share and inh_window > 0) else 0)
+    if inh_share and inh_window > 0:
+        for c in range(n_conn):
+            if (alive[c] and inhibitory[c] and learn_inhibit(c, src, tgt, explores)
+                    and fired[tgt[c]] and time - fire_time[src[c]] <= inh_window):
+                inh_part[tgt[c]] += 1.0
+
     # 3. Синапсы, миелин, проверка гипотез и удаление мёртвых связей
     #    (тормозящие связи постоянные: не учатся и не удаляются)
     n_removed = 0
@@ -370,10 +394,14 @@ def step(time,
             eligibility[c] *= eligibility_decay
             block_elig[c] *= eligibility_decay
             if fired[tgt[c]] and time - fire_time[src[c]] <= inh_window:
-                eligibility[c] += 1.0
+                eligibility[c] += 1.0 / inh_part[tgt[c]] if inh_share else 1.0
             if inh_delayed and delivered[c] and not fired[tgt[c]]:
                 wi = effective(c, weight, ctx_w, ctx_level, n_active, 0.0, max_weight)
-                if wi > 0.0 and pot_before[tgt[c]] + wi >= threshold[tgt[c]]:
+                if block_collective:
+                    tot = inh_total[tgt[c]]
+                    if wi > 0.0 and pot_before[tgt[c]] + tot >= threshold[tgt[c]]:
+                        block_elig[c] += wi / tot   # без торможения цель сработала бы
+                elif wi > 0.0 and pot_before[tgt[c]] + wi >= threshold[tgt[c]]:
                     block_elig[c] += 1.0     # без этой связи цель сработала бы
             continue
         if not alive[c] or inhibitory[c]:

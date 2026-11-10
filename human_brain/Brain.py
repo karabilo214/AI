@@ -120,6 +120,10 @@ class Brain:
         self.inh_delayed = False
         # связи к действиям меняются только по награде (kernel)
         self.reward_only_actions = False
+        # метка обучаемого торможения делится между участниками (kernel)
+        self.inh_share = False
+        # метка «помешал» по всему торможению, по долям (kernel)
+        self.block_collective = False
         self._dec_level = np.zeros(kernel.MAX_CONTEXTS)
         self._dec_active = np.zeros(kernel.MAX_CONTEXTS, dtype=np.bool_)
         self._dec_n = np.zeros(1, dtype=np.int64)
@@ -474,7 +478,7 @@ class Brain:
             self.fixed,
             bool((self.pool[:self.n_neurons] >= 0).any()), self.pool, self.recall, self.recall_in,
             self._budget_floor(), bool(self.inh_delayed), self.block_elig,
-            bool(self.reward_only_actions),
+            bool(self.reward_only_actions), bool(self.inh_share), bool(self.block_collective),
             self._fired, self._delivered, self._removed, self.received, self._confirmed,
         )
         if n_confirmed and self.growth is not None:
@@ -557,7 +561,8 @@ class Brain:
                                   float(self.inh_short), float(self.last_action_only),
                                   float(self.decision_ctx), float(self.reset_eligibility),
                                   float(self.myelin_keep), float(self.budget_above_floor),
-                                  float(self.inh_delayed), float(self.reward_only_actions)])
+                                  float(self.inh_delayed), float(self.reward_only_actions),
+                                  float(self.inh_share), float(self.block_collective)])
         data["decision"] = np.concatenate([self._dec_level, self._dec_active.astype(float),
                                            self._dec_n.astype(float)])
         critic = self.critic.state() if self.critic is not None else None
@@ -633,6 +638,10 @@ class Brain:
                     brain.inh_delayed = bool(d["modes"][9])
                 if len(d["modes"]) > 10:
                     brain.reward_only_actions = bool(d["modes"][10])
+                if len(d["modes"]) > 11:
+                    brain.inh_share = bool(d["modes"][11])
+                if len(d["modes"]) > 12:
+                    brain.block_collective = bool(d["modes"][12])
             if "decision" in d.files:
                 k = kernel.MAX_CONTEXTS
                 brain._dec_level[:] = d["decision"][:k]
@@ -698,6 +707,10 @@ class Brain:
             from Latch import Latch
             Latch.from_state(brain, latch)
         if units is not None:
-            from Units import Units
-            Units.from_state(brain, units)
+            if units.get("kind") == "neural":
+                from NeuralChoice import NeuralChoice
+                NeuralChoice.from_state(brain, units)
+            else:
+                from Units import Units
+                Units.from_state(brain, units)
         return brain
