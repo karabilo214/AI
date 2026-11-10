@@ -118,6 +118,10 @@ class Growth:
         # ограничение сочетаний: {область: [имена]} — нейрон этой области может
         # образовать сочетание только с нейронами из списка (и ни с кем больше)
         self.pair_partners = pair_partners
+        # окно совпадения для нейронов-сочетаний (0 = только один шаг, как было):
+        # сочетание создаётся и загорается, если родители сработали не дальше
+        # pair_window шагов друг от друга (Brain.step)
+        self.pair_window = 0
         # {область цели: [области источников]} — в нейроны этой области связи
         # растут только из перечисленных областей (например, к звукам речи —
         # от детекторов букв, а не от отдельных нейронов зрения)
@@ -271,17 +275,32 @@ class Growth:
         if self.pair_regions is not None:
             fired = [n for n in fired
                      if brain.region_of[brain.neurons[n].index] in self.pair_regions]
+        cand = []
         for i, first in enumerate(fired):
             for second in fired[i + 1:]:
-                pair = (first, second)
-                if pair in self.pair_neurons:
-                    continue
-                if self.pair_partners is not None and not self._pair_allowed(first, second):
-                    continue
-                self.together_counts[pair] = self.together_counts.get(pair, 0) + 1
-                if self.together_counts[pair] >= self.neuron_threshold:
-                    self._grow_neuron(pair, self.together_counts[pair])
-                    del self.together_counts[pair]
+                cand.append((first, second))
+        if self.pair_window > 0:
+            # окно совпадения: сработавший сейчас и сработавший не раньше
+            # pair_window шагов назад тоже «вместе»
+            recent = []
+            for past in list(self.history)[-self.pair_window:]:
+                for n in past:
+                    if (n not in fired and n not in recent and (self.pair_regions is None or
+                            brain.region_of[brain.neurons[n].index] in self.pair_regions)):
+                        recent.append(n)
+            for first in fired:
+                for second in recent:
+                    cand.append(tuple(sorted((first, second))))
+        for first, second in cand:
+            pair = (first, second)
+            if pair in self.pair_neurons or (second, first) in self.pair_neurons:
+                continue
+            if self.pair_partners is not None and not self._pair_allowed(first, second):
+                continue
+            self.together_counts[pair] = self.together_counts.get(pair, 0) + 1
+            if self.together_counts[pair] >= self.neuron_threshold:
+                self._grow_neuron(pair, self.together_counts[pair])
+                del self.together_counts[pair]
 
         self.history.append(fired_all)
 

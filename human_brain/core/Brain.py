@@ -544,6 +544,18 @@ class Brain:
             self.latch.before_step()
         if self.units is not None:
             self.units.before_step()
+        g = self.growth
+        if g is not None and g.pair_window > 0:
+            # окно совпадения: родитель сработал на прошлом шаге, второй — не
+            # раньше pair_window шагов до него -> сочетание срабатывает сейчас
+            # (как от одновременных сигналов с задержкой 1)
+            now = self.time - 1
+            for (x, y), name in g.pair_neurons.items():
+                tx, ty = self.fire_time[self.neurons[x].index], self.fire_time[self.neurons[y].index]
+                if (tx == now and 0 <= now - ty <= g.pair_window) or (ty == now and 0 <= now - tx <= g.pair_window):
+                    k = self.neurons[name].index
+                    if self.refractory[k] == 0:
+                        self.potential[k] = max(self.potential[k], self.threshold[k] + 0.5)
         for i in self.plateau:
             if self.refractory[i] == 0:
                 self.potential[i] = max(self.potential[i], self.threshold[i] + 0.5)

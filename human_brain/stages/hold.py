@@ -24,6 +24,17 @@
     .venv/bin/python -m human_brain.stages.hold --ring [--steps 200] [--stop 150]
     .venv/bin/python -m human_brain.stages.hold --random [--seed 0]
     .venv/bin/python -m human_brain.stages.hold --plateau
+    .venv/bin/python -m human_brain.stages.hold --delay [--seed 0] [--wait 50] [--no-persist] [--control]
+
+Проверка 3 (--delay): задача с задержкой и наградой. Память — N_DMEM
+залипающих нейронов без связей внутри. Факт A или B ведёт в свои DMEM_IN
+случайных нейронов памяти (сильный вход) и тормозит остальные (новый факт
+гасит старый; мир ничего не обнуляет). Через wait шагов — «отвечай» (GO),
+ответ YES (было A) / NO (было B), награда. Связи память -> ответ учатся
+(как в мозге логики: ожидание награды, скука по ситуации). Экзамен на копии
+без шума: A и B, и смена факта (A, через 20 шагов B, потом ждать wait —
+верно NO). Сравнение: без залипания (--no-persist), контроль — ответ
+случайный (--control).
 """
 import argparse
 import copy
@@ -63,6 +74,122 @@ def make_ring_brain(p, seed, full):
         tasks.attach(b, p, seed)
         b.growth.sensory_regions = ["входы"]
     return b
+
+
+N_DMEM = 10
+PAIR_WINDOW = int(__import__("os").environ.get("HB_PAIR_WINDOW", "3"))
+DMEM_IN = 3
+
+
+def make_delay_brain(p, seed, persist=True):
+    from human_brain.parts import Head
+    from human_brain.core.RewardPrediction import RewardPrediction
+    rnd = random.Random(seed)
+    b = Brain()
+    b.add_region("входы")
+    for n in ("CUE_A", "CUE_B", "GO"):
+        b.add_neuron(n, region="входы")
+    b.add_region("память")
+    mem = [f"M{k}" for k in range(N_DMEM)]
+    for n in mem:
+        b.add_neuron(n, region="память")
+    b.add_region("действия")
+    for n in ("YES", "NO"):
+        b.add_neuron(n, explores=True, region="действия")
+    th = b.reach(b.neurons["M0"].index)
+    for cue in ("CUE_A", "CUE_B"):
+        own = set(rnd.sample(mem, DMEM_IN))
+        for m in mem:
+            if m in own:
+                # вход восприятия закреплён (как у детекторов букв): иначе правило
+                # ослабления разъедало его, и факт переставал доходить до памяти
+                b.connect(cue, m, weight=2 * th, myelin_thickness=1.0, fixed=True)
+            else:
+                b.connect(cue, m, weight=2 * th, inhibitory=True, myelin_thickness=1.0)
+    for s in mem + ["GO"]:
+        for o in ("YES", "NO"):
+            b.connect(s, o, weight=p["init_weight"], myelin_thickness=1.0 if s != "GO" else 0.75,
+                      plasticity=p["init_plasticity"])
+            # тормоз от постоянно горящей памяти и от GO не учится (как у датчиков
+            # в мозге вычитания): иначе память, чтобы не отвечать без вопроса,
+            # держала действия глубоко под порогом и при вопросе; учатся тормоза
+            # сочетаний «память + GO»
+            b.connect(s, o, weight=0.0, inhibitory=True, myelin_thickness=1.0, plasticity=0.0)
+    b.inh_window = Head.INH_WINDOW
+    b.inh_delayed = True
+    b.connect("YES", "NO", weight=p["inhibit_weight"], inhibitory=True)
+    b.connect("NO", "YES", weight=p["inhibit_weight"], inhibitory=True)
+    b.inh_short = True
+    b.reset_eligibility = True
+    b.last_action_only = True
+    b.budget_above_floor = True
+    b.reward_only_actions = True
+    tasks.attach(b, p, seed)
+    b.neuron_change.make_same(("входы", "действия"))
+    b.curiosity.boredom = p.get("boredom", Head.BOREDOM)
+    b.curiosity.avoid = p.get("avoid", 3.0)
+    b.curiosity.situational = True
+    b.growth.sensory_regions = ["входы", "память"]
+    # ответ должен зависеть от «вопрос И память»: сочетания нейронов памяти с GO
+    # (память горит всю задержку, сама по себе она не повод отвечать); между
+    # собой залипшие нейроны не сочетаются
+    b.growth.pair_regions = ["входы", "память"]
+    b.growth.pair_partners = {"память": ["GO"]}
+    # окно совпадения: залипший нейрон горит раз в 3 шага, «отвечай» — один
+    # толчок; на одном шаге они совпадали лишь в 1 из 3 случаев
+    b.growth.pair_window = PAIR_WINDOW
+    b.growth.max_neurons = b.n_neurons + N_DMEM + 4
+    b.growth.inherit_inhibition = p.get("inh_plasticity", Head.INH_PLASTICITY)
+    b.growth.new_weight = p["action_min"] + 0.1
+    b.budget_window = p.get("budget_window", Head.BUDGET_WINDOW)
+    RewardPrediction(b, regions=["входы", "память"])
+    if persist:
+        b.persistent = {b.neurons[m].index for m in mem}
+    return b
+
+
+def quiet_steps(b, n, learn):
+    """n шагов, когда не спрашивали: действие — ошибка (при обучении наказание),
+    как в днях счёта (addition.day)."""
+    for _ in range(n):
+        if {"YES", "NO"} & b.step() and learn:
+            b.reward(-1.0)
+
+
+def delay_trial(b, cues, wait, learn=False):
+    """cues: [(факт, через сколько шагов следующий)]; потом wait шагов и GO."""
+    for cue, gap in cues:
+        b.stimulate(cue, 20.0)
+        quiet_steps(b, gap, learn)
+    quiet_steps(b, wait, learn)
+    b.stimulate("GO", 20.0)
+    for _ in range(7):
+        f = b.step()
+        a = [n for n in ("YES", "NO") if n in f]
+        if a:
+            return a[0] if len(a) == 1 else "оба"
+    return None
+
+
+def delay_run(p, seed, wait=50, trials=600, persist=True, control=False):
+    b = make_delay_brain(p, seed, persist)
+    rnd = random.Random(seed + 3)
+    for _ in range(trials):
+        cue = rnd.choice(("CUE_A", "CUE_B"))
+        want = rnd.choice(("YES", "NO")) if control else ("YES" if cue == "CUE_A" else "NO")
+        out = delay_trial(b, [(cue, 0)], wait, learn=True)
+        b.reward(1.0 if out == want else (-1.0 if out is not None else 0.0))
+        quiet_steps(b, 20, True)
+    t = copy.deepcopy(b)
+    t.curiosity = None
+    rows = []
+    for cues, want in (([("CUE_A", 0)], "YES"), ([("CUE_B", 0)], "NO"), ([("CUE_A", 0)], "YES"),
+                       ([("CUE_A", 20), ("CUE_B", 0)], "NO"), ([("CUE_B", 20), ("CUE_A", 0)], "YES")):
+        out = delay_trial(t, cues, wait)
+        rows.append((" ".join(c[-1] for c, _ in cues), want, out))
+        for _ in range(20):
+            t.step()
+    return rows
 
 
 def plateau_test(p, seed, steps=1200, stop=1000):
@@ -219,12 +346,22 @@ def main():
     ap.add_argument("--ring", action="store_true")
     ap.add_argument("--random", action="store_true")
     ap.add_argument("--plateau", action="store_true")
+    ap.add_argument("--delay", action="store_true")
+    ap.add_argument("--wait", type=int, default=50)
+    ap.add_argument("--trials", type=int, default=600)
+    ap.add_argument("--no-persist", action="store_true")
+    ap.add_argument("--control", action="store_true")
     ap.add_argument("--steps", type=int, default=200)
     ap.add_argument("--stop", type=int, default=150)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
     tasks.apply(p)
+    if a.delay:
+        rows = delay_run(p, a.seed, a.wait, a.trials, not a.no_persist, a.control)
+        ok = all(w == o for _, w, o in rows)
+        print("задержка", a.wait, "выучено" if ok else "нет", rows)
+        return
     if a.plateau:
         held, n, after = plateau_test(p, a.seed)
         print(f"залипающий нейрон: последний раз горел до STOP на шаге {held} (STOP на 1000), "
