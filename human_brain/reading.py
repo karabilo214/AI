@@ -153,7 +153,11 @@ def exam_reading(b, words, alphabet):
     return ok / len(words)
 
 
-def run(p, seed, days=800, control=False):
+def read_name(seed, days=800):
+    return f"read_seed{seed}_d{days}"
+
+
+def run(p, seed, days=800, control=False, save=False):
     path = brain_store.path_for(dv.div_name(seed))
     if not brain_store.exists(path):
         dv.run(dict(p, choice="neural"), seed, 3000, save=True)
@@ -170,6 +174,9 @@ def run(p, seed, days=800, control=False):
         else:
             ev, ans, truth = old_day(rng, k // 2)
             ad.day(b, ev, ans, learn=True, truth=truth)
+    if save and not control:
+        brain_store.save(b, rng, {"ступень": "чтение", "seed": seed, "days": days},
+                         brain_store.path_for(read_name(seed, days)))
     res = {"чтение: учебные слова": exam_reading(b, train, alphabet),
            "чтение: новые слова 2-5": exam_reading(b, new, alphabet),
            "чтение: длинные 6-8": exam_reading(b, long, alphabet)}

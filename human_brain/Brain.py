@@ -431,6 +431,8 @@ class Brain:
             self.familiarity.on_reward(value)
         if self.episodes is not None:
             self.episodes.on_reward(value)
+        if self.units is not None and hasattr(self.units, "on_reward"):
+            self.units.on_reward(value)
 
     def step(self):
         """Один временной шаг работы мозга."""

@@ -79,7 +79,8 @@ class Growth:
                  pair_regions=None,
                  sensory_regions=None,
                  inherit_inhibition=False,
-                 pair_partners=None):
+                 pair_partners=None,
+                 source_regions=None):
         self.brain = brain
         brain.growth = self
         brain.dead_weight = dead_weight      # ниже этой силы связь считается слабой
@@ -117,6 +118,10 @@ class Growth:
         # ограничение сочетаний: {область: [имена]} — нейрон этой области может
         # образовать сочетание только с нейронами из списка (и ни с кем больше)
         self.pair_partners = pair_partners
+        # {область цели: [области источников]} — в нейроны этой области связи
+        # растут только из перечисленных областей (например, к звукам речи —
+        # от детекторов букв, а не от отдельных нейронов зрения)
+        self.source_regions = source_regions
         brain.hyp_needed = hyp_needed if hypotheses else 0
         brain.hyp_min_rel = hyp_min_rel
         brain.hyp_lift = hyp_lift
@@ -174,7 +179,8 @@ class Growth:
               "explain_weight", "neuron_threshold", "max_gap", "new_weight",
               "young_plasticity", "pair_weight", "max_neurons", "inherit_outputs",
               "fast_new_outputs", "hypotheses", "hyp_needed", "hyp_min_rel", "hyp_lift",
-              "pair_regions", "sensory_regions", "inherit_inhibition", "pair_partners")
+              "pair_regions", "sensory_regions", "inherit_inhibition", "pair_partners",
+              "source_regions")
 
     def state(self):
         return {
@@ -230,6 +236,12 @@ class Growth:
                 for target in surprising:
                     if source == target or brain.has_connection(source, target):
                         continue
+                    if self.source_regions is not None:
+                        allowed = self.source_regions.get(
+                            brain.region_of[brain.neurons[target].index])
+                        if allowed is not None and brain.region_of[
+                                brain.neurons[source].index] not in allowed:
+                            continue
                     key = (source, target, gap)
                     count = self.order_counts.get(key)
                     if count is None:

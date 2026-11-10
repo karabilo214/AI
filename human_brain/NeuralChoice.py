@@ -16,6 +16,16 @@ streak удач подряд на новом вопросе выбор сети 
 торможение); связи этого сочетания к действиям становятся неизменными, а
 остальные заготовки на этом вопросе больше не загораются. Выбирает сеть,
 правило только закрепляет результат повторением.
+Привыкание выходов (habituate, решение владельца: соперников выключает сам
+мозг, а не программа): каждый выход заготовки привыкает, отдельно для каждого
+вопроса — при каждом загорании его заметность f растёт (f += hab * (1 - f)),
+толчок выхода = 20 * (1 - max_ignore * f); со временем f сама гаснет (recovery
+за шаг). Привыкание снимается (f *= 1 - dishab) только у тех, чьё сочетание с
+вопросом было главной причиной награждённого действия (доля сигнала при его
+срабатывании, last_share, не меньше cause_share). Числа — из выбранных
+параметров привыкания мозга («трава»: fam_habituation, fam_max_ignore,
+fam_dishabituation, fam_recovery). Победителя никто не назначает: верная
+заготовка остаётся заметной, остальные горят без последствий и затихают.
 Прежний накопитель учится и говорит (ACC / ACC_NEG) только на своих вопросах
 (own) — это защита выученного, а не выбор; среди заготовок есть и вид «по
 одной», то есть такой же счётчик. Иначе его «минус» на чужом вопросе давал
@@ -99,6 +109,14 @@ class NeuralChoice:
         self.mute_old = True
         self.partners_all = False
         self.streak = 10           # дней подряд без ошибки до закрепления (0 = выключено)
+        self.habituate = False     # привыкание выходов (вместо закрепления программой)
+        self.hab = 0.05
+        self.max_ignore = 0.717818
+        self.dishab = 1.0
+        self.recovery = 0.999859
+        self.cause_share = 0.3
+        self.fam = {}              # (вопрос, номер) -> привыкание 0..1
+        self._pair_out = {}        # сочетание -> номера его выходных связей
         self.run_ok = {}           # вопрос -> текущая серия
         self.chosen = {}           # вопрос -> номер закреплённой заготовки
         self.cands = [Candidate(self.inputs, v, e) for v in VARIANTS for e in self.inputs]
@@ -157,15 +175,51 @@ class NeuralChoice:
         if b.stim_time[b.neurons[self.query].index] != b.time or self._question is None:
             return
         chosen = self.chosen.get(self._question)
+        q = self._question
         for k, (c, name) in enumerate(zip(self.cands, self.names)):
             if chosen is not None and k != chosen:
                 continue           # выбор закреплён: остальные заготовки молчат
-            if c.has_more(self._question):
-                b.stimulate(name, 20.0)
+            if c.has_more(q):
+                if self.habituate:
+                    f = self.fam.get((q, k), 0.0)
+                    b.stimulate(name, 20.0 * (1.0 - self.max_ignore * f))
+                    self.fam[(q, k)] = f + self.hab * (1.0 - f)
+                else:
+                    b.stimulate(name, 20.0)
+
+    def on_reward(self, value):
+        """Награда: снять привыкание у выходов, чьё сочетание с вопросом было
+        главной причиной награждённого действия."""
+        if not self.habituate or value <= 0 or self._question is None:
+            return
+        b = self.brain
+        acts = [b.neurons[a].index for a in self.actions]
+        act = max(acts, key=lambda i: b.fire_time[i])
+        if b.time - b.fire_time[act] > 15:
+            return
+        lt = b.latch
+        mq = lt.outputs[lt.inputs.index(self._question)]
+        for k, name in enumerate(self.names):
+            for pair in (f"{mq}+{name}", f"{name}+{mq}"):
+                if pair not in b.neurons:
+                    continue
+                for c in self._pair_out.get(pair) or self._cache_out(pair):
+                    if b.tgt[c] == act and not b.inhibitory[c] and b.last_share[c] >= self.cause_share:
+                        key = (self._question, k)
+                        self.fam[key] = self.fam.get(key, 0.0) * (1.0 - self.dishab)
+
+    def _cache_out(self, pair):
+        b = self.brain
+        idx = [c.index for c in b.connections if c.source == pair]
+        self._pair_out[pair] = idx
+        return idx
 
     def observe(self):
         b = self.brain
         t = b.time
+        if self.habituate and self.fam:
+            for key in self.fam:
+                self.fam[key] *= self.recovery
         for name in self.inputs:
             i = b.neurons[name].index
             if b._fired[i] and b.stim_time[i] == t:
@@ -236,7 +290,9 @@ class NeuralChoice:
         return {"kind": "neural", "params": {k: getattr(self, k) for k in self.PARAMS},
                 "cands": [c.state() for c in self.cands], "mute_old": self.mute_old,
                 "partners_all": self.partners_all, "streak": self.streak,
-                "run_ok": self.run_ok, "chosen": self.chosen, "log": getattr(self, "log", [])}
+                "run_ok": self.run_ok, "chosen": self.chosen, "log": getattr(self, "log", []),
+                "habituate": self.habituate,
+                "fam": [[q, k, f] for (q, k), f in self.fam.items()]}
 
     @classmethod
     def from_state(cls, brain, st):
@@ -248,4 +304,6 @@ class NeuralChoice:
         x.run_ok = dict(st.get("run_ok", {}))
         x.chosen = {q: int(k) for q, k in st.get("chosen", {}).items()}
         x.log = list(st.get("log", []))
+        x.habituate = st.get("habituate", False)
+        x.fam = {(q, int(k)): f for q, k, f in st.get("fam", [])}
         return x
