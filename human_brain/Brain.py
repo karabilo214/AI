@@ -395,6 +395,23 @@ class Brain:
         self.potential[i] += push
         self.push_in[i] += push
 
+    def punish_blockers(self, value):
+        """Наказание только тормозам, которые помешали действию (метка «помешал»):
+        обычные метки на этот вызов обнуляются, так что ни возбуждение, ни
+        обычное обучаемое торможение не меняются."""
+        self.eligibility[:self.n_conn] = 0.0
+        # для любопытства (скука выводит из ловушки молчания), ожидания награды
+        # и прочих это по-прежнему молчание (награда 0): иначе каждое такое
+        # наказание обнуляло счётчик скуки, и новичок застревал в молчании
+        keep = (self.curiosity, self.critic, self.familiarity, self.episodes, self.units)
+        self.curiosity = self.critic = self.familiarity = self.episodes = self.units = None
+        try:
+            self.reward(-abs(value))
+        finally:
+            self.curiosity, self.critic, self.familiarity, self.episodes, self.units = keep
+        if self.curiosity is not None:
+            self.curiosity.on_reward(0.0)
+
     def new_episode(self):
         """Начало эпизода (дня), если включено «сомнение не чаще раза за эпизод»."""
         if self.episode >= 0:

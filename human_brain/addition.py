@@ -40,6 +40,7 @@ reward_only_actions (пути к действиям меняются тольк�
 """
 import argparse
 import copy
+import os
 import random
 import time
 
@@ -75,6 +76,10 @@ def make_day(rng, top=10, low=0):
 
 
 # ---------- мозг ----------
+
+# HB_NEW_RULES=1: оба новых правила во всех днях всех ступеней (проверка цепочки
+# с нуля): молчание на «отвечай» — ошибка; сомнение — не чаще раза за день
+NEW_RULES = os.environ.get("HB_NEW_RULES") == "1"
 
 INHIBIT = False   # обучаемое торможение вход -> действие (--inhibit): пока делает хуже
 
@@ -157,6 +162,9 @@ def day(b, events, answer, learn, cap=None, truth=None, show=None):
     """Прожить день. Возвращает (ответ мозга, закончил ли «готово», действий не вовремя).
     truth: верное число со знаком для накопителя (по умолчанию = answer)."""
     acc = b.accumulator
+    if NEW_RULES:
+        b.silence_penalty = 1.0
+        b.episode = max(b.episode, 0)
     b.new_episode()
     acc.new_day()
     if b.latch is not None:
@@ -195,8 +203,14 @@ def day(b, events, answer, learn, cap=None, truth=None, show=None):
             # раз, когда верно не давал (правило «помешал»), и ни одного
             # наказания, когда мешал верному «готово» (мозг просто молчал):
             # тормоз за один день рос 1.7 -> 20 и запирал «готово»
-            silent = -getattr(b, "silence_penalty", 0.0)
-            b.reward(1.0 if out == want else (-1.0 if out is not None else silent))
+            silent = getattr(b, "silence_penalty", 0.0)
+            if out is None and silent > 0 and getattr(b, "silence_blockers_only", True):
+                # молчание: наказаны только тормоза, помешавшие ответу. Наказание
+                # всем меткам растило обычное обучаемое торможение и мешало
+                # родиться новому навыку (с нуля: 21/24 -> 7/24)
+                b.punish_blockers(silent)
+            else:
+                b.reward(1.0 if out == want else (-1.0 if out is not None else -silent))
         unasked(ANSWER_REST)
         if out == "MORE":
             more += 1

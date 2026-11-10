@@ -44,7 +44,8 @@ import rules
 import numerals as nm
 import brain_store
 
-SILENCE = 1.0
+SILENCE = float(__import__("os").environ.get("HB_SILENCE", "1.0"))
+DOUBT_PER_DAY = __import__("os").environ.get("HB_DOUBT", "1") == "1"
 
 
 def minus_glyph(seed):
@@ -133,7 +134,8 @@ def run(p, seed, days=1000, control=False):
     # «готово» растёт лавиной и ломает «сколько останется?»
     b.silence_penalty = SILENCE
     # сомнение в закреплённом пути — не чаще раза за день (см. kernel.reward)
-    b.episode = max(b.episode, 0)
+    if DOUBT_PER_DAY:
+        b.episode = max(b.episode, 0)
     gl = dict(nm.glyphs(seed), MINUS=minus_glyph(seed))
     show = nm.make_show(gl)
     alphabet = rd.make_alphabet(seed)

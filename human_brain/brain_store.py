@@ -12,7 +12,8 @@ import random
 from Brain import Brain
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DIR = os.path.join(HERE, "brains")
+# HB_BRAINS: другая папка мозгов (проверка цепочки с нуля, не трогая сохранённые)
+DIR = os.environ.get("HB_BRAINS") or os.path.join(HERE, "brains")
 
 
 def path_for(name):
