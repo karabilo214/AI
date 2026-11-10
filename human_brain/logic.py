@@ -41,6 +41,7 @@ INPUTS = ("A", "B", "GO")
 ACTIONS = ("YES", "NO")
 WAIT = 7
 DIRECT_THICKNESS = 0.75   # задержка 2 шага (myelin.delay)
+SITUATIONAL = True   # --no-situational: скука только от молчания подряд (как раньше)
 SILENCE = False      # --silence: адресное наказание за молчание (Brain.punish_blockers)
 REST = 20
 
@@ -98,6 +99,9 @@ def make_brain(p, seed, hand=False, op=None):
         b.neuron_change.make_same(("входы", "действия"))
         b.curiosity.boredom = p.get("boredom", Head.BOREDOM)
         b.curiosity.avoid = p.get("avoid", 3.0)
+        # скука по ситуации (Curiosity.situational): молчание в одной ситуации
+        # толкает пробовать именно в ней, даже если другие пробы с ответами
+        b.curiosity.situational = SITUATIONAL
         b.growth.sensory_regions = ["входы"]
         b.growth.max_neurons = b.n_neurons + 12
         b.growth.pair_regions = ["входы"]
@@ -203,8 +207,10 @@ def main():
     ap.add_argument("--control", action="store_true")
     ap.add_argument("--hand", action="store_true")
     ap.add_argument("--silence", action="store_true")
+    ap.add_argument("--no-situational", action="store_true")
     a = ap.parse_args()
-    global SILENCE
+    global SILENCE, SITUATIONAL
+    SITUATIONAL = not a.no_situational
     SILENCE = a.silence
     p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
     tasks.apply(p)
