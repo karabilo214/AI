@@ -58,6 +58,8 @@ class Curiosity:
         self.situational = situational
         self.window = window
         self.silent_by = {}       # ситуация (набор номеров нейронов) -> тихих попыток
+        self.gate = None          # имя нейрона-вопроса: поиск только после него (None = всегда)
+        self.gate_window = 8
         self._key = None
         self._ramp = 0
         self.level = 0.0
@@ -71,6 +73,12 @@ class Curiosity:
         """Вызывается мозгом перед каждым шагом."""
         brain = self.brain
         explorers = np.flatnonzero(brain.explores[:brain.n_neurons])
+        if self.gate is not None:
+            # поиск только по вопросу: шум и скука — пока сигнал gate (вопрос)
+            # горел не дальше gate_window шагов назад
+            gi = brain.neurons[self.gate].index
+            if brain.time - brain.fire_time[gi] > self.gate_window:
+                explorers = explorers[:0]
         if len(explorers):
             brain.potential[explorers] += self.rng.normal(0.0, self.noise, len(explorers))
             n_silent = self.silent

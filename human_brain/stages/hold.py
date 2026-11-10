@@ -35,6 +35,22 @@
 без шума: A и B, и смена факта (A, через 20 шагов B, потом ждать wait —
 верно NO). Сравнение: без залипания (--no-persist), контроль — ответ
 случайный (--control).
+Что для этого понадобилось (каждое — по разбору, по умолчанию так):
+    ответ читается только через сочетания «GO + память» с окном совпадения
+        (Growth.pair_window = 3): залипший нейрон горит раз в 3 шага;
+    у памяти нет прямых связей к ответам (DIRECT=0): постоянная память с
+        минимумом путей к действиям копила заряд и сама поджигала ответы;
+    GO -> ответ слабая неизменная (GO_FIXED): GO есть в каждой пробе и,
+        обучаемая, забирала ответ себе (24.2); от неё сочетания наследуют
+        направление к ответам;
+    сочетания без наследованных обучаемых тормозов (INHERIT=0): тормоза
+        жадно забивали выход;
+    поиск (шум, скука) только после вопроса (Curiosity.gate, 7 шагов):
+        иначе за 50 шагов ожидания поиск поджигал действия, наказания душили ответ;
+    скука по ситуации выключена (лавина от наказаний за действия без вопроса);
+    вход факта закреплён, у памяти нет подстройки порога.
+Результат (2000 проб): выучено 11/12, свежие 23/24; без залипания 0/12;
+случайные ответы 2/12.
 """
 import argparse
 import copy
@@ -77,6 +93,13 @@ def make_ring_brain(p, seed, full):
 
 
 N_DMEM = 10
+GO_FIXED = __import__("os").environ.get("HB_GO_FIXED", "1") == "1"
+GO_DIRECT = __import__("os").environ.get("HB_GO_DIRECT", "1") == "1"   # прямые связи GO -> ответ
+WEAK_GO = __import__("os").environ.get("HB_WEAK_GO", "0") == "1"   # GO -> ответ с минимума
+DIRECT = __import__("os").environ.get("HB_DIRECT", "0") == "1"   # прямые связи память -> ответ
+INHERIT = __import__("os").environ.get("HB_INHERIT", "0") == "1"
+GATE_WINDOW = int(__import__("os").environ.get("HB_GATE_WINDOW", "7"))
+GATE = __import__("os").environ.get("HB_GATE", "1") == "1"
 SITUATIONAL = __import__("os").environ.get("HB_SITUATIONAL", "0") == "1"
 PAIR_WINDOW = int(__import__("os").environ.get("HB_PAIR_WINDOW", "3"))
 DMEM_IN = 3
@@ -107,14 +130,20 @@ def make_delay_brain(p, seed, persist=True):
                 b.connect(cue, m, weight=2 * th, myelin_thickness=1.0, fixed=True)
             else:
                 b.connect(cue, m, weight=2 * th, inhibitory=True, myelin_thickness=1.0)
-    for s in mem + ["GO"]:
+    for s in (mem if DIRECT else []) + (["GO"] if GO_DIRECT else []):
         for o in ("YES", "NO"):
             # память горит постоянно: её прямые связи к ответам стартуют с
             # минимума путей к действиям, а не с обычной начальной силы (14) —
             # иначе каждая вспышка памяти сама поджигала и «да», и «нет»
-            w0 = p["action_min"] if s != "GO" else p["init_weight"]
-            b.connect(s, o, weight=w0, myelin_thickness=1.0 if s != "GO" else 0.75,
-                      plasticity=p["init_plasticity"])
+            w0 = p["action_min"] if (s != "GO" or WEAK_GO) else p["init_weight"]
+            if s == "GO" and GO_FIXED:
+                # GO -> ответ: слабая неизменная (как датчики в мозге вычитания):
+                # GO есть в каждой пробе и ничего не говорит о факте; от неё
+                # сочетания «GO + память» наследуют направление к ответам
+                b.connect(s, o, weight=p["action_min"], myelin_thickness=0.75, fixed=True)
+            else:
+                b.connect(s, o, weight=w0, myelin_thickness=1.0 if s != "GO" else 0.75,
+                          plasticity=p["init_plasticity"])
             # тормоз от постоянно горящей памяти и от GO не учится (как у датчиков
             # в мозге вычитания): иначе память, чтобы не отвечать без вопроса,
             # держала действия глубоко под порогом и при вопросе; учатся тормоза
@@ -130,13 +159,18 @@ def make_delay_brain(p, seed, persist=True):
     b.budget_above_floor = True
     b.reward_only_actions = True
     tasks.attach(b, p, seed)
-    b.neuron_change.make_same(("входы", "действия"))
+    # и у памяти без подстройки порога: залипший нейрон горит часто, порог
+    # рос, и сильный вход факта переставал включать залипание
+    b.neuron_change.make_same(("входы", "действия", "память"))
     b.curiosity.boredom = p.get("boredom", Head.BOREDOM)
     b.curiosity.avoid = p.get("avoid", 3.0)
     # скука по ситуации здесь выключена: наказание за действие без вопроса
     # прибавляло к скуке ситуации «горит память», скука толкала действия, и
     # те снова срабатывали без вопроса (лавина, ~14 лишних действий на пробу)
     b.curiosity.situational = SITUATIONAL
+    if GATE:
+        b.curiosity.gate = "GO"      # поиск (шум, скука) только после вопроса
+        b.curiosity.gate_window = GATE_WINDOW
     b.growth.sensory_regions = ["входы", "память"]
     # ответ должен зависеть от «вопрос И память»: сочетания нейронов памяти с GO
     # (память горит всю задержку, сама по себе она не повод отвечать); между
@@ -147,7 +181,8 @@ def make_delay_brain(p, seed, persist=True):
     # толчок; на одном шаге они совпадали лишь в 1 из 3 случаев
     b.growth.pair_window = PAIR_WINDOW
     b.growth.max_neurons = b.n_neurons + N_DMEM + 4
-    b.growth.inherit_inhibition = p.get("inh_plasticity", Head.INH_PLASTICITY)
+    if INHERIT:
+        b.growth.inherit_inhibition = p.get("inh_plasticity", Head.INH_PLASTICITY)
     b.growth.new_weight = p["action_min"] + 0.1
     b.budget_window = p.get("budget_window", Head.BUDGET_WINDOW)
     RewardPrediction(b, regions=["входы", "память"])
@@ -179,7 +214,7 @@ def delay_trial(b, cues, wait, learn=False):
     return None
 
 
-def delay_run(p, seed, wait=50, trials=600, persist=True, control=False):
+def delay_run(p, seed, wait=50, trials=2000, persist=True, control=False):
     b = make_delay_brain(p, seed, persist)
     rnd = random.Random(seed + 3)
     for _ in range(trials):
@@ -356,7 +391,7 @@ def main():
     ap.add_argument("--plateau", action="store_true")
     ap.add_argument("--delay", action="store_true")
     ap.add_argument("--wait", type=int, default=50)
-    ap.add_argument("--trials", type=int, default=600)
+    ap.add_argument("--trials", type=int, default=2000)
     ap.add_argument("--no-persist", action="store_true")
     ap.add_argument("--control", action="store_true")
     ap.add_argument("--steps", type=int, default=200)
