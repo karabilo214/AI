@@ -834,7 +834,15 @@ def reward(value, outcome, n_neurons, n_conn, src, tgt, weight, eligibility, pla
         if alive[c] and inhibitory[c] and block_elig[c] > 0.0:
             # «помешал»: награда — правильно не дал (сильнее), наказание — мешал (слабее)
             db = rate * value * plasticity[c] * block_elig[c] * learn_gain[tgt[c]]
-            weight[c] = max(0.0, min(max_weight, weight[c] + db))
+            # в контексте меняется его добавка, как у остальных правил (иначе
+            # тормоз, выученный при одном знаке, действовал при всех)
+            if n_active > 0:
+                for j in range(MAX_CONTEXTS):
+                    if active[j]:
+                        a = ctx_w[c, j] + (db * ctx_level[j] if ctx_graded > 0.0 else db / n_active)
+                        ctx_w[c, j] = max(0.0 - weight[c], min(max_weight - weight[c], a))
+            if base_share > 0.0:
+                weight[c] = max(0.0, min(max_weight, weight[c] + db * base_share))
         if not alive[c] or eligibility[c] == 0.0:   # у постоянных тормозящих и гипотез метка 0
             continue
         k = relevance[tgt[c]] if credit_on else 1.0

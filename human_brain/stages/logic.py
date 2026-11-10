@@ -38,6 +38,7 @@ OPS = {
     "XOR": (lambda a, b: a != b, True),
 }
 INPUTS = ("A", "B", "GO")
+MIX_OPS = ("AND", "OR", "NOT")     # --op MIX: один мозг, оператор по знаку
 ACTIONS = ("YES", "NO")
 WAIT = 7
 DIRECT_THICKNESS = 0.75   # задержка 2 шага (myelin.delay)
@@ -53,11 +54,18 @@ def cases(op):
     return [(False, False), (True, False)]
 
 
-def make_brain(p, seed, hand=False, op=None):
+def make_brain(p, seed, hand=False, op=None, signs=False):
     b = Brain()
     b.add_region("входы")
     for n in INPUTS:
         b.add_neuron(n, region="входы")
+    if signs:
+        # знаки операторов — нейроны-контексты (Synapse.CONTEXTS): пока знак
+        # недавно горел, у всех связей действует своя добавка к силе, и награда
+        # учит именно её. К действиям знаки не ведут, сочетаний из них нет
+        b.add_region("знаки")
+        for o in MIX_OPS:
+            b.add_neuron(f"OP_{o}", context=True, region="знаки")
     if hand:
         b.add_region("действия, жёсткие", learn=0.0)
     b.add_region("действия")
@@ -96,13 +104,13 @@ def make_brain(p, seed, hand=False, op=None):
     b.reward_only_actions = True
     if not hand:
         tasks.attach(b, p, seed)
-        b.neuron_change.make_same(("входы", "действия"))
+        b.neuron_change.make_same(("входы", "действия") + (("знаки",) if signs else ()))
         b.curiosity.boredom = p.get("boredom", Head.BOREDOM)
         b.curiosity.avoid = p.get("avoid", 3.0)
         # скука по ситуации (Curiosity.situational): молчание в одной ситуации
         # толкает пробовать именно в ней, даже если другие пробы с ответами
         b.curiosity.situational = SITUATIONAL
-        b.growth.sensory_regions = ["входы"]
+        b.growth.sensory_regions = ["входы"] + (["знаки"] if signs else [])
         b.growth.max_neurons = b.n_neurons + 12
         b.growth.pair_regions = ["входы"]
         b.growth.new_weight = p["action_min"] + 0.1
@@ -146,8 +154,8 @@ def acted(fired):
     return a[0] if len(a) == 1 else ("оба" if a else None)
 
 
-def trial(b, a, c):
-    shown = ["GO"] + (["A"] if a else []) + (["B"] if c else [])
+def trial(b, a, c, sign=None):
+    shown = ["GO"] + (["A"] if a else []) + (["B"] if c else []) + ([f"OP_{sign}"] if sign else [])
     for s in shown:
         b.stimulate(s, 20.0)
     for _ in range(WAIT):
@@ -191,6 +199,43 @@ def train(b, op, trials, rng, control=False):
     return right / trials
 
 
+def exam_mix(b):
+    t = copy.deepcopy(b)
+    t.curiosity = None
+    rows = []
+    for op in MIX_OPS:
+        f, _ = OPS[op]
+        for a, c in cases(op):
+            out = trial(t, a, c, op)
+            rest(t)
+            rows.append((op, (a, c), "YES" if f(a, c) else "NO", out))
+    return rows
+
+
+def train_mix(b, trials, rng, control=False):
+    """Один мозг, три оператора вперемешку; знак оператора показан в каждой пробе."""
+    right = 0
+    for _ in range(trials):
+        op = rng.choice(MIX_OPS)
+        f, _ = OPS[op]
+        a, c = rng.choice(cases(op))
+        want = rng.choice(ACTIONS) if control else ("YES" if f(a, c) else "NO")
+        out = trial(b, a, c, op)
+        right += out == want
+        b.reward(1.0 if out == want else (-1.0 if out is not None else 0.0))
+        rest(b)
+    return right / trials
+
+
+def run_mix(p, seed, trials=6000, control=False):
+    tasks.apply(p)
+    b = make_brain(p, seed, signs=True)
+    train_mix(b, trials, random.Random(seed), control)
+    rows = exam_mix(b)
+    by_op = {op: all(w == o for q, _, w, o in rows if q == op) for op in MIX_OPS}
+    return by_op, rows, b
+
+
 def run(p, op, seed, trials=2000, control=False):
     tasks.apply(p)
     b = make_brain(p, seed)
@@ -201,7 +246,7 @@ def run(p, op, seed, trials=2000, control=False):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--op", default="AND", choices=list(OPS))
+    ap.add_argument("--op", default="AND", choices=list(OPS) + ["MIX"])
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--trials", type=int, default=2000)
     ap.add_argument("--control", action="store_true")
@@ -214,6 +259,11 @@ def main():
     SILENCE = a.silence
     p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
     tasks.apply(p)
+    if a.op == "MIX":
+        by_op, rows, b = run_mix(p, a.seed, a.trials, a.control)
+        print("MIX", " ".join(f"{o}:{'выучен' if v else 'нет'}" for o, v in by_op.items()),
+              "ВСЕ" if all(by_op.values()) else "", rows)
+        return
     if a.hand:
         b = make_brain(p, a.seed, hand=True, op=a.op)
         rows = exam(b, a.op)
