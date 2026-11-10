@@ -554,6 +554,13 @@ class Brain:
                 tx, ty = self.fire_time[self.neurons[x].index], self.fire_time[self.neurons[y].index]
                 if (tx == now and 0 <= now - ty <= g.pair_window) or (ty == now and 0 <= now - tx <= g.pair_window):
                     k = self.neurons[name].index
+                    # один раз на совпадение: если сочетание уже сработало после
+                    # более раннего из двух событий, повторная вспышка залипшего
+                    # родителя его не зажигает (иначе окрепшее сочетание
+                    # повторно поджигало ответ в паузе, и наказание за действие
+                    # без вопроса разрушало именно выученную связь)
+                    if self.fire_time[k] > min(tx, ty):
+                        continue
                     if self.refractory[k] == 0:
                         self.potential[k] = max(self.potential[k], self.threshold[k] + 0.5)
         for i in self.plateau:
