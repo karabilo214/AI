@@ -47,6 +47,18 @@ def setup(task, variant):
                  ("числа до 200, цепочка 16", 16, lambda r: (r.randint(0, 200), r.randint(0, 200))),
                  ("числа до 1000, цепочка 16", 16, lambda r: (r.randint(0, 1000), r.randint(0, 1000))))
         return Task, design, widths, items, exams
+    if task == "adder":
+        import task_adder as t
+        design = t.DESIGN
+        widths = (7, 8, 9, 10)
+
+        def items(limit, rng, exam=False):
+            return [(a, n) for a in range(limit + 1) for n in (1, 2, 3)] * 3
+
+        exams = (("N 1-3, A до 10", 10, lambda r: (r.randint(0, 10), r.randint(1, 3))),
+                 ("N 4-5 (не учился), A до 10", 10, lambda r: (r.randint(0, 10), r.randint(4, 5))),
+                 ("N 1-3, A до 1000, цепочка 16", 16, lambda r: (r.randint(0, 1000), r.randint(1, 3))))
+        return t, design, widths, items, exams
     if task == "count":
         import task_count as t
         design = VARIANTS[variant]
@@ -106,7 +118,7 @@ def fitness(table, design, widths, t, d):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--task", choices=["count", "multiply", "add_steps", "add_probe", "guests", "parity", "double"], default="count")
+    parser.add_argument("--task", choices=["count", "multiply", "add_steps", "add_probe", "adder", "guests", "parity", "double"], default="count")
     parser.add_argument("--variant", choices=list(VARIANTS), default="base")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--checkpoints", action="store_true", help="сохранять лучшую таблицу каждые 100 поколений")

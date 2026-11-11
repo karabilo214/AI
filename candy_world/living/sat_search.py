@@ -90,7 +90,18 @@ def failing_days(table, design, widths, t, d):
     return np.flatnonzero(bad)
 
 
+EXAMS = None
+
+
 def exam(table, design, widths, t, items):
+    if EXAMS is not None and t.__name__ != "task_multiply":
+        out = []
+        r = random.Random(99)
+        for name, w, draw in EXAMS:
+            days, right, _ = t.make_days([draw(r) for _ in range(200)], r)
+            got, _ = run_days(table, design, days, w, t.CODES, max_fetches=int(right.max()) * 2 + 10)
+            out.append(round(float((got == right).mean()), 3))
+        return tuple(out)
     d10 = E.data(t, items, 10, 1)
     e10 = check(table, design, widths, t, d10)
     r = random.Random(99)
@@ -101,6 +112,7 @@ def exam(table, design, widths, t, items):
 
 VERBOSE = True
 ADD = 3          # сколько неверных дней добавлять за раунд
+RANDOM_PHASES = False
 
 
 def solve_once(seed, start, t, design, widths, items, d, time_limit=600, call_limit=120):
@@ -117,7 +129,8 @@ def solve_once(seed, start, t, design, widths, items, d, time_limit=600, call_li
             for w in widths:
                 enc.day(days[i], tg, int(right[i]), w, t.CODES["fetch"])
         s = Minisat22(bootstrap_with=enc.clauses)
-        s.set_phases([v if rng.random() < 0.5 else -v for v in range(1, design.size + 1)])
+        if RANDOM_PHASES:   # случайные предпочтения битов: сильно тормозят решатель (2026-11-11)
+            s.set_phases([v if rng.random() < 0.5 else -v for v in range(1, design.size + 1)])
         import threading
         timer = threading.Timer(call_limit, s.interrupt)
         timer.start()
@@ -154,14 +167,16 @@ def main():
     ap.add_argument("--solutions", type=int, default=8)
     ap.add_argument("--start", type=int, default=6)
     ap.add_argument("--stage", type=int, default=6)
+    ap.add_argument("--task", default="add_steps")
     ap.add_argument("--add", type=int, default=3)
     ap.add_argument("--call", type=int, default=120)
     ap.add_argument("--total", type=int, default=600)
     a = ap.parse_args()
-    t, design, widths, items, _ = E.setup("add_steps", "base")
+    t, design, widths, items, exams = E.setup(a.task, "base")
     d = E.data(t, items, a.stage, 0)
-    import task_multiply as M
-    hand = M.hand_table()
+    hand = t.hand_table()
+    global EXAMS
+    EXAMS = exams
     print("ручная таблица на данных:", check(hand, design, widths, t, d), "неверных дней", len(failing_days(hand, design, widths, t, d)), flush=True)
     for s in range(a.solutions):
         global ADD
