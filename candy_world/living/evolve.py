@@ -59,12 +59,15 @@ def setup(task, variant):
                  ("числа до 200, цепочка 16", 16, lambda r: (r.randint(0, 200), r.randint(0, 200))),
                  ("числа до 1000, цепочка 16", 16, lambda r: (r.randint(0, 1000), r.randint(0, 1000))))
     else:
-        import task_multiply as t
+        if task == "add_probe":
+            import task_probe as t
+        else:
+            import task_multiply as t
         design = t.DESIGN
         widths = (7, 8, 9, 10)
 
         def items(limit, rng, exam=False):
-            if task == "add_steps":
+            if task in ("add_steps", "add_probe"):
                 # Ступени по числу гостей: до 3 - не больше 1 гостя (прибавить N один раз),
                 # до 6 - не больше 2 (надо сохранить N для второго), до 10 - сколько угодно.
                 most = {3: 1, 6: 2}.get(limit, limit)
@@ -103,7 +106,7 @@ def fitness(table, design, widths, t, d):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--task", choices=["count", "multiply", "add_steps", "guests", "parity", "double"], default="count")
+    parser.add_argument("--task", choices=["count", "multiply", "add_steps", "add_probe", "guests", "parity", "double"], default="count")
     parser.add_argument("--variant", choices=list(VARIANTS), default="base")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--checkpoints", action="store_true", help="сохранять лучшую таблицу каждые 100 поколений")
@@ -147,7 +150,8 @@ def main():
     rng_exam = random.Random(99)
     exam = {}
     for name, width, draw in exams:
-        days, right, _ = t.make_days([draw(rng_exam) for _ in range(300)], rng_exam)
+        make = getattr(t, "make_exam_days", t.make_days)   # экзамен без вопросов-подсказок
+        days, right, _ = make([draw(rng_exam) for _ in range(300)], rng_exam)
         limit = int(right.max()) * 2 + 10        # предел походов всегда с запасом выше самого большого ответа
         got, cost = run_days(best, design, days, width, t.CODES, max_fetches=limit)
         need = right > 0
