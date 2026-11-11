@@ -122,6 +122,9 @@ class Growth:
         # сочетание создаётся и загорается, если родители сработали не дальше
         # pair_window шагов друг от друга (Brain.step)
         self.pair_window = 0
+        # области, к которым применяется окно (хотя бы один из пары оттуда);
+        # None — ко всем
+        self.pair_window_regions = None
         # {область цели: [области источников]} — в нейроны этой области связи
         # растут только из перечисленных областей (например, к звукам речи —
         # от детекторов букв, а не от отдельных нейронов зрения)
@@ -197,6 +200,8 @@ class Growth:
             "grown_connections": [c.index for c in self.grown_connections],
             "grown_neurons": list(self.grown_neurons),
             "log": list(self.log),
+            "pair_window": int(self.pair_window),
+            "pair_window_regions": self.pair_window_regions,
         }
 
     @classmethod
@@ -212,6 +217,8 @@ class Growth:
                                     for c in state["grown_connections"]]
         growth.grown_neurons = list(state["grown_neurons"])
         growth.log = list(state.get("log", []))
+        growth.pair_window = int(state.get("pair_window", 0))
+        growth.pair_window_regions = state.get("pair_window_regions")
         return growth
 
     def observe(self, fired):
@@ -282,6 +289,9 @@ class Growth:
         if self.pair_window > 0:
             # окно совпадения: сработавший сейчас и сработавший не раньше
             # pair_window шагов назад тоже «вместе»
+            wr = self.pair_window_regions
+            def in_w(n):
+                return wr is None or brain.region_of[brain.neurons[n].index] in wr
             recent = []
             for past in list(self.history)[-self.pair_window:]:
                 for n in past:
@@ -290,7 +300,8 @@ class Growth:
                         recent.append(n)
             for first in fired:
                 for second in recent:
-                    cand.append(tuple(sorted((first, second))))
+                    if in_w(first) or in_w(second):
+                        cand.append(tuple(sorted((first, second))))
         for first, second in cand:
             pair = (first, second)
             if pair in self.pair_neurons or (second, first) in self.pair_neurons:

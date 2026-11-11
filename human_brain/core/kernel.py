@@ -197,7 +197,7 @@ def step(time,
          # области
          learn_gain, relax, w0, assoc, stim_time, perceptual, fixed,
          # выбор победителя
-         pool_on, pool, recall, recall_in,
+         pool_on, pool, recall, recall_in, recall_min,
          # запас входов считать сверх минимума путей к действиям (0 = как раньше)
          budget_floor,
          # inh_delayed: обучаемое торможение (вход -> действие) приходит по
@@ -297,7 +297,7 @@ def step(time,
     if pool_on:
         choose_winners(n_neurons, pool, potential, threshold, refractory, recall_in,
                        n_conn, src, tgt, alive, delivered, recall, weight, hyp,
-                       time, fire_time, stim_time, perceptual)
+                       time, fire_time, stim_time, perceptual, recall_min)
 
     # 2. Обновляем нейроны
     if has_inhibition:
@@ -588,7 +588,7 @@ def step(time,
 @njit(cache=True)
 def choose_winners(n_neurons, pool, potential, threshold, refractory, recall_in,
                    n_conn, src, tgt, alive, delivered, recall, weight, hyp,
-                   time, fire_time, stim_time, perceptual):
+                   time, fire_time, stim_time, perceptual, recall_min=0.0):
     """В каждой группе, где никто не дошёл до порога сам, единственный лидер
     по входу вспоминания, получивший сигнал от большинства воспринятого на
     прошлом шаге, доводится до порога (сработает в шаге 2)."""
@@ -630,8 +630,11 @@ def choose_winners(n_neurons, pool, potential, threshold, refractory, recall_in,
         elif v > second_v[g]:
             second_v[g] = v
     for g in range(n_pools):
+        # recall_min > 0: вспоминать, только если поддержка лидера надёжная (не
+        # меньше recall_min); иначе слабые случайные связи «бывает вместе»
+        # (цифры со звуками) всё равно выбирали победителя
         if (not crossed[g] and best[g] >= 0 and best_v[g] > second_v[g]
-                and 2 * got[best[g]] > n_sent):
+                and 2 * got[best[g]] > n_sent and best_v[g] >= recall_min):
             w = best[g]
             potential[w] = max(potential[w], threshold[w])
 

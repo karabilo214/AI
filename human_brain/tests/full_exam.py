@@ -10,11 +10,10 @@ minus.py). По 10 заданий каждого навыка, все впере
     «a + b» и «a − b» цифрами-картинками (выражений в обучении не было);
         у «a − b» вопрос «не хватило» или «лишнее», цифра 4 после «−» в
         обучении не встречалась никогда.
-Логика и память — пока отдельные мозги (в основной не перенесены):
-    логика (logic.py --op MIX --pictures, 6000 проб): по 10 проб И, ИЛИ, НЕ
-        со знаками-картинками, вперемешку;
-    память (hold.py --multi 2,2, 6000 проб): держит цвет и форму сразу,
-        по 10 вопросов «какой цвет» и «какая форма», вперемешку.
+Если мозг прошёл ступени памяти и логики (memory.py, logic_stage.py), в
+тот же перемешанный список входят: по 10 вопросов «что видел?» и «что
+слышал?» (держит оба факта) и по 10 проб И, ИЛИ, НЕ над фактами из памяти.
+--separate: ещё и прежние отдельные мозги логики и памяти (для сравнения).
 
 Запуск из корня проекта:
     .venv/bin/python -m human_brain.tests.full_exam --seed 1000          # один мозг, строка JSON
@@ -42,15 +41,27 @@ MAIN_KINDS = ("сложение", "вычитание", "умножение", "�
 
 
 def main_brain(p, seed):
+    """Основной мозг после последней ступени (логика), иначе после «−»."""
+    from human_brain.stages import logic_stage as ls
+    from human_brain.stages import memory as me
+    path = brain_store.path_for(ls.logic_name(seed))
+    if brain_store.exists(path):
+        b, _, meta = brain_store.load(path)
+        return b, meta, "логика"
+    path = brain_store.path_for(me.memory_name(seed))
+    if brain_store.exists(path):
+        b, _, meta = brain_store.load(path)
+        ls.me_settings(b)
+        return b, meta, "память"
     path = brain_store.path_for(mn.minus_name(seed))
     if not brain_store.exists(path):
         mn.run(p, seed, 2000, save=True)
     b, _, meta = brain_store.load(path)
-    return b, meta
+    return b, meta, ""
 
 
 def main_exam(p, seed, order):
-    b, meta = main_brain(p, seed)
+    b, meta, full = main_brain(p, seed)
     alphabet = rd.make_alphabet(seed)
     train_words = rd.make_words(seed, 40, (2, 3, 4)) + rules.make_words(seed + 10, 40, (2, 3, 4, 5))
     items = make_tasks(seed, train_words)
@@ -64,13 +75,38 @@ def main_exam(p, seed, order):
         ans = max(a - c, 0) if q == "ASK" else max(c - a, 0)
         what = "не хватило" if q == "ASK" else "лишнее"
         items.append(("a − b", f"{a} − {c}, сколько {what}", [f"D{a}", "MINUS", f"D{c}", q], ans))
-    random.Random(order).shuffle(items)
     gl = dict(nm.glyphs(seed), MINUS=mn.minus_glyph(seed))
+    from human_brain.stages import memory as me, logic_stage as ls
+    if full:
+        # память (и логика, если мозг её прошёл) — в том же мозге
+        mrng = random.Random(8500 + seed)
+        for q, what in (("Q_SEE", "что видел"), ("Q_HEAR", "что слышал")):
+            for _ in range(10):
+                while True:
+                    shown, qq, want = me.make_memory_task(mrng)
+                    if qq == q:
+                        break
+                txt = ", ".join(("видел " if k == "see" else "слышал ") + str(w) for k, w, _ in shown)
+                items.append((f"память: {what}", f"{txt}; {what}?", ("memory", shown, q), want))
+        signs = ls.sign_glyphs(seed)
+        for op in (ls.OPS if full == "логика" else ()):
+            for _ in range(10):
+                a, c = mrng.choice(ls.cases(op))
+                want = "YES" if ls.OPS[op](a, c) else "NO"
+                txt = f"видел {'2' if a else '3'}, слышал {'c' if c else 'd'}"
+                items.append((f"логика {ls.NAMES[op]}", f"{txt}; {ls.NAMES[op]}", ("logic", a, c, op), want))
+    random.Random(order).shuffle(items)
     show = nm.make_show(gl)
     t = rd.quiet(b)
     rows, score = [], {}
     for kind, text, ev, want in items:
-        if kind == "чтение":
+        if isinstance(ev, tuple) and ev[0] == "memory":
+            got = str(me.memory_day(t, ev[1], ev[2], gl, False))
+            me.quiet(t, 20, False)
+        elif isinstance(ev, tuple) and ev[0] == "logic":
+            got = str(ls.logic_day(t, ev[1], ev[2], ev[3], gl, signs, random.Random(len(rows)), False))
+            me.quiet(t, 20, False)
+        elif kind == "чтение":
             got = render(rules.say_word(t, text, alphabet, False))
             tasks.rest(t, rd.REST)
             text = f"«{text}»"
@@ -146,11 +182,13 @@ def memory_exam(p, seed, order):
     return rows, score
 
 
-def one(seed, order=7):
+def one(seed, order=7, separate=False):
+    """separate: ещё и прежние отдельные мозги логики и памяти (для сравнения)."""
     p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
     tasks.apply(p)
-    out = {"seed": seed}
-    for name, fn in (("основной", main_exam), ("логика", logic_exam), ("память", memory_exam)):
+    out = {"seed": seed, "логика": {"rows": [], "score": {}}, "память": {"rows": [], "score": {}}}
+    parts = (("основной", main_exam),) + ((("логика", logic_exam), ("память", memory_exam)) if separate else ())
+    for name, fn in parts:
         p = dict(tasks.PARAMS_DEFAULT, fam_on=False)
         tasks.apply(p)
         rows, score = fn(p, seed, order)
@@ -180,8 +218,8 @@ def report(seeds, path, workers=6):
     L = [f"# Общая проверка вперемешку", "",
          f"Дата: {datetime.date.today()}. Мозги: {', '.join(map(str, seeds))}. По 10 заданий "
          "каждого выученного навыка в разброс, на копии без шума и без обучения, все вне обучения. "
-         "Основной мозг — после всей цепочки до знака «−»; логика и память — отдельные мозги "
-         "(в основной ещё не перенесены).", ""]
+         "Все навыки — в одном мозге: вся цепочка от сложения до логики, каждая ступень "
+         "училась поверх предыдущей.", ""]
     kinds = []
     for r in res:
         for part in ("основной", "логика", "память"):

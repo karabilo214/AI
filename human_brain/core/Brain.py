@@ -162,6 +162,9 @@ class Brain:
         # запас торможения (выключатель, 0 = выкл): сумма обучаемых тормозов к
         # одному действию не больше этого (см. _limit_inhibition)
         self.inh_budget = 0.0
+        # выбор победителя: вспоминать, только если вход вспоминания лидера не
+        # меньше этого (0 = как раньше, любой лидер)
+        self.recall_min = 0.0
         # «залипание» (стойкая активность): нейроны из persistent, сработавшие
         # от сильного входа извне своей области (>= plateau_entry * «до порога»), переходят
         # в режим постоянного горения — каждый шаг, когда не отдыхают, доходят
@@ -550,8 +553,12 @@ class Brain:
             # раньше pair_window шагов до него -> сочетание срабатывает сейчас
             # (как от одновременных сигналов с задержкой 1)
             now = self.time - 1
+            wr = g.pair_window_regions
             for (x, y), name in g.pair_neurons.items():
-                tx, ty = self.fire_time[self.neurons[x].index], self.fire_time[self.neurons[y].index]
+                ix, iy = self.neurons[x].index, self.neurons[y].index
+                if wr is not None and self.region_of[ix] not in wr and self.region_of[iy] not in wr:
+                    continue
+                tx, ty = self.fire_time[ix], self.fire_time[iy]
                 if (tx == now and 0 <= now - ty <= g.pair_window) or (ty == now and 0 <= now - tx <= g.pair_window):
                     k = self.neurons[name].index
                     # один раз на совпадение: если сочетание уже сработало после
@@ -601,6 +608,7 @@ class Brain:
             self.learn_gain, self.relax, self.w0, self.assoc, self.stim_time, self.perceptual,
             self.fixed,
             bool((self.pool[:self.n_neurons] >= 0).any()), self.pool, self.recall, self.recall_in,
+            float(self.recall_min),
             self._budget_floor(), bool(self.inh_delayed), self.block_elig,
             bool(self.reward_only_actions), bool(self.inh_share), bool(self.block_collective),
             bool(self.idle_fade),
@@ -714,6 +722,10 @@ class Brain:
         data["dead_patience"] = np.int64(self.dead_patience)
         data["input_budget"] = np.float64(self.input_budget)
         data["windows"] = np.array([self.budget_window, self.inh_window], dtype=np.int64)
+        # залипание и порог вспоминания (ступень памяти)
+        data["persist_ids"] = np.array(sorted(self.persistent), dtype=np.int64)
+        data["plateau_ids"] = np.array(sorted(self.plateau), dtype=np.int64)
+        data["recall_cfg"] = np.array([self.recall_min, self.plateau_entry, self.plateau_exit])
         data["modes"] = np.array([self.ctx_graded, float(self.ip_push), self.v_floor,
                                   float(self.inh_short), float(self.last_action_only),
                                   float(self.decision_ctx), float(self.reset_eligibility),
@@ -779,6 +791,11 @@ class Brain:
             brain.dead_weight = float(d["dead_weight"])
             brain.dead_patience = int(d["dead_patience"])
             brain.input_budget = float(d["input_budget"]) if "input_budget" in d.files else 0.0
+            if "persist_ids" in d.files:
+                brain.persistent = set(int(i) for i in d["persist_ids"])
+                brain.plateau = set(int(i) for i in d["plateau_ids"]) if "plateau_ids" in d.files else set()
+            if "recall_cfg" in d.files:
+                brain.recall_min, brain.plateau_entry, brain.plateau_exit = (float(x) for x in d["recall_cfg"])
             if "windows" in d.files:
                 brain.budget_window, brain.inh_window = (int(x) for x in d["windows"])
             if "modes" in d.files:
@@ -867,7 +884,10 @@ class Brain:
             from human_brain.parts.Latch import Latch
             Latch.from_state(brain, latch)
         if units is not None:
-            if units.get("kind") == "neural":
+            if units.get("kind") == "trust":
+                from human_brain.parts.Trust import TrustChoice
+                TrustChoice.from_state(brain, units)
+            elif units.get("kind") == "neural":
                 from human_brain.parts.NeuralChoice import NeuralChoice
                 NeuralChoice.from_state(brain, units)
             else:

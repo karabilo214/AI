@@ -387,7 +387,7 @@ class Sim:
             self.explores, P[ACTION_MIN], self.last_share, self.confirm, self.syn_drive,
             int(P[NEG_NEEDED]), P[NECESSITY_ON] > 0, P[BAN_ON] > 0, self.ban, P[BAN_POWER],
             self.learn_gain, self.relax, self.w0, self.assoc, self.stim_time, self.perceptual,
-            self.fixed, False, self.pool, self.recall, self.recall_in, 0.0, False, self.block_elig, False, False, False, True, self.fired, self.delivered, self.removed, self.received, self.confirmed)
+            self.fixed, False, self.pool, self.recall, self.recall_in, 0.0, 0.0, False, self.block_elig, False, False, False, True, self.fired, self.delivered, self.removed, self.received, self.confirmed)
         for k in range(n_removed):
             c = self.removed[k]
             self.pair_count[self.src[c], self.tgt[c]] -= 1

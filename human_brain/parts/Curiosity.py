@@ -58,6 +58,12 @@ class Curiosity:
         self.situational = situational
         self.window = window
         self.silent_by = {}       # ситуация (набор номеров нейронов) -> тихих попыток
+        # избегание по ситуации: если в ситуации действие наказывали, в этой
+        # ситуации оно подавляется (растёт с каждым наказанием, награда в ней
+        # снимает); ситуация — сработавшие нейроны областей situation_regions
+        self.situational_avoid = False
+        self.situation_regions = None
+        self.avoid_by = {}        # ситуация -> {номер действия: подавление, мВ}
         self.gate = None          # имя нейрона-вопроса: поиск только после него (None = всегда)
         self.gate_window = 8
         self._key = None
@@ -99,6 +105,9 @@ class Curiosity:
                 ramp = self._ramp
             if self.boredom > 0.0 and n_silent > 0:
                 brain.potential[explorers] += self.boredom * (1.0 - 0.5 ** n_silent) * ramp
+        if self.situational_avoid and self.avoid_by:
+            for i, v in self.avoid_by.get(self.situation(), {}).items():
+                brain.potential[i] -= v
         for i in list(self.avoiding):
             brain.potential[i] -= self.avoiding[i]
             self.avoiding[i] *= self.avoid_decay
@@ -107,11 +116,15 @@ class Curiosity:
         self.level *= self.decay
 
     def situation(self):
-        """Нейроны (не действия), горевшие за последние window шагов."""
+        """Нейроны (не действия), горевшие за последние window шагов
+        (только областей situation_regions, если они заданы)."""
         b = self.brain
         n = b.n_neurons
         recent = (b.time - b.fire_time[:n] <= self.window) & (b.fire_time[:n] >= 0) & ~b.explores[:n]
-        return frozenset(np.flatnonzero(recent).tolist())
+        idx = np.flatnonzero(recent).tolist()
+        if self.situation_regions is not None:
+            idx = [i for i in idx if b.region_of[i] in self.situation_regions]
+        return frozenset(idx)
 
     def on_reward(self, value):
         """Вызывается мозгом из brain.reward(value)."""
@@ -129,6 +142,19 @@ class Curiosity:
                     self.silent_by[key] = self.silent_by.get(key, 0) + 1
         if value != 0:
             self.silent = 0
+        if self.situational_avoid and value != 0:
+            key = self.situation()
+            if key:
+                if value > 0:
+                    self.avoid_by.pop(key, None)
+                else:
+                    b = self.brain
+                    acts = np.flatnonzero(b.explores[:b.n_neurons])
+                    if len(acts):
+                        last = int(acts[np.argmax(b.fire_time[acts])])
+                        if b.time - b.fire_time[last] <= 15:
+                            d = self.avoid_by.setdefault(key, {})
+                            d[last] = d.get(last, 0.0) + self.avoid
         if value < 0:
             self.level += self.up * min(1.0, -value) * (1.0 - self.level)
             if self.avoid > 0.0:
@@ -153,6 +179,10 @@ class Curiosity:
                 "level": self.level, "silent": self.silent,
                 "avoiding": [[i, v] for i, v in self.avoiding.items()],
                 "silent_by": [[sorted(k), v] for k, v in self.silent_by.items()],
+                "gate": self.gate, "gate_window": self.gate_window,
+                "situational_avoid": self.situational_avoid,
+                "situation_regions": self.situation_regions,
+                "avoid_by": [[sorted(k), [[int(i), v] for i, v in d.items()]] for k, d in self.avoid_by.items()],
                 "rng": self.rng.bit_generator.state}
 
     @classmethod
@@ -162,5 +192,10 @@ class Curiosity:
         curiosity.silent = state.get("silent", 0)
         curiosity.avoiding = {int(i): v for i, v in state.get("avoiding", [])}
         curiosity.silent_by = {frozenset(k): v for k, v in state.get("silent_by", [])}
+        curiosity.gate = state.get("gate")
+        curiosity.gate_window = state.get("gate_window", 8)
+        curiosity.situational_avoid = state.get("situational_avoid", False)
+        curiosity.situation_regions = state.get("situation_regions")
+        curiosity.avoid_by = {frozenset(k): {int(i): v for i, v in d} for k, d in state.get("avoid_by", [])}
         curiosity.rng.bit_generator.state = state["rng"]
         return curiosity
