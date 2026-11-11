@@ -374,6 +374,56 @@ def parts(C, rng, pop=16, kids=32):
         C.note(P[0], S[0][1])
 
 
+def frozen(C, rng, with_probes, pop=16, kids=32, from_hand=False):
+    """Закрепить найденное хранение N: 1-я часть — только «помнить N» (вопросы о N);
+    затем каждый бит лучшей таблицы переворачивается по очереди — если ответы о N
+    портятся, бит нужен для хранения и закрепляется. 2-я часть меняет только
+    незакреплённые биты (строки событий 1..6); оценка — задача (with_probes:
+    задача + вопросы о N)."""
+    P = [rng.integers(0, 2, G["design"].size, dtype=np.uint8) for _ in range(pop)]
+    S = [probe_acc(p) for p in P]; C.n += pop
+    if from_hand:
+        # хранение N из ручной таблицы (удобная для сложения форма); прочее случайно
+        import task_probe as TP
+        P, S = [TP.hand_table()], [1.0]
+    while C.n < C.budget // 2 and max(S) < 1.0:
+        kids_ = [flips(rng, P[rng.integers(pop)]) for _ in range(kids)]
+        KS = [probe_acc(k) for k in kids_]; C.n += kids
+        allp, alls = P + kids_, S + KS
+        order = np.argsort(alls)[::-1][:pop]
+        P, S = [allp[i] for i in order], [alls[i] for i in order]
+    base, acc0 = P[0], S[0]
+    ob = G["design"].out_bits
+    cand = [r * ob + k for r in range(G["design"].rows) if 1 <= (r >> 4) <= 6 for k in range(ob)]
+    fixed = []
+    for bit in cand:
+        x = base.copy(); x[bit] ^= 1
+        if probe_acc(x) < acc0:
+            fixed.append(bit)
+    C.n += len(cand)
+    free = np.array([b for b in cand if b not in set(fixed)])
+    if from_hand:
+        base = base.copy()
+        base[free] = rng.integers(0, 2, len(free))   # всё, кроме закреплённого хранения, случайно
+    G["frozen_log"] = (round(acc0, 3), len(fixed), len(free))
+    tp, dp = G["probe"]
+    def fit(x):
+        return C.fit(x, dp, tp) if with_probes else C.fit(x)
+    def mut(x):
+        c = x.copy()
+        c[rng.choice(free, size=rng.integers(1, 5), replace=False)] ^= 1
+        return c
+    P = [base.copy()] + [mut(base) for _ in range(pop - 1)]
+    S = [fit(p) for p in P]
+    while C.left():
+        kids_ = [mut(P[rng.integers(pop)]) for _ in range(kids)]
+        KS = [fit(k) for k in kids_]
+        allp, alls = P + kids_, S + KS
+        order = np.argsort([x[0] for x in alls])[::-1][:pop]
+        P, S = [allp[i] for i in order], [alls[i] for i in order]
+        C.note(P[0], target_exact(P[0]) if with_probes else S[0][1])
+
+
 METHODS = {
     "base": lambda C, r: evo(C, r),
     "base_staged": lambda C, r: evo(C, r, stages=[G["d3"], G["d6"]]),
@@ -399,6 +449,9 @@ METHODS = {
     "relevant_bits": lambda C, r: evo(C, r, mutate=lambda x: flips_rel(r, x)),
     "relevant_lexicase": lexicase_rel,
     "parts": parts,
+    "frozen_plain": lambda C, r: frozen(C, r, False),
+    "frozen_probe": lambda C, r: frozen(C, r, True),
+    "frozen_hand": lambda C, r: frozen(C, r, False, from_hand=True),
 }
 
 
@@ -421,6 +474,7 @@ def job(args):
     METHODS[name](C, rng)
     out = {"способ": name, "seed": seed, "точно до 6": round(C.best_exact, 3),
            **({"помнит N после 1-й части": G["parts_log"][-1]} if name == "parts" else {}),
+           **({"помнит N, закреплено бит, свободно бит": G["frozen_log"]} if name.startswith("frozen") else {}),
            "найдено на оценке": C.solved_at, "секунд": round(time.time() - t0)}
     if C.solved_at is not None:
         out["экзамен (до 10, до 1000)"] = exam(C.best)
