@@ -30,6 +30,7 @@ from human_brain.stages import multiplication as mu
 from human_brain.core import brain_store
 from human_brain.parts.Units import Units
 from human_brain.parts.NeuralChoice import NeuralChoice
+from human_brain.parts.Trust import TrustChoice
 
 
 def make_div_day(rng, top=10, low=0, want_hidden=False):
@@ -58,7 +59,11 @@ def add_question(b, p):
     b.latch.inputs.append("ASK_EACH")
     b.latch.outputs.append("M_EACH")
     b.growth.max_neurons += 12
-    if p.get("choice", "rule") == "neural":
+    if p.get("choice", "rule") == "trust":
+        # доверие по ситуации (Trust.py): без владения вопросами и закрепления
+        TrustChoice(b, inputs=acc.inputs, lr=p.get("trust_lr", 0.2), hand=p.get("trust_hand"),
+                    consistent=p.get("acc_consistent", False))
+    elif p.get("choice", "rule") == "neural":
         # выбор делает сеть: все заготовки сразу, сочетания «выход + вопрос»
         NeuralChoice(b, inputs=acc.inputs, own=["ASK", "ASK_LEFT"])
     elif p.get("units", True):

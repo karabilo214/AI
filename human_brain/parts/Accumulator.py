@@ -53,11 +53,13 @@ import random
 
 class Accumulator:
     PARAMS = ("neuron", "inputs", "decrement", "query", "rate", "signed", "neg_neuron",
-              "register", "seen", "plast", "role_of", "role_explore", "role_step")
+              "register", "seen", "plast", "role_of", "role_explore", "role_step",
+              "confidence", "conf_p0", "conf_r", "conf_q", "consistent", "verified_max")
 
     def __init__(self, brain, neuron, inputs, decrement, query, rate=0.5, signed=False,
                  neg_neuron=None, register=False, seen=(), plast=None, role_of=None, role_explore=0.0,
-                 role_step=0.25, roles=None):
+                 role_step=0.25, roles=None, confidence=False, conf_p0=1.0, conf_r=1.0,
+                 conf_q=0.001, consistent=False, verified_max=50):
         self.brain = brain
         brain.accumulator = self
         self.neuron = neuron
@@ -78,6 +80,23 @@ class Accumulator:
         self.role_of = dict(role_of or {})
         self.role_explore = role_explore
         self.role_step = role_step        # шаг силы связи, доля от «до порога»
+        # уверенность в каждом весе (confidence=True, вместо plast): неуверенность
+        # P (новый вес conf_p0) убывает от каждого дня, где вес участвовал, и
+        # чуть растёт (conf_q) — уверенный вес меняется медленно, но не застывает;
+        # ошибку дня исправляют прежде всего неуверенные веса (см. learn)
+        self.confidence = confidence
+        self.conf_p0, self.conf_r, self.conf_q = conf_p0, conf_r, conf_q
+        import numpy as np
+        # ошибка знания или ошибка применения (consistent=True): поправку дня
+        # сначала примеряют к последним verified_max дням, где накопитель был
+        # прав; берётся самая большая доля поправки, которая ни один из них не
+        # ломает (0 — ошибка применения: знание не трогается)
+        self.consistent = consistent
+        self.verified_max = verified_max
+        self.verified = []    # [(counts, q, верное число)]
+        self.Pkeys = []       # "w:имя" / "m:имя" / "r:имя"
+        self._pidx = {}
+        self.Pm = np.zeros((0, 0))   # совместная неуверенность весов
         self.role_rng = random.Random(0)
         self._role = None      # (нейрон роли, символ, вызвавший её)
         self._sym = None       # (последний символ, шаг)
@@ -236,9 +255,179 @@ class Accumulator:
         reach = b.reach(b.tgt[c])
         b.weight[c] = max(0.0, min(1.5 * reach, b.weight[c] + sign * self.role_step * reach))
 
-    def learn(self, correct):
-        """После праздника: верное число известно, силы входов поправляются."""
+    def learn(self, correct, scale=1.0):
+        """После праздника: верное число известно, силы входов поправляются.
+        scale — множитель обучения (ответственность устройства, Trust.py)."""
         correct = correct + self.learn_roles(correct)
+        if self.consistent:
+            return self._learn_consistent(correct, scale)
+        if self.confidence:
+            return self._learn_confident(correct, scale)
+        if scale != 1.0:
+            old = self.rate
+            self.rate = old * scale
+            try:
+                return self._learn_plain(correct)
+            finally:
+                self.rate = old
+        return self._learn_plain(correct)
+
+    def predict(self, counts, q, w=None, m=None, r=None):
+        """Прогноз числа (без округления) для дня с такими счётчиками."""
+        w, m, r = w or self.w, m or self.m, r or self.r
+        pred = sum(w[k] * n for k, n in counts.items() if k in w)
+        if self.register:
+            for (i, j), x in q.items():
+                pred += m.get(i, 0.0) * r.get(j, 0.0) * x
+        return pred
+
+    def answer_of(self, counts, q, w=None, m=None, r=None):
+        """Что насчитало бы само устройство (веса округляются, как в работе)."""
+        w, m, r = w or self.w, m or self.m, r or self.r
+        lv = sum(int(round(w[k])) * n for k, n in counts.items() if k in w)
+        if self.register:
+            for (i, j), x in q.items():
+                lv += int(round(m.get(i, 0.0))) * int(round(r.get(j, 0.0))) * x
+        return lv
+
+    def _learn_consistent(self, correct, scale):
+        """Ошибка знания или ошибка применения. Поправка — по прежнему правилу
+        (или по уверенности, если confidence). Потом она примеряется к памяти
+        дней, где устройство было право: берётся наибольшая доля (1, 1/2, 1/4,
+        ... 1/64, иначе 0), при которой ни один из этих дней не становится
+        неверным (прогноз отходит от верного на 0.5 и больше). Поправку,
+        которая ломает проверенное, вызвала не ошибка знания, а то, что знание
+        применили не там (или вход не сработал): знание остаётся прежним."""
+        counts = {k: v for k, v in self.counts.items() if v}
+        q = dict(self._q)
+        before = self.predict(counts, q)
+        ok_before = self.answer_of(counts, q) == correct
+        old = (dict(self.w), dict(self.m), dict(self.r))
+        if self.confidence:
+            saved_P = (list(self.Pkeys), dict(self._pidx), self.Pm.copy())
+            err = self._learn_confident(correct, scale)
+        else:
+            err = self._learn_plain(correct)
+        new = (dict(self.w), dict(self.m), dict(self.r))
+        good = [(c, qq, t) for c, qq, t in self.verified
+                if self.answer_of(c, qq, *old) == t]
+        new = self._project(old, new, good)
+        def mix(a):
+            return tuple({k: o[k] + a * (n[k] - o[k]) for k in n} for o, n in zip(old, new))
+        alpha = 1.0
+        while alpha > 1e-9:
+            cand = mix(alpha)
+            if all(self.answer_of(c, qq, *cand) == t for c, qq, t in good):
+                break
+            alpha = alpha / 2 if alpha > 1.0 / 64 else 0.0
+        self.w, self.m, self.r = mix(alpha)
+        if alpha == 0.0 and self.confidence:
+            self.Pkeys, self._pidx, self.Pm = saved_P
+        self.last_alpha = alpha
+        if ok_before:
+            self.verified.append((counts, q, correct))
+            if len(self.verified) > self.verified_max:
+                self.verified.pop(0)
+        return err
+
+    def _project(self, old, new, good):
+        """Повернуть поправку так, чтобы (в первом приближении) ошибка ни на
+        одном проверенном дне не росла (условие метода GEM, parts/gem.py)."""
+        import numpy as np
+        if not good:
+            return new
+        w, m, r = old
+        keys = [("w", k) for k in self.inputs]
+        if self.register:
+            keys += [("m", k) for k in self.inputs] + [("r", k) for k in self.inputs]
+        idx = {key: i for i, key in enumerate(keys)}
+        tab_o = {"w": old[0], "m": old[1], "r": old[2]}
+        tab_n = {"w": new[0], "m": new[1], "r": new[2]}
+        d = np.array([tab_n[t].get(k, 0.0) - tab_o[t].get(k, 0.0) for t, k in keys])
+        G = np.zeros((len(good), len(keys)))
+        errs = np.array([self.predict(c, qq, *old) - t for c, qq, t in good])
+        for row, (c, qq, _) in enumerate(good):
+            for k, n in c.items():
+                if ("w", k) in idx:
+                    G[row, idx[("w", k)]] += n
+            if self.register:
+                for (i, j), x in qq.items():
+                    G[row, idx[("m", i)]] += r.get(j, 0.0) * x
+                    G[row, idx[("r", j)]] += m.get(i, 0.0) * x
+        from human_brain.parts.gem import project
+        d = project(d, errs[:, None] * G)
+        out = (dict(old[0]), dict(old[1]), dict(old[2]))
+        tab = {"w": out[0], "m": out[1], "r": out[2]}
+        for (t, k), v in zip(keys, d):
+            tab[t][k] = tab_o[t].get(k, 0.0) + float(v)
+        return out
+
+    def _features(self):
+        """(вид, вход, производная прогноза по весу) для участвовавших весов и прогноз."""
+        n = self.counts
+        feats = [("w", k, float(n[k])) for k in self.inputs if n[k]]
+        pred = sum(self.w[k] * n[k] for k in self.inputs)
+        if self.register:
+            gm = {i: sum(self.r[j] * q for (ii, j), q in self._q.items() if ii == i) for i in self.inputs}
+            gr = {j: sum(self.m[i] * q for (i, jj), q in self._q.items() if jj == j) for j in self.inputs}
+            pred += sum(self.m[i] * gm[i] for i in self.inputs)
+            for k in self.inputs:
+                if k in self.seen:
+                    continue
+                if gm[k]:
+                    feats.append(("m", k, gm[k]))
+                if gr[k]:
+                    feats.append(("r", k, gr[k]))
+        return feats, pred
+
+    def _learn_confident(self, correct, scale):
+        """Все веса — одна совместная оценка с неуверенностью (фильтр Калмана с
+        полной матрицей P: неуверенность каждого веса и связи между ними).
+        Поправка = K * ошибка, K = P f / S, S = f P f + conf_r (f — производные
+        прогноза по весам). Вес, уже проверенный в днях, где он менялся, а
+        ошибки не было, уверен и почти не двигается; ошибку забирает то, чего
+        прежние дни не объясняли. Новый вес — неуверенность conf_p0; у
+        участвовавших весов неуверенность растёт на conf_q (уверенное может
+        медленно переучиться, если ошибка не уходит)."""
+        import numpy as np
+        feats, pred = self._features()
+        if not feats:
+            return 0.0
+        err = pred - correct
+        keys = self.Pkeys
+        for t, k, _ in feats:
+            if f"{t}:{k}" not in self._pidx:
+                n = len(keys)
+                keys.append(f"{t}:{k}")
+                self._pidx[f"{t}:{k}"] = n
+                P = np.zeros((n + 1, n + 1))
+                P[:n, :n] = self.Pm
+                P[n, n] = self.conf_p0
+                self.Pm = P
+        f = np.zeros(len(keys))
+        for t, k, d in feats:
+            f[self._pidx[f"{t}:{k}"]] = d
+        Pf = self.Pm @ f
+        S = float(f @ Pf) + self.conf_r
+        K = Pf / S
+        table = {"w": self.w, "m": self.m, "r": self.r}
+        for i, key in enumerate(keys):
+            if K[i] != 0.0:
+                t, k = key.split(":", 1)
+                table[t][k] -= scale * K[i] * err
+        self.Pm = self.Pm - scale * np.outer(K, Pf)
+        self.Pm = 0.5 * (self.Pm + self.Pm.T)
+        for t, k, _ in feats:
+            i = self._pidx[f"{t}:{k}"]
+            self.Pm[i, i] += scale * self.conf_q
+        return err
+
+    @property
+    def P(self):
+        """Неуверенность каждого веса (диагональ P), для разбора."""
+        return {k: float(self.Pm[i, i]) for i, k in enumerate(self.Pkeys)}
+
+    def _learn_plain(self, correct):
         n = self.counts
         P = {k: self.plast.get(k, 1.0) for k in self.inputs}
         top = max(P.values()) if P else 1.0
@@ -282,7 +471,8 @@ class Accumulator:
     def state(self):
         return {"params": {k: getattr(self, k) for k in self.PARAMS},
                 "w": self.w, "m": self.m, "r": self.r, "level": self.level, "reg": self.reg,
-                "counts": self.counts}
+                "counts": self.counts, "Pkeys": self.Pkeys, "Pm": self.Pm.tolist(),
+                "verified": [[c, [[i, j, x] for (i, j), x in q.items()], t] for c, q, t in self.verified]}
 
     @classmethod
     def from_state(cls, brain, state):
@@ -293,4 +483,10 @@ class Accumulator:
         a.reg = int(state.get("reg", 0))
         a.level = int(state["level"])
         a.counts = dict(state["counts"])
+        a.verified = [(dict(c), {(i, j): x for i, j, x in q}, t) for c, q, t in state.get("verified", [])]
+        if "Pkeys" in state:
+            import numpy as np
+            a.Pkeys = list(state["Pkeys"])
+            a._pidx = {k: i for i, k in enumerate(a.Pkeys)}
+            a.Pm = np.array(state["Pm"], dtype=float).reshape(len(a.Pkeys), len(a.Pkeys))
         return a

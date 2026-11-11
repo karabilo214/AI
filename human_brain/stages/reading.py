@@ -158,9 +158,10 @@ def read_name(seed, days=800):
 
 
 def run(p, seed, days=800, control=False, save=False):
-    path = brain_store.path_for(dv.div_name(seed))
+    choice = p.get("choice", "neural")
+    path = brain_store.path_for(dv.div_name(seed, choice=choice))
     if not brain_store.exists(path):
-        dv.run(dict(p, choice="neural"), seed, 3000, save=True)
+        dv.run(dict(p, choice=choice), seed, 3000, save=True)
     b, rng, _ = brain_store.load(path)
     add_senses(b, p)
     alphabet = make_alphabet(seed)

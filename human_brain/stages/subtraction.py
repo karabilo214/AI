@@ -153,7 +153,10 @@ def make_brain(p, seed, hand=False):
         if p.get("inhibit_on", True):
             b.growth.inherit_inhibition = p.get("inh_plasticity", Head.INH_PLASTICITY)
     acc = Accumulator(b, "ACC", EVENTS, decrement=["MORE"], query="GO",
-                      signed=True, neg_neuron="ACC_NEG", register=p.get("register", False))
+                      signed=True, neg_neuron="ACC_NEG", register=p.get("register", False),
+                      confidence=p.get("acc_confidence", False),
+                      conf_q=p.get("acc_conf_q", 0.001),
+                      consistent=p.get("acc_consistent", False))
     Latch(b, inputs=["ASK", "ASK_LEFT"], outputs=["M_BRING", "M_LEFT"], query="GO")
     if hand:
         acc.w["GUEST"], acc.w["CANDY"] = 1.0, -1.0

@@ -17,8 +17,10 @@ DIR = os.environ.get("HB_BRAINS") or os.path.join(HERE, "data", "brains")
 
 
 def path_for(name):
+    """HB_TAG (переменная окружения): своя метка к именам — отдельная цепочка
+    мозгов для проверки, сохранённые без метки не трогаются."""
     os.makedirs(DIR, exist_ok=True)
-    return os.path.join(DIR, name)
+    return os.path.join(DIR, name + os.environ.get("HB_TAG", ""))
 
 
 def save(b, rng, meta, path):

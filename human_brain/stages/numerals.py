@@ -68,9 +68,12 @@ def add_numerals(b):
     acc = b.accumulator
     # выученные веса закреплены: учатся в young_plasticity раз медленнее новых
     # (то же отношение, что у молодых и закреплённых связей мозга)
+    # (при уверенности в весах, acc.confidence, это не нужно: новые веса и так
+    # учатся быстрее закреплённых)
     slow = 1.0 / b.growth.young_plasticity
     for n in acc.inputs:
-        acc.plast[n] = slow
+        if not (acc.confidence or acc.consistent):
+            acc.plast[n] = slow
     dets = [n for n in b.names if n.startswith("L") and n[1:].isdigit()]
     for n in dets:
         if n not in acc.inputs:
