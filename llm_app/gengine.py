@@ -21,7 +21,9 @@ GM = {"q": "attn_q", "k": "attn_k", "v": "attn_v", "o": "attn_output", "gate": "
 
 class GGUFEngine(Engine):
     def __init__(self, name, maxt=2048, resident=None, log=print, vram_reserve=None, extra_vram=0, cpu=True):
-        """cpu: слои вне видеокарты через один считает процессор (из файла модели), пока следующий едет по шине."""
+        """cpu: True — слои вне видеокарты через один считает процессор (из файла модели), пока следующий едет по
+        шине; "hybrid" — такие слои («hyb») при одиночном шаге считает процессор, а при проходе пачкой они
+        подкачиваются по шине и считаются в видеокарте (кэш k, v — в обоих местах, новые строки копируются)."""
         t0 = time.time()
         import os
         if vram_reserve is None:
@@ -55,18 +57,22 @@ class GGUFEngine(Engine):
                 R += 1
         else:
             R = resident
-        self.place = ["gpu"] * R + [("cpu" if cpu and (i - R) % 2 == 1 else "stream") for i in range(R, self.L)]
+        alt = "hyb" if cpu == "hybrid" else "cpu"
+        self.cpu_frac = float(os.environ.get("LLM_CPU_FRAC", "0.44"))  # доля слоёв вне видеокарты на процессоре
+        self.place = ["gpu"] * R + self._spread(self.L - R, alt if cpu else None)
         tot, avail = ram_info()
         log(f"GGUF {name}: {self.L} слоёв, {sum(lb) / GiB:.2f} ГиБ весов слоёв; видеокарта свободно {free / GiB:.1f} ГиБ -> "
-            f"в видеокарте {R}, по шине {self.place.count('stream')}, на процессоре {self.place.count('cpu')}; "
+            f"в видеокарте {R}, по шине {self.place.count('stream')}, на процессоре {self.place.count('cpu')}, "
+            f"гибридных {self.place.count('hyb')}; "
             f"RAM доступно {avail / GiB:.1f} ГиБ")
         arena = Arena(int(0.4 * tot))
-        self.W, self.Kc, self.Vc = [], {}, {}
+        self.W, self.HW, self.Kc, self.Vc = [], {}, {}, {}
         for i in range(self.L):
-            if self.place[i] == "cpu":
+            if self.place[i] in ("cpu", "hyb"):
                 from .gcpu import GCpuLayer
                 self.W.append(GCpuLayer(g, i, self.small[i], self.H, self.KV, self.HD, self.FF, self.eps, maxt))
-                continue
+                if self.place[i] == "cpu":
+                    continue
             ws = {n: repack(*g.raw(f"blk.{i}.{GM[n]}.weight")) for n in GM}
             if self.place[i] == "gpu":
                 self.W.append(ws)
@@ -75,25 +81,26 @@ class GGUFEngine(Engine):
                 for n, w in ws.items():
                     b, lay = _pack(w)
                     pk[n] = (arena.put(b.cpu()), lay)
-                self.W.append(pk)
+                if self.place[i] == "hyb":
+                    self.HW[i] = pk
+                else:
+                    self.W.append(pk)
                 del ws
             self.Kc[i] = torch.zeros(self.KV, maxt, self.HD, device=dev, dtype=torch.float16)
             self.Vc[i] = torch.zeros_like(self.Kc[i])
             torch.cuda.empty_cache()
         self.arena = arena
-        self.stream_ids = [i for i in range(self.L) if self.place[i] == "stream"]
-        self.cpu_ids = [i for i in range(self.L) if self.place[i] == "cpu"]
-        self.all_gpu = not self.stream_ids and not self.cpu_ids
+        self._ids()
         self.inv_np = self.inv.cpu().numpy()
-        if self.cpu_ids:
+        if self.cpu_ids or self.hyb_ids:
             self.hx = torch.empty(16, self.D).pin_memory()
             self.xs = torch.cuda.Stream()
         if not self.all_gpu:
             self.loader = Loader()
             import collections
             self.pending, self.last_rel, self.cslot, self.order, self.phase = collections.deque(), {}, 0, None, None
-            if self.stream_ids:
-                mx = {n: max(self.W[l][n][0].numel() for l in self.stream_ids) for n in GM}
+            if self.stream_ids or self.hyb_ids:
+                mx = {n: max(self._pk(l)[n][0].numel() for l in self.stream_ids + self.hyb_ids) for n in GM}
                 self.cbuf = [{n: torch.empty(mx[n], dtype=torch.uint8, device=dev) for n in GM} for _ in range(2)]
         f = lambda n: torch.zeros(16, n, device=dev)
         H, KV, HD = self.H, self.KV, self.HD
@@ -107,12 +114,28 @@ class GGUFEngine(Engine):
             f"закреплено RAM {arena.pinned / GiB:.2f} ГиБ (обычной {arena.plain / GiB:.2f})")
 
     # ---- подкачка: только сжатые слои ----
+    def _spread(self, n, alt):
+        """n слоёв вне видеокарты: доля cpu_frac — процессору (равномерно вперемешку), остальные — по шине."""
+        out, acc = [], 0.0
+        for _ in range(n):
+            acc += self.cpu_frac if alt else 0.0
+            if acc >= 1.0 - 1e-9:
+                out.append(alt)
+                acc -= 1.0
+            else:
+                out.append("stream")
+        return out
+
+    def _pk(self, l):
+        return self.HW[l] if self.place[l] == "hyb" else self.W[l]
+
     def _request(self, l):
         if l is None:
             return
         s = self.cslot
         self.cslot ^= 1
-        pairs = [(self.W[l][n][0], self.cbuf[s][n][:self.W[l][n][0].numel()]) for n in GM]
+        pk = self._pk(l)
+        pairs = [(pk[n][0], self.cbuf[s][n][:pk[n][0].numel()]) for n in GM]
         import threading
         rel = {"done": threading.Event(), "ev": None}
         job = {"l": l, "kind": "c", "s": s, "pairs": pairs, "wait": self.last_rel.get(("c", s)),
@@ -127,12 +150,57 @@ class GGUFEngine(Engine):
         job["done"].wait()
         torch.cuda.current_stream().wait_event(job["ev"])
         self.cur = job
-        return {n: _unpack(self.cbuf[job["s"]][n], self.W[l][n][1]) for n in GM}
+        pk = self._pk(l)
+        return {n: _unpack(self.cbuf[job["s"]][n], pk[n][1]) for n in GM}
 
     def _set_phase(self, phase):
-        if not self.all_gpu and phase == "prefill":
-            phase = "decode"  # здесь чтение запроса тоже идёт по кругу подкачиваемых слоёв
-        super()._set_phase(phase)
+        """Фазы: "d1" — одиночный шаг (подкачиваются только stream), "dN" — пачка и чтение запроса
+        (подкачиваются stream и hyb). Порядок подкачки — по кругу; при смене фазы начатая подкачка отпускается."""
+        if self.all_gpu:
+            return
+        if phase != "d1":
+            phase = "dN"
+        if not self.hyb_ids:
+            phase = "dN"
+        if self.phase == phase:
+            return
+        while self.pending:
+            job = self.pending.popleft()
+            job["done"].wait()
+            ev = torch.cuda.Event(); ev.record()
+            job["rel"]["ev"] = ev
+            job["rel"]["done"].set()
+        ids = self.stream_ids if phase == "d1" else sorted(self.stream_ids + self.hyb_ids)
+        import itertools
+        self.order = itertools.cycle(ids) if ids else iter(())
+        self.phase = phase
+        self._request(next(self.order, None))
+        self._request(next(self.order, None))
+
+    def _layers(self, x, T, pos0):
+        for l in range(self.L):
+            pl = self.place[l]
+            if pl == "gpu":
+                self._gpu_layer(l, self.W[l], x, T)
+            elif pl == "stream" or (pl == "hyb" and T > 1):
+                self._gpu_layer(l, self._acquire(l), x, T)
+                self._release()
+            else:
+                self._cpu_layer(l, x, pos0)
+                if pl == "hyb":  # строка кэша — в видеокарту (в fp16, как там хранится)
+                    cl = self.W[l]
+                    for C, G in ((cl.K, self.Kc[l]), (cl.V, self.Vc[l])):
+                        r = C[:, pos0:pos0 + T].astype(np.float16)
+                        C[:, pos0:pos0 + T] = r
+                        G[:, pos0:pos0 + T].copy_(torch.from_numpy(r))
+        rmsg_k[(T,)](x, self._norm, self.hb[:T], self.eps, self.D, DP=triton.next_power_of_2(self.D))
+
+    def _hyb_to_cpu(self, p0, n):
+        """После прохода пачкой: новые строки кэша гибридных слоёв — из видеокарты в RAM."""
+        for l in self.hyb_ids:
+            cl = self.W[l]
+            cl.K[:, p0:p0 + n] = self.Kc[l][:, p0:p0 + n].float().cpu().numpy()
+            cl.V[:, p0:p0 + n] = self.Vc[l][:, p0:p0 + n].float().cpu().numpy()
 
     # ---- слой ----
     def _gpu_layer(self, l, W, x, T):
@@ -173,7 +241,7 @@ class GGUFEngine(Engine):
 
     def _decode(self, tokens, pos0):
         T = len(tokens)
-        self._set_phase("decode")
+        self._set_phase("d1" if T == 1 else "dN")
         if self.all_gpu:
             B = next(b for b in BUCKETS if b >= T)
             if B not in self.graphs:
@@ -187,6 +255,8 @@ class GGUFEngine(Engine):
         self.pos.fill_(pos0)
         self._layers(self.xb[:T], T, pos0)
         self._head(T)
+        if T > 1 and self.hyb_ids:
+            self._hyb_to_cpu(pos0, T)
         return T
 
     def _capture(self, B):
@@ -206,7 +276,7 @@ class GGUFEngine(Engine):
     def _prefill(self, tokens, start):
         """Послойно: каждый слой (в т.ч. подкачанный) сразу на весь запрос кусками по 16."""
         n = len(tokens)
-        self._set_phase("decode")
+        self._set_phase("dN")
         X = self._emb(tokens).cuda()
         for l in range(self.L):
             if self.place[l] == "cpu":
@@ -222,11 +292,15 @@ class GGUFEngine(Engine):
                 self._release()
         rmsg_k[(1,)](X[n - 1:n], self._norm, self.hb[:1], self.eps, self.D, DP=triton.next_power_of_2(self.D))
         self._head(1)
+        if self.hyb_ids:
+            self._hyb_to_cpu(start, n)
 
     def _pick(self, T, temperature, top_p, rng):
         lg = self.logits[:T]
         if temperature <= 0:
-            return lg.argmax(-1).tolist()
+            mx, am = lg.max(-1)
+            self.last_conf = (1.0 / (lg - mx[:, None]).exp().sum(-1)).tolist()  # вероятность выбранного слова
+            return am.tolist()
         p = torch.softmax(lg.double() / temperature, -1)
         sp, si = p.sort(-1, descending=True)
         keep = (sp.cumsum(-1) - sp) < top_p
@@ -237,7 +311,117 @@ class GGUFEngine(Engine):
             out.append(int(si[t, (rng or np.random.default_rng()).choice(len(pr), p=pr)]))
         return out
 
+    # ---------------- автоматический контроль видеопамяти ----------------
+    def _layer_gpu_bytes(self, l):
+        from .gkernels import nbytes as nb_
+        if self.place[l] in ("stream", "hyb"):
+            return sum(self._pk(l)[n][0].numel() for n in GM)
+        return sum(self.g.raw(f"blk.{l}.{GM[n]}.weight")[0].size for n in GM) * 1.1 + 2 * self.KV * self.maxt * self.HD * 2
+
+    def _reset_loader(self):
+        if self.all_gpu:
+            return
+        while self.pending:
+            job = self.pending.popleft()
+            job["done"].wait()
+            ev = torch.cuda.Event(); ev.record()
+            job["rel"]["ev"] = ev
+            job["rel"]["done"].set()
+        self.phase = None
+
+    def _ids(self):
+        self.stream_ids = [i for i in range(self.L) if self.place[i] == "stream"]
+        self.cpu_ids = [i for i in range(self.L) if self.place[i] == "cpu"]
+        self.hyb_ids = [i for i in range(self.L) if self.place[i] == "hyb"]
+        self.all_gpu = not self.stream_ids and not self.cpu_ids and not self.hyb_ids
+
+    def _promote(self, l):
+        """Слой l (по шине или на процессоре) — постоянно в видеокарту."""
+        self._reset_loader()
+        torch.cuda.synchronize()
+        if self.place[l] in ("stream", "hyb"):
+            pk = self._pk(l)
+            self.W[l] = {n: _unpack(pk[n][0].to("cuda"), pk[n][1]) for n in GM}
+            self.HW.pop(l, None)
+        else:
+            cl = self.W[l]
+            self.W[l] = {n: repack(*self.g.raw(f"blk.{l}.{GM[n]}.weight")) for n in GM}
+            self.Kc[l] = torch.from_numpy(cl.K).to("cuda", torch.float16)
+            self.Vc[l] = torch.from_numpy(cl.V).to("cuda", torch.float16)
+        self.place[l] = "gpu"
+        self._ids()
+        self.graphs = {}
+
+    def _demote(self, l):
+        """Слой l из видеокарты — на подкачку по шине (при нехватке памяти)."""
+        self._reset_loader()
+        torch.cuda.synchronize()
+        pk = {}
+        for n in GM:
+            b, lay = _pack(self.W[l][n])
+            pk[n] = (self.arena.put(b.cpu()), lay)
+        self.W[l] = pk
+        self.place[l] = "stream"
+        self._ids()
+        self.graphs = {}
+        if not hasattr(self, "loader"):
+            import collections
+            self.loader = Loader()
+            self.pending, self.last_rel, self.cslot, self.order, self.phase = collections.deque(), {}, 0, None, None
+        mx = {n: max(self.W[i][n][0].numel() for i in self.stream_ids) for n in GM}
+        if not hasattr(self, "cbuf") or any(self.cbuf[0][n].numel() < mx[n] for n in GM):
+            self.cbuf = None
+            torch.cuda.empty_cache()
+            self.cbuf = [{n: torch.empty(mx[n], dtype=torch.uint8, device="cuda") for n in GM} for _ in range(2)]
+        torch.cuda.empty_cache()
+
+    def autofit(self, margin=0.35 * GiB, warm=256):
+        """Прогрев (чтение запроса, пачка, шаг), замер настоящего запаса видеопамяти и перенос в видеокарту
+        стольких слоёв, сколько влезает с запасом margin (сначала подкачиваемые, потом процессорные)."""
+        toks = [1000 + (i * 7919) % 50000 for i in range(warm + 20)]
+        self.process(toks[:warm], 0)
+        self.process(toks[warm:warm + 16], warm)
+        self.process(toks[warm + 16:warm + 17], warm + 16)
+        torch.cuda.synchronize()
+        peak = torch.cuda.max_memory_allocated() - torch.cuda.memory_allocated()  # кратковременный пик сверх постоянного
+        moved = 0
+        while True:
+            # переносим из той группы вне видеокарты, которой больше: процессор и шина остаются загружены поровну
+            side = self.cpu_ids or self.hyb_ids
+            nout = len(self.stream_ids) + len(side)
+            if self.stream_ids and (not side or len(side) < self.cpu_frac * nout - 0.5 or len(self.stream_ids) > (1 - self.cpu_frac) * nout):
+                cand = self.stream_ids[0]
+            else:
+                cand = (side or [None])[0]
+            if cand is None:
+                break
+            torch.cuda.empty_cache()
+            free = torch.cuda.mem_get_info()[0]
+            need = self._layer_gpu_bytes(cand)
+            if free - peak - margin < need:
+                break
+            self._promote(cand)
+            moved += 1
+        self.ctx = []
+        free = torch.cuda.mem_get_info()[0]
+        self.log(f"контроль видеопамяти: пик сверх постоянного {peak / GiB:.2f} ГиБ, перенесено в видеокарту слоёв {moved}; "
+                 f"теперь в видеокарте {self.place.count('gpu')}, по шине {len(self.stream_ids)}, на процессоре "
+                 f"{len(self.cpu_ids)}, гибридных {len(self.hyb_ids)}; свободно {free / GiB:.2f} ГиБ")
+
     def process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None):
+        try:
+            return self._process(tokens, pos0, temperature, top_p, rng)
+        except torch.OutOfMemoryError:
+            # нехватка видеопамяти: вытеснить слой(и) на подкачку и повторить
+            gpu = [i for i in range(self.L) if self.place[i] == "gpu"]
+            for l in gpu[-(3 if self.all_gpu else 1):]:
+                self._demote(l)
+            self.log(f"нехватка видеопамяти: слоёв в видеокарте теперь {self.place.count('gpu')}")
+            self.ctx = self.ctx[:pos0]
+            torch.cuda.empty_cache()
+            return self._process(tokens, pos0, temperature, top_p, rng)
+
+    def _process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None):
         if pos0 + len(tokens) > self.maxt:
             raise ValueError(f"текст длиннее {self.maxt} слов")
         self.ctx = self.ctx[:pos0] + list(tokens)

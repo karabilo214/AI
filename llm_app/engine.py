@@ -394,9 +394,15 @@ class Engine:
         return n
 
     # ---------------- генерация ----------------
-    def generate(self, prompt, max_new=256, temperature=0.0, top_p=1.0, seed=None, draft=None, k=7, stats=None):
-        """Слова по одному (генератор). Жадный выбор + draft (другой Engine той же семьи) — угадывание вперёд,
-        текст тот же, что без него. stats (dict) заполняется: prompt_n, prompt_ms, gen_n, gen_ms."""
+    def generate(self, prompt, max_new=256, temperature=0.0, top_p=1.0, seed=None, draft=None, k=None, stats=None,
+                 force=None):
+        """Слова по одному (генератор). Жадный выбор + draft (другой движок той же семьи) — угадывание вперёд,
+        текст тот же, что без него. k — постоянная длина черновика; k=None — по стоимости: черновик продлевается,
+        пока вероятность «все слова угаданы» (произведение уверенностей угадывателя) выше порога
+        thr = 2 * (шаг угадывателя + прирост прохода на слово) / проход, измеряемых на ходу.
+        Выбор «одиночный шаг или проверка черновика» — с гистерезисом и учётом измеренной цены переключения.
+        force(i) -> "step" | "spec" — принудительный режим на шаге i (для проверки, что текст не зависит от
+        истории переключений). stats (dict): prompt_n, prompt_ms, gen_n, gen_ms, passes, drafted, accepted, steps1, switches."""
         rng = np.random.default_rng(seed)
         P = len(prompt)
         c = min(self.common(prompt), P - 1)
@@ -404,20 +410,54 @@ class Engine:
         tok = self.process(prompt[c:], c, temperature, top_p, rng)[-1]
         t1 = time.perf_counter()
         st = stats if stats is not None else {}
-        st.update(prompt_n=P - c, prompt_ms=(t1 - t0) * 1000, gen_n=0, gen_ms=0.0)
+        st.update(prompt_n=P - c, prompt_ms=(t1 - t0) * 1000, gen_n=0, gen_ms=0.0, passes=0, drafted=0, accepted=0)
         gen = [tok]
+        cost = self._cost = getattr(self, "_cost", {"td": None, "pts": []})  # шаг угадывателя, (T, время прохода)
         yield tok
         while len(gen) < max_new and gen[-1] not in self.ck.eos:
             if temperature <= 0 and draft is not None:
                 seq = prompt + gen
-                d = draft.draft(seq, min(k, max_new - len(gen) - 1))
-                res = self.process([gen[-1]] + d, len(seq) - 1)
-                n = 0
-                while n < len(d) and d[n] == res[n]:
-                    n += 1
-                new = d[:n] + [res[n]]
+                kmax = min(k or 15, max_new - len(gen) - 1)
+                thr = None if k else self._draft_thr()
+                ta = time.perf_counter()
+                d = draft.draft(seq, kmax, cum=thr)
+                tb = time.perf_counter()
+                if d:
+                    td = (tb - ta) / len(d)
+                    cost["td"] = td if cost["td"] is None else 0.8 * cost["td"] + 0.2 * td
+                want_step = (force(st["passes"]) == "step") if force else (k is None and d and self._prefer_step(draft, len(d)))
+                if want_step != (cost.get("last") == "step"):
+                    st["switches"] = st.get("switches", 0) + 1
+                cost["last"] = "step" if want_step else "spec"
+                if want_step:
+                    res = self.process([gen[-1]], len(seq) - 1)  # черновику мало веры — дешёвый одиночный шаг
+                    tc = time.perf_counter()
+                    if cost.get("prev") == "spec" and cost.get("c1") is not None:  # первый шаг после смены
+                        cost["sw"] = 0.7 * cost.get("sw", 0.0) + 0.3 * max(0.0, (tc - tb) - cost["c1"])
+                    else:
+                        cost["c1"] = (tc - tb) if cost.get("c1") is None else 0.8 * cost["c1"] + 0.2 * (tc - tb)
+                    new = res[:1]
+                    st["steps1"] = st.get("steps1", 0) + 1
+                else:
+                    res = self.process([gen[-1]] + d, len(seq) - 1)
+                    tc = time.perf_counter()
+                    if cost.get("prev") != "step":  # проход после смены режима в оценку прохода не берём
+                        cost["pts"] = (cost["pts"] + [(len(d) + 1, tc - tb)])[-64:]
+                    n = 0
+                    while n < len(d) and d[n] == res[n]:
+                        n += 1
+                    new = d[:n] + [res[n]]
+                    st["drafted"] += len(d)
+                    st["accepted"] += n
+                    if d:  # поправка уверенности угадывателя: принято / ожидалось
+                        e = self._expect(draft, len(d))
+                        if e > 0.05:
+                            cost["cal"] = min(1.5, max(0.2, 0.85 * cost.get("cal", 1.0) + 0.15 * n / e))
             else:
                 new = self.process([gen[-1]], P + len(gen) - 1, temperature, top_p, rng)
+            st["passes"] += 1
+            if draft is not None and temperature <= 0:
+                cost["prev"] = cost.get("last")
             for t in new:
                 if len(gen) >= max_new or gen[-1] in self.ck.eos:
                     break
@@ -426,13 +466,72 @@ class Engine:
                 st["gen_ms"] = (time.perf_counter() - t1) * 1000
                 yield t
 
+    @staticmethod
+    def _expect(draft, n):
+        """Ожидаемое число принятых слов черновика: сумма произведений уверенностей."""
+        cf = getattr(draft, "draft_confs", None)
+        if not cf:
+            return 0.0
+        e, p = 0.0, 1.0
+        for c in cf[:n]:
+            p *= c
+            e += p
+        return e
+
+    def _prefer_step(self, draft, nd):
+        """Одиночный шаг выгоднее проверки черновика? (по измеренным стоимостям и ожидаемому приёму)."""
+        c = self._cost
+        if not c["pts"] or len(c["pts"]) < 3:
+            return False
+        if c.get("c1") is None:
+            return len(c["pts"]) % 8 == 3  # изредка пробуем шаг, чтобы узнать его стоимость
+        T = np.array([p[0] for p in c["pts"]], float)
+        y = np.array([p[1] for p in c["pts"]], float)
+        if T.std() > 0.5:
+            b, a = np.polyfit(T, y, 1)
+        else:
+            a, b = y.mean(), 0.0
+        cn = a + b * (nd + 1)
+        e = self._expect(draft, nd) * c.get("cal", 1.0)
+        sw = c.get("sw", 0.0)  # цена переключения режима (измеряется: лишнее время первого прохода после смены)
+        spec_rate = (1.0 + e) / max(cn + (sw if c.get("last") == "step" else 0.0), 1e-4)
+        step_rate = 1.0 / max(c["c1"] + (sw if c.get("last") != "step" else 0.0), 1e-4)
+        h = 1.15  # гистерезис: менять режим, только если другой заметно выгоднее
+        if c.get("last") == "step":
+            return not (spec_rate > step_rate * h)
+        return step_rate > spec_rate * h
+
+    def _draft_thr(self):
+        """Порог для произведения уверенностей угадывателя: 2 * (шаг угадывателя + прирост прохода на слово) / проход."""
+        c = getattr(self, "_cost", None)
+        if not c or c["td"] is None or len(c["pts"]) < 4:
+            return 0.05
+        T = np.array([p[0] for p in c["pts"]], float)
+        y = np.array([p[1] for p in c["pts"]], float)
+        if T.std() > 0.5:
+            b, a = np.polyfit(T, y, 1)
+        else:
+            a, b = y.mean(), 0.0
+        a = max(a, 1e-3)
+        return float(min(0.6, max(0.01, 2 * (c["td"] + max(b, 0.0)) / a)))
+
     # ---------------- угадыватель ----------------
-    def draft(self, seq, k):
-        """Этот движок как угадыватель: жадно k слов после seq."""
+    last_conf = None  # уверенность (вероятность выбранного слова) после process, если движок её считает
+
+    def draft(self, seq, k, cum=None):
+        """Этот движок как угадыватель: жадно до k слов после seq; с cum — обрывает, когда произведение
+        уверенностей (вероятность, что все слова черновика угаданы) падает ниже cum."""
         if k <= 0:
             return []
         c = min(self.common(seq), len(seq) - 1)
         out = [self.process(seq[c:], c)[-1]]
+        confs = [self.last_conf[-1] if self.last_conf else 1.0]
+        p = confs[0]
         for i in range(k - 1):
+            if cum is not None and p < cum:
+                break
             out.append(self.process([out[-1]], len(seq) + i)[0])
+            confs.append(self.last_conf[-1] if self.last_conf else 1.0)
+            p *= confs[-1]
+        self.draft_confs = confs
         return out

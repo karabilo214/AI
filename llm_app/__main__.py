@@ -15,7 +15,7 @@ def main():
     ap.add_argument("cmd", choices=["serve", "chat", "plan"])
     ap.add_argument("--model", required=True)
     ap.add_argument("--draft", default=None, help="маленькая модель той же семьи для угадывания вперёд")
-    ap.add_argument("--k", type=int, default=7, help="сколько слов угадывать за раз")
+    ap.add_argument("--k", type=int, default=0, help="сколько слов угадывать за раз (0 — подстраивать на ходу)")
     ap.add_argument("--maxt", type=int, default=2048, help="наибольшая длина текста")
     ap.add_argument("--no-cpu", action="store_true", help="не считать слои на процессоре")
     ap.add_argument("--resident", type=int, default=None, help="сколько слоёв держать в видеокарте (по умолчанию — сколько влезет)")
@@ -44,13 +44,16 @@ def main():
         return
     if gguf:
         from .gengine import GGUFEngine
-        eng = GGUFEngine(a.model, maxt=a.maxt, resident=a.resident, cpu=not a.no_cpu and draft is None)
+        eng = GGUFEngine(a.model, maxt=a.maxt, resident=a.resident,
+                         cpu=False if a.no_cpu else ("hybrid" if draft is not None else True))
+        if a.resident is None:
+            eng.autofit()
         tk = AutoTokenizer.from_pretrained(find_model(a.tokenizer))
     else:
         eng = Engine(a.model, maxt=a.maxt, cpu=not a.no_cpu, resident=a.resident)
         tk = AutoTokenizer.from_pretrained(find_model(a.model))
     from .server import App, serve
-    app = App(eng, tk, os.path.basename(a.model.rstrip("/\\")), draft=draft, k=a.k)
+    app = App(eng, tk, os.path.basename(a.model.rstrip("/\\")), draft=draft, k=a.k or None)
     if a.cmd == "serve":
         serve(app, a.host, a.port)
     else:
