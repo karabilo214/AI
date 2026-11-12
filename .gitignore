@@ -22,3 +22,5 @@ CLAUDE.md
 AGENTS.md
 # отчёты о мозгах (результаты) — только локально
 human_brain/docs/report_*.md
+# данные wikitext (скачиваются) — не в git
+llm_opt/data/
