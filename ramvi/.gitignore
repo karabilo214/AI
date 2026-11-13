@@ -1,0 +1,39 @@
+# Окружения и кэши разработки
+.venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Локальные настройки и секреты
+.env
+.env.*
+!.env.example
+
+# Рабочие данные и модели
+data/
+models/
+cache/
+logs/
+results/
+*.log
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Производные файлы сборки
+build/
+dist/
+*.egg-info/
+*.dll
+*.so
+*.dylib
+node_modules/
+target/

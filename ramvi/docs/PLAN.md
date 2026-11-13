@@ -68,7 +68,7 @@ ramvi/
 
 - [x] 1.1 Создать `ramvi/` и этот план.
 - [x] 1.2 Перенести ТЗ в `ramvi/docs/spec/`, отчёты движка — в `ramvi/docs/reports/`. Проверены целостность ТЗ, хеши источников и все локальные ссылки; сведения о переносе — в `DOCUMENT_MIGRATION.md`.
-- [ ] 1.3 Каркас: `README.md`, `LICENSE` (MIT), `pyproject.toml` (ruff, mypy, pytest), `.gitignore` продукта, `docs/adr/ADR-0001-structure.md`.
+- [x] 1.3 Каркас: `README.md`, `LICENSE` (MIT), `pyproject.toml` (ruff, mypy, pytest), `.gitignore` продукта, `docs/adr/ADR-0001-structure.md`. Проверены установка группы dev, lint, формат, mypy strict и pytest без GPU.
 - [ ] 1.4 Перенести ядро `llm_app` → `ramvi/engine/ramvi_engine/` по подпакетам целевой структуры через `git mv` (история файлов сохраняется). Импорты — абсолютные (`ramvi_engine.core…`).
 - [ ] 1.5 Разделить `server.py` (774 строки) на `server/app.py`, `routes_openai.py`, `routes_anthropic.py`, `routes_ollama.py`, `validation.py`, `streaming.py` без изменения поведения.
 - [ ] 1.6 Проверки `check_*` → `engine/tools/checks/`, замеры `bench_*`, `compare_bench` → `engine/tools/bench/`; общий запуск с параметрами вместо копий скриптов.
