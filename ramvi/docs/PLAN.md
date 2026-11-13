@@ -69,12 +69,12 @@ ramvi/
 - [x] 1.1 Создать `ramvi/` и этот план.
 - [x] 1.2 Перенести ТЗ в `ramvi/docs/spec/`, отчёты движка — в `ramvi/docs/reports/`. Проверены целостность ТЗ, хеши источников и все локальные ссылки; сведения о переносе — в `DOCUMENT_MIGRATION.md`.
 - [x] 1.3 Каркас: `README.md`, `LICENSE` (MIT), `pyproject.toml` (ruff, mypy, pytest), `.gitignore` продукта, `docs/adr/ADR-0001-structure.md`. Проверены установка группы dev, lint, формат, mypy strict и pytest без GPU.
-- [ ] 1.4 Перенести ядро `llm_app` → `ramvi/engine/ramvi_engine/` по подпакетам целевой структуры через `git mv` (история файлов сохраняется). Импорты — абсолютные (`ramvi_engine.core…`). (Перенос выполнен, локальная совместимость проверена; приёмка ожидает Windows/fp32/WIDE30 по 1.9. [Описание](architecture/ENGINE_MIGRATION.md).)
+- [x] 1.4 Перенести ядро `llm_app` → `ramvi/engine/ramvi_engine/` по подпакетам целевой структуры через `git mv` (история файлов сохраняется). Импорты — абсолютные (`ramvi_engine.core…`). Пройдены Mac/Windows-тесты, два fp32 selftest и WIDE30 × 4 до/после: тексты 30/30, общая скорость −0,25%. [Описание](architecture/ENGINE_MIGRATION.md), [измеренная приёмка](reports/WIDE30_MIGRATION_COMPARISON.md).
 - [ ] 1.5 Разделить `server.py` (774 строки) на `server/app.py`, `routes_openai.py`, `routes_anthropic.py`, `routes_ollama.py`, `validation.py`, `streaming.py` без изменения поведения.
 - [ ] 1.6 Проверки `check_*` → `engine/tools/checks/`, замеры `bench_*`, `compare_bench` → `engine/tools/bench/`; общий запуск с параметрами вместо копий скриптов.
 - [ ] 1.7 Убрать из продукта разовые скрипты (`ask5`, `test_php`, `run_*_windows`, `report_wide_current`, `api_test` → либо в tools с параметрами, либо в архив вне `ramvi/`).
 - [ ] 1.8 Пути по умолчанию: кэш автонастройки и рабочие файлы — в папку данных приложения (настраивается), а не в `~/.cache/llm_app`; переменные окружения переименовать в `RAMVI_*` с поддержкой старых имён на переходный период.
-- [ ] 1.9 Экзамен после переноса. Проверка: все модульные тесты на Mac и Windows; `selftest` (текст = эталон fp32); 30 запросов `bench_wide` qwen3:14b + угадыватель — тексты совпадают с прогоном до переноса 30/30, скорость в пределах шума.
+- [ ] 1.9 Экзамен после переноса. Проверка: все модульные тесты на Mac и Windows; `selftest` (текст = эталон fp32); 30 запросов `bench_wide` qwen3:14b + угадыватель — тексты совпадают с прогоном до переноса 30/30, скорость в пределах шума. (Текущий [экзамен 1.4](reports/WIDE30_MIGRATION_COMPARISON.md) принимает только перенос ядра; после 1.5–1.8 требуется повтор.)
 - [x] 1.10 CI: lint + модульные тесты на каждый коммит (GitHub Actions, без GPU). Реализован независимо от GPU-приёмки по разрешению владельца. Linux/Windows: лёгкие проверки и установка wheel; Linux CPU: 48 проверок пакета и 89 прежних тестов. [Состав и подтверждённый запуск](architecture/CI.md).
 - [ ] 1.11 Удалить `llm_app/` после успешного 1.9; в README MyAI — ссылка на `ramvi/`.
 

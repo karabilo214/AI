@@ -43,6 +43,6 @@ python -m unittest discover -s llm_app/tests -t .
 python -m pytest -c ramvi/pyproject.toml ramvi/tests ramvi/engine/tests
 ```
 
-Локальные проверки не заменяют Windows/CUDA-экзамен и полный WIDE30 из пункта 1.9. Перенос не считается доказательством сохранения скорости на GPU.
+Windows/CUDA-проверка переноса выполнена: четыре полных ряда WIDE30, тексты совпали на 30/30 вопросах, общая скорость изменилась на −0,25%. [Полный отчёт](../docs/reports/WIDE30_MIGRATION_COMPARISON.md) содержит условия, повторы и сравнение с сохранённой Ollama. После последующих изменений по плану экзамен 1.9 повторяется.
 
 [План](../docs/PLAN.md) · [Карта переноса](../docs/architecture/ENGINE_MIGRATION.md) · [Лицензия](LICENSE).
