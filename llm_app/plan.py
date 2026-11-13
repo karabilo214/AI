@@ -28,7 +28,7 @@ def ram_info():
     return tot, tot // 2
 
 
-def make_plan(ck, maxt, draft_bytes=0, cpu=True, vram_reserve=0.8 * GiB, force_resident=None, log=print):
+def make_plan(ck, maxt, draft_bytes=0, cpu=True, vram_reserve=0.8 * GiB, force_resident=None, log=print, layer_costs=None):
     L = ck.L
     if force_resident is not None and (not isinstance(force_resident, int) or not 0 <= force_resident <= L):
         raise ValueError("resident вне диапазона слоёв")
@@ -50,6 +50,10 @@ def make_plan(ck, maxt, draft_bytes=0, cpu=True, vram_reserve=0.8 * GiB, force_r
     place = ["gpu"] * R
     for i in range(R, L):
         place.append("cpu" if (cpu and (i - R) % 2 == 1) else "stream")
+    if layer_costs is not None:
+        costs = layer_costs if cpu else [{k:v for k,v in row.items() if k != "cpu_s"} for row in layer_costs]
+        place, predicted, baseline = measured_schedule(costs, place)
+        log(f"измеренный план: оценка {predicted:.6f} с, исходная {baseline:.6f} с (модель перекрытия DMA)")
     tot_ram, avail = ram_info()
     need = place.count("stream") * c12 + place.count("cpu") * b16
     plan = {"place": place, "R": R, "vram_free": free, "ram_avail": avail, "ram_need": need,
@@ -89,3 +93,65 @@ def plan_gguf(name, maxt=2048, cpu=True, force_resident=None, log=print):
     if arch == "qwen3moe" and not cpu and R < L:
         raise NotImplementedError("подкачка MoE без CPU не поддерживается")
     return plan
+
+
+def measured_schedule(layers, initial, hysteresis=0.05):
+    """Выбор CPU/подкачки по временам, с моделью двух буферов DMA.
+
+    GPU-резидентность остаётся ограничением плана памяти. Для остальных слоёв
+    ищем улучшения от трёх начальных раскладок; глобальный оптимум не обещается.
+    layers[i]: доступные cpu_s, gpu_s, copy_s (секунды). Нет замера — нет выбора.
+    """
+    import math
+    if not 0 <= hysteresis < 1:
+        raise ValueError('гистерезис вне 0..1')
+    if any(mode not in ('gpu','cpu','stream') for mode in initial):
+        raise ValueError('неизвестный режим слоя')
+    if len(layers) != len(initial):
+        raise ValueError('не совпадает число слоёв')
+    for row in layers:
+        if any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or v <= 0
+               for v in row.values()):
+            raise ValueError('времена слоёв должны быть конечными положительными числами')
+    allowed=[]
+    for row,mode in zip(layers,initial):
+        if mode == 'gpu': allowed.append(['gpu'])
+        else:
+            choices=[]
+            if 'cpu_s' in row: choices.append('cpu')
+            if 'gpu_s' in row and 'copy_s' in row: choices.append('stream')
+            allowed.append(choices or [mode])
+    def score(route):
+        stream=[i for i,m in enumerate(route) if m=='stream']
+        ready={};dma=0.;clock=0.;head=0
+        def upload(i,release):
+            nonlocal dma
+            dma=max(dma,release)+layers[i].get('copy_s',0.)
+            ready[i]=dma
+        for i in stream[:2]:upload(i,0.)
+        for i,mode in enumerate(route):
+            if mode=='stream':
+                clock=max(clock,ready[i])+layers[i].get('gpu_s',0.)
+                if head+2<len(stream):upload(stream[head+2],clock)
+                head+=1
+            else:clock+=layers[i].get('gpu_s' if mode=='gpu' else 'cpu_s',0.)
+        return clock
+    # Отсутствующая цена исходного режима делает сравнение недоказанным.
+    for row,mode in zip(layers,initial):
+        required=('gpu_s',) if mode=='gpu' else ('cpu_s',) if mode=='cpu' else ('gpu_s','copy_s')
+        if any(k not in row for k in required):raise ValueError('нет измерения исходного режима')
+    starts=[list(initial),[a[0] for a in allowed],[a[-1] for a in allowed]]
+    best=list(initial);base=best_s=score(best)
+    for route in starts:
+        current=score(route)
+        for _ in range(len(route)):
+            winner=None;candidate_s=current
+            for i,choices in enumerate(allowed):
+                for mode in choices:
+                    if route[i]==mode:continue
+                    test=route.copy();test[i]=mode;s=score(test)
+                    if s<candidate_s: candidate_s=s;winner=test
+            if winner is None:break
+            route,current=winner,candidate_s
+        if current<best_s:best,best_s=route,current
+    return (best,best_s,base) if best_s<base*(1-hysteresis) else (list(initial),base,base)

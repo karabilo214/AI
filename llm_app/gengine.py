@@ -115,6 +115,13 @@ class GGUFEngine(Engine):
         self.gub, self.mb, self.logits = f(2 * self.FF), f(self.FF), f(self.V)
         self.pos = torch.zeros(1, dtype=torch.long, device=dev)
         self.graphs, self.ctx = {}, []
+        profile_path = os.environ.get("LLM_LAYER_PROFILE")
+        if profile_path:
+            if resident is None:
+                raise ValueError("LLM_LAYER_PROFILE требует явного resident; профиль применяют после autofit через configure_placement")
+            import json
+            with open(profile_path, encoding="utf-8") as handle:
+                self.configure_placement(json.load(handle))
         self.load_s = time.time() - t0
         log(f"загружено за {self.load_s:.0f} с: видеокарта {torch.cuda.memory_allocated() / GiB:.2f} ГиБ, "
             f"закреплено RAM {arena.pinned / GiB:.2f} ГиБ (обычной {arena.plain / GiB:.2f})")
@@ -164,10 +171,16 @@ class GGUFEngine(Engine):
         (подкачиваются stream и hyb). Порядок подкачки — по кругу; при смене фазы начатая подкачка отпускается."""
         if self.all_gpu:
             return
-        if phase != "d1":
-            phase = "dN"
-        if not self.hyb_ids:
-            phase = "dN"
+        routes = getattr(self, "_active_routes", None)
+        if routes is not None:
+            ids = [l for l, mode in enumerate(routes) if mode == "stream"]
+            phase = ("measured", tuple(ids))
+        else:
+            if phase != "d1":
+                phase = "dN"
+            if not self.hyb_ids:
+                phase = "dN"
+            ids = self.stream_ids if phase == "d1" else sorted(self.stream_ids + self.hyb_ids)
         if self.phase == phase:
             return
         while self.pending:
@@ -176,7 +189,6 @@ class GGUFEngine(Engine):
             ev = torch.cuda.Event(); ev.record()
             job["rel"]["ev"] = ev
             job["rel"]["done"].set()
-        ids = self.stream_ids if phase == "d1" else sorted(self.stream_ids + self.hyb_ids)
         import itertools
         self.order = itertools.cycle(ids) if ids else iter(())
         self.phase = phase
@@ -186,9 +198,11 @@ class GGUFEngine(Engine):
     def _layers(self, x, T, pos0):
         for l in range(self.L):
             pl = self.place[l]
-            if pl == "gpu":
+            routes = getattr(self, "_active_routes", None)
+            mode = routes[l] if routes is not None else ("stream" if pl == "hyb" and T > 1 else "cpu" if pl == "hyb" else pl)
+            if mode == "gpu":
                 self._gpu_layer(l, self.W[l], x, T)
-            elif pl == "stream" or (pl == "hyb" and T > 1):
+            elif mode == "stream":
                 self._gpu_layer(l, self._acquire(l), x, T)
                 self._release()
             else:
@@ -247,6 +261,8 @@ class GGUFEngine(Engine):
 
     def _decode(self, tokens, pos0):
         T = len(tokens)
+        self._active_routes = (getattr(self, "_measured_routes", {}).get(T)
+                               if pos0 // 256 == getattr(self, "_measured_context_bucket", 0) else None)
         self._set_phase("d1" if T == 1 else "dN")
         if self.all_gpu:
             B = T  # граф обрабатывает только реальные строки, без записи KV за конец контекста
@@ -261,7 +277,7 @@ class GGUFEngine(Engine):
         self.pos.fill_(pos0)
         self._layers(self.xb[:T], T, pos0)
         self._head(T)
-        if T > 1 and self.hyb_ids:
+        if self.hyb_ids and (T > 1 or self._active_routes is not None):
             self._hyb_to_cpu(pos0, T)
         return T
 
@@ -298,6 +314,7 @@ class GGUFEngine(Engine):
 
     def _prefill(self, tokens, start):
         """Послойно: каждый слой (в т.ч. подкачанный) сразу на весь запрос кусками по 16."""
+        self._active_routes = None
         n = len(tokens)
         self._set_phase("dN")
         X = self._emb(tokens).cuda()
@@ -380,6 +397,8 @@ class GGUFEngine(Engine):
         self.HW.pop(l, None)
         self.place[l] = "gpu"
         self._ids()
+        self._measured_routes = {}
+        self._active_routes = None
         self.graphs = {}
 
     def _demote(self, l):
@@ -394,6 +413,8 @@ class GGUFEngine(Engine):
         self.W[l] = pk
         self.place[l] = "stream"
         self._ids()
+        self._measured_routes = {}
+        self._active_routes = None
         self.graphs = {}
         self.phase = None
         torch.cuda.empty_cache()
@@ -407,6 +428,16 @@ class GGUFEngine(Engine):
             torch.cuda.empty_cache()
             self.cbuf = [{n: torch.empty(mx[n], dtype=torch.uint8, device="cuda") for n in GM} for _ in range(2)]
         torch.cuda.empty_cache()
+
+    def calibrate_placement(self, batches=(1, 4, 16), repeats=3):
+        """Явный прогрев альтернатив CPU/GPU/DMA, без работы параллельно с запросами."""
+        from .measured_plan import calibrate
+        return calibrate(self, batches, repeats)
+
+    def configure_placement(self, profile):
+        """Включить маршруты по измерениям; GPU-резидентность задаёт план памяти."""
+        from .measured_plan import configure
+        configure(self, profile)
 
     def autofit(self, margin=0.35 * GiB, warm=256):
         """Прогрев (чтение запроса, пачка, шаг), замер настоящего запаса видеопамяти и перенос в видеокарту
