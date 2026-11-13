@@ -269,6 +269,71 @@ EXPORT int moe_ffn(const uint8_t* G, const uint8_t* U, const uint8_t* Dn, int tg
         if (ty != 0 && ty != 1) return -1;
     }
     const int NP = T * k;
+    // Одиночный decode: без сортировки экспертов, групп и цикла токенов.
+    // Порядок FMA/hsum оставлен тем же, что у общего пути.
+    bool unique = true;
+    if (T == 1) {
+        int active = 0;
+        for (int i = 0; i < k && unique; ++i) {
+            if (wts[i] == 0.f) continue;
+            ++active;
+            for (int j = 0; j < i; ++j)
+                if (wts[j] != 0.f && ids[i] == ids[j]) { unique = false; break; }
+        }
+        if (active == 0) { memset(Z, 0, (size_t)k * D * sizeof(float)); return 0; }
+    }
+    if (T == 1 && unique) {
+        const int RC = 32;
+        const int fc = (F + RC - 1) / RC, dc = (D + RC - 1) / RC;
+        const int bg = bsize(tg), bu = bsize(tu), bd = bsize(td);
+        P().run(k * fc, 1, [&](int a, int b) {
+            alignas(64) float wg[256], wu[256];
+            for (int it = a; it < b; ++it) {
+                const int p = it / fc, r0 = (it % fc) * RC;
+                if (wts[p] == 0.f) continue;
+                const int e = ids[p];
+                for (int r = r0; r < std::min(r0 + RC, F); ++r) {
+                    const uint8_t* rg = G + ((size_t)e * F + r) * (D / 256) * bg;
+                    const uint8_t* ru = U + ((size_t)e * F + r) * (D / 256) * bu;
+                    float ag = 0.f, au = 0.f;
+                    for (int bk = 0; bk < D / 256; ++bk) {
+                        decode_any(tg, rg + (size_t)bk * bg, wg);
+                        decode_any(tu, ru + (size_t)bk * bu, wu);
+                        const float* x = X + bk * 256;
+                        __m512 sg = _mm512_setzero_ps(), su = _mm512_setzero_ps();
+                        for (int i = 0; i < 256; i += 16) {
+                            __m512 xv = _mm512_loadu_ps(x + i);
+                            sg = _mm512_fmadd_ps(_mm512_loadu_ps(wg + i), xv, sg);
+                            su = _mm512_fmadd_ps(_mm512_loadu_ps(wu + i), xv, su);
+                        }
+                        ag += hsum(sg); au += hsum(su);
+                    }
+                    H[(size_t)p * F + r] = ag / (1.f + expf(-ag)) * au;
+                }
+            }
+        });
+        P().run(k * dc, 1, [&](int a, int b) {
+            alignas(64) float wd[256];
+            for (int it = a; it < b; ++it) {
+                const int p = it / dc, r0 = (it % dc) * RC;
+                for (int r = r0; r < std::min(r0 + RC, D); ++r) {
+                    if (wts[p] == 0.f) { Z[(size_t)p * D + r] = 0.f; continue; }
+                    const uint8_t* rd = Dn + ((size_t)ids[p] * D + r) * (F / 256) * bd;
+                    float ad = 0.f;
+                    for (int bk = 0; bk < F / 256; ++bk) {
+                        decode_any(td, rd + (size_t)bk * bd, wd);
+                        const float* h = H + (size_t)p * F + bk * 256;
+                        __m512 sum = _mm512_setzero_ps();
+                        for (int i = 0; i < 256; i += 16)
+                            sum = _mm512_fmadd_ps(_mm512_loadu_ps(wd + i), _mm512_loadu_ps(h + i), sum);
+                        ad += hsum(sum);
+                    }
+                    Z[(size_t)p * D + r] = wts[p] * ad;
+                }
+            }
+        });
+        return 0;
+    }
     // группы: эксперт -> список пар
     // пары с весом 0 (их эксперт считает видеокарта) пропускаем, их вклад — ноль
     std::vector<int> order;

@@ -282,7 +282,7 @@ class Engine:
         self._request(next(self.order, None))
 
     def _set_phase(self, phase):
-        if self.all_gpu or self.phase == phase:
+        if self.all_gpu or (self.phase == phase and phase != "prefill"):
             return
         while self.pending:  # дождаться и отпустить начатую подкачку прошлой фазы
             job = self.pending.popleft()
@@ -418,6 +418,8 @@ class Engine:
 
     def _prefill(self, tokens, start):
         """Слова tokens на позициях start.. (послойно, кусками по 16); возвращает выход последнего слова в hb[:1]."""
+        from .prefill import enabled, layer
+        blocked = enabled(len(tokens))
         n = len(tokens)
         self._set_phase("prefill")
         X = self._emb(tokens).cuda()
@@ -432,16 +434,21 @@ class Engine:
                     self.Vs[:, :start].copy_(torch.from_numpy(cl.V[:, :start]))
             else:
                 W = self.W[l] if pl == "gpu" else self._acquire(l)
-            for c in range(0, n, 16):
-                T = min(16, n - c)
-                xc = X[c:c + T]
-                self.pos.fill_(start + c)
-                if pl == "cpu":
-                    self._batch_layer(l, xc, T, W, self.Ks, self.Vs, gemv)
-                elif T == 1:
-                    self._gpu_layer(l, W, xc, 1)
-                else:
-                    self._batch_layer(l, xc, T, W, self.Kc[l], self.Vc[l], gemvc_tc)
+            if blocked:
+                layer(self, l, W, X, start,
+                      self.Ks if pl == "cpu" else self.Kc[l],
+                      self.Vs if pl == "cpu" else self.Vc[l])
+            else:
+                for c in range(0, n, 16):
+                    T = min(16, n - c)
+                    xc = X[c:c + T]
+                    self.pos.fill_(start + c)
+                    if pl == "cpu":
+                        self._batch_layer(l, xc, T, W, self.Ks, self.Vs, gemv)
+                    elif T == 1:
+                        self._gpu_layer(l, W, xc, 1)
+                    else:
+                        self._batch_layer(l, xc, T, W, self.Kc[l], self.Vc[l], gemvc_tc)
             if pl == "cpu":
                 cl.K[:, start:start + n] = self.Ks[:, start:start + n].cpu().numpy()
                 cl.V[:, start:start + n] = self.Vs[:, start:start + n].cpu().numpy()
@@ -505,10 +512,14 @@ class Engine:
         текст тот же, что без него. k — постоянная длина черновика; k=None — по стоимости: черновик продлевается,
         пока вероятность «все слова угаданы» (произведение уверенностей угадывателя) выше порога
         thr = 2 * (шаг угадывателя + прирост прохода на слово) / проход, измеряемых на ходу.
-        Выбор «одиночный шаг или проверка черновика» — с гистерезисом и учётом измеренной цены переключения.
+        По умолчанию режим выбирается прежней политикой после черновика.
+        LLM_DRAFT_GATE=1 включает экспериментальный выбор до запуска угадывателя
+        по прошлым принятиям, с периодическими проверенными пробами.
         force(i) -> "step" | "spec" — принудительный режим на шаге i (для проверки, что текст не зависит от
         истории переключений). cons — ограничение грамматикой (constrain.Constraint; только движок GGUF).
         stats (dict): prompt_n, prompt_ms, gen_n, gen_ms, passes, drafted, accepted, steps1, switches."""
+        import os
+        gate_enabled = os.environ.get("LLM_DRAFT_GATE", "0") == "1"
         if k is not None and (not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= 15):
             raise ValueError("k должно быть целым от 1 до 15 (None — адаптивно)")
         if not isinstance(max_new, int) or isinstance(max_new, bool) or max_new < 0:
@@ -539,7 +550,8 @@ class Engine:
         t1 = time.perf_counter()
         st = stats if stats is not None else {}
         st.update(prompt_n=P - c, prompt_ms=(t1 - t0) * 1000, first_token_ms=(t1 - t0) * 1000,
-                  gen_n=1, decode_n=0, gen_ms=0.0, passes=0, drafted=0, accepted=0)
+                  gen_n=1, decode_n=0, gen_ms=0.0, passes=0, drafted=0, accepted=0,
+                  draft_calls=0, draft_skips=0, draft_probes=0, draft_ms=0.0, verify_ms=0.0, step_ms=0.0)
         gen = [tok]
         cost = self._cost = getattr(self, "_cost", {"td": None, "pts": []})  # шаг угадывателя, (T, время прохода)
         yield tok
@@ -549,14 +561,39 @@ class Engine:
                 seq = prompt + gen
                 kmax = min(k or 15, 15, max_new - len(gen) - 1, self.maxt - len(seq),
                            max(0, draft.maxt - len(seq)))
-                thr = None if k else self._draft_thr()
+                # O02 включается явно: предварительный выбор и проверенные пробы.
+                # Обычная политика выбирает режим ниже, после черновика.
+                if force:
+                    mode = force(st["passes"])
+                    if mode not in ("step", "spec"):
+                        raise ValueError("force должен вернуть step или spec")
+                elif not gate_enabled:
+                    mode = "legacy"
+                elif k is not None:
+                    mode = "spec"
+                else:
+                    mode = self._draft_plan(st["passes"], kmax, draft)
+                if kmax <= 0 and mode != "legacy":
+                    mode = "step"
                 ta = time.perf_counter()
-                d = draft.draft(seq, kmax, cum=thr) if kmax > 0 else []
+                if mode != "step" and kmax > 0:
+                    thr = None if k else self._draft_thr()
+                    d = draft.draft(seq, kmax, cum=thr)
+                    st["draft_calls"] += 1
+                    st["draft_probes"] += int(mode == "probe")
+                else:
+                    d = []
+                    st["draft_skips"] += 1
                 tb = time.perf_counter()
+                draft_s = tb - ta if mode != "step" and kmax > 0 else 0.0
+                st["draft_ms"] += draft_s * 1000
                 if d:
-                    td = (tb - ta) / len(d)
+                    td = draft_s / len(d)
                     cost["td"] = td if cost["td"] is None else 0.8 * cost["td"] + 0.2 * td
-                want_step = (force(st["passes"]) == "step") if force else (k is None and d and self._prefer_step(draft, len(d)))
+                if mode == "legacy":
+                    want_step = k is None and d and self._prefer_step(draft, len(d))
+                else:
+                    want_step = mode == "step" or not d
                 if want_step != (cost.get("last") == "step"):
                     st["switches"] = st.get("switches", 0) + 1
                 cost["last"] = "step" if want_step else "spec"
@@ -572,6 +609,9 @@ class Engine:
                         cost["c1"] = (tc - tb) if cost.get("c1") is None else 0.8 * cost["c1"] + 0.2 * (tc - tb)
                     new = res[:1]
                     st["steps1"] = st.get("steps1", 0) + 1
+                    st["step_ms"] += (tc - tb) * 1000
+                    if gate_enabled:
+                        cost["gate_steps"] = cost.get("gate_steps", 0) + 1
                 else:
                     bm, adv = mk(d)
                     res = self.process([gen[-1]] + d, len(seq) - 1, **({"mask": bm} if cons else {}))
@@ -582,6 +622,21 @@ class Engine:
                     while n < len(d) and d[n] == res[n]:
                         n += 1
                     new = d[:n] + [res[n]]
+                    st["verify_ms"] += (tc - tb) * 1000
+                    if gate_enabled:
+                        cost["gate_steps"] = 0
+                    # Не учим оценку скорости по хвосту после EOS, который не выдаётся.
+                    if gate_enabled and not any(t in self.ck.eos for t in new):
+                        duration = draft_s + tc - tb
+                        if st["passes"] == 0:
+                            # Новый запрос может иметь совсем другой характер.
+                            # Первая проверенная проба заменяет старую оценку,
+                            # сохраняя уже измеренную цену одиночного шага.
+                            cost.pop("gate_yield", None)
+                            cost.pop("gate_s", None)
+                        cost["gate_yield"] = 0.5 * cost.get("gate_yield", n + 1) + 0.5 * (n + 1)
+                        cost["gate_s"] = 0.5 * cost.get("gate_s", duration) + 0.5 * duration
+                        cost["gate_samples"] = cost.get("gate_samples", 0) + 1
                     if cons:
                         cons.commit(adv, n, res[n])
                     st["drafted"] += len(d)
@@ -606,6 +661,45 @@ class Engine:
                 st["gen_n"] = len(gen)
                 st["decode_n"] = len(gen) - 1
                 yield t
+
+    DRAFT_PROBE_INTERVAL = 8
+
+    def _draft_plan(self, pass_index, kmax, draft):
+        """Решение без запуска draft: реальная отдача прошлых проверок / полная цена.
+
+        В режиме step через DRAFT_PROBE_INTERVAL шагов выполняется проверяемая
+        контрольная попытка. Первый проход нового запроса также обновляет статистику.
+        Фиксированный k и force обходят эту политику.
+        """
+        if kmax <= 0:
+            return "step"
+        c = self._cost
+        key = (id(draft), tuple(getattr(self, "place", ())))
+        if c.get("gate_key") != key:
+            for name in ("gate_yield", "gate_s", "gate_samples", "gate_steps"):
+                c.pop(name, None)
+            c["gate_key"] = key
+        if pass_index == 0:
+            return "probe"
+        if c.get("gate_samples", 0) < 3:
+            return "spec"
+        if c.get("c1") is None:
+            return "step"  # измерить настоящий одиночный шаг, не оплачивая draft
+        last_step = c.get("last") == "step"
+        if last_step and c.get("gate_steps", 0) >= self.DRAFT_PROBE_INTERVAL:
+            return "probe"
+        switching = c.get("sw", 0.0)
+        spec_s = c["gate_s"] + (switching if last_step else 0.0)
+        step_s = c["c1"] + (switching if not last_step else 0.0)
+        spec_rate = c["gate_yield"] / max(spec_s, 1e-6)
+        # CPU-режим оплачивает и периодические проверенные пробы. Сравнение
+        # с идеальным CPU без проб давало ложные переключения и регрессию.
+        interval = self.DRAFT_PROBE_INTERVAL
+        step_rate = (interval + c["gate_yield"]) / max(
+            interval * step_s + c["gate_s"] + 2 * switching, 1e-6)
+        if last_step:
+            return "spec" if spec_rate > step_rate * 1.15 else "step"
+        return "step" if step_rate > spec_rate * 1.15 else "spec"
 
     @staticmethod
     def _expect(draft, n):

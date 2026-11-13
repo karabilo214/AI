@@ -314,6 +314,8 @@ class GGUFEngine(Engine):
 
     def _prefill(self, tokens, start):
         """Послойно: каждый слой (в т.ч. подкачанный) сразу на весь запрос кусками по 16."""
+        from .prefill import enabled, layer
+        blocked = enabled(len(tokens))
         self._active_routes = None
         n = len(tokens)
         self._set_phase("dN")
@@ -324,10 +326,13 @@ class GGUFEngine(Engine):
                     self._cpu_layer(l, X[c:c + 16], start + c)
                 continue
             W = self.W[l] if self.place[l] == "gpu" else self._acquire(l)
-            for c in range(0, n, 16):
-                T = min(16, n - c)
-                self.pos.fill_(start + c)
-                self._batch_layer(l, X[c:c + T], T, W, self.Kc[l], self.Vc[l], None)
+            if blocked:
+                layer(self, l, W, X, start, self.Kc[l], self.Vc[l], gguf=True)
+            else:
+                for c in range(0, n, 16):
+                    T = min(16, n - c)
+                    self.pos.fill_(start + c)
+                    self._batch_layer(l, X[c:c + T], T, W, self.Kc[l], self.Vc[l], None)
             if self.place[l] != "gpu":
                 self._release()
         rmsg_k[(1,)](X[n - 1:n], self._norm, self.hb[:1], self.eps, self.D, DP=triton.next_power_of_2(self.D))
