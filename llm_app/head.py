@@ -1,9 +1,8 @@
 """Выбор следующего слова, точный как у полного fp32-словаря, без bf16-словаря в видеокарте.
 
-1) Видеокарта: грубые оценки по int8-копии словаря + строгая граница ошибки (vocab8.vocab_a_k) -> для каждой
+1) Видеокарта: грубые оценки по int8-копии словаря + консервативная оценка ошибки (vocab8.vocab_a_k) -> для каждой
    строки верх оценки HI[v] и лучший низ LO.
-2) Кандидаты: HI[v] >= LO - delta (delta = 0 для жадного выбора; 20*температура для случайного — слова вне
-   кандидатов имеют вероятность < e^-20 от лучшего).
+2) Для greedy кандидаты HI[v] >= LO; при sampling пересчитывается полный словарь.
 3) Процессор: точные логиты кандидатов по bf16-строкам словаря (в RAM), счёт fp32.
 """
 import math
@@ -62,7 +61,9 @@ class Head:
         if run_bounds:
             self.bounds(h, T)
         delta = 0.0 if temperature <= 0 else 20.0 * temperature
-        mask = self.HI[:T] >= (self.LO[:T, None] - delta)
+        # Sampling использует весь словарь: отсечение по delta меняет распределение.
+        mask = (torch.ones_like(self.HI[:T], dtype=torch.bool) if temperature > 0
+                else self.HI[:T] >= self.LO[:T, None])
         rows, toks = mask.nonzero(as_tuple=True)
         rows, toks = rows.cpu().numpy(), toks.cpu().numpy()
         H = h[:T].float().cpu().numpy()

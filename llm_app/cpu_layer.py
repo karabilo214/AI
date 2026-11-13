@@ -18,6 +18,15 @@ def _u32_as_f32(typingctx, x):
     return sig, codegen
 
 
+@intrinsic
+def _round_f16(typingctx, x):
+    from llvmlite import ir
+    sig = types.float32(types.float32)
+    def codegen(context, builder, signature, args):
+        return builder.fpext(builder.fptrunc(args[0], ir.HalfType()), ir.FloatType())
+    return sig, codegen
+
+
 @nb.njit(inline="always")
 def bf(u):
     return _u32_as_f32(np.uint32(u) << np.uint32(16))
@@ -52,7 +61,7 @@ def rms_rows(X, w, out, eps):
 
 
 @nb.njit(parallel=True, fastmath=False, cache=True, nogil=True)
-def qk_rope_attn(QKV, qn, kn, inv, pos0, Kc, Vc, out, H, KV, HD, eps):
+def qk_rope_attn(QKV, qn, kn, inv, pos0, Kc, Vc, out, H, KV, HD, eps, kv_fp16=False):
     """Нормировка голов q, k, поворот, запись k, v в кэш (позиции pos0..pos0+T-1), внимание по 0..pos0+t."""
     T = QKV.shape[0]
     half = HD // 2
@@ -71,11 +80,13 @@ def qk_rope_attn(QKV, qn, kn, inv, pos0, Kc, Vc, out, H, KV, HD, eps):
                 c, sn = np.float32(math.cos(ang)), np.float32(math.sin(ang))
                 a = kn[d] * (QKV[t, b + d] * r)
                 bb = kn[d + half] * (QKV[t, b + d + half] * r)
-                Kc[g, p, d] = a * c - bb * sn
-                Kc[g, p, d + half] = bb * c + a * sn
+                ka, kb = a * c - bb * sn, bb * c + a * sn
+                Kc[g, p, d] = _round_f16(np.float32(ka)) if kv_fp16 else ka
+                Kc[g, p, d + half] = _round_f16(np.float32(kb)) if kv_fp16 else kb
             vb = (H + KV + g) * HD
             for d in range(HD):
-                Vc[g, p, d] = QKV[t, vb + d]
+                value = QKV[t, vb + d]
+                Vc[g, p, d] = _round_f16(np.float32(value)) if kv_fp16 else value
     for th in nb.prange(T * H):
         t = th // H
         h = th % H

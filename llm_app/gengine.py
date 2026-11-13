@@ -11,7 +11,7 @@ import torch
 import triton
 
 from .engine import BUCKETS, Arena, Engine, Loader, _pack, _unpack
-from .gguf import GGUF, find_ollama
+from .gguf import GGUF, find_ollama, validate_qwen, eos_ids
 from .gkernels import ggemv, nbytes, repack, silu_mul
 from .plan import GiB, ram_info
 from .tkernels import attn_k, qk_rope_cache_k, rmsg_k, rope_attn_k
@@ -25,6 +25,8 @@ class GGUFEngine(Engine):
         """cpu: True — слои вне видеокарты через один считает процессор (из файла модели), пока следующий едет по
         шине; "hybrid" — такие слои («hyb») при одиночном шаге считает процессор, а при проходе пачкой они
         подкачиваются по шине и считаются в видеокарте (кэш k, v — в обоих местах, новые строки копируются)."""
+        if not isinstance(maxt, int) or isinstance(maxt, bool) or maxt < 1:
+            raise ValueError("maxt должно быть положительным целым")
         t0 = time.time()
         import os
         if vram_reserve is None:
@@ -33,11 +35,14 @@ class GGUFEngine(Engine):
         a = g.meta["general.architecture"]
         if a != "qwen3":
             raise NotImplementedError(f"архитектура {a} пока не поддержана")
+        validate_qwen(g)
         m = lambda k: g.meta[f"{a}.{k}"]
         self.L, self.D, self.H, self.KV = m("block_count"), m("embedding_length"), m("attention.head_count"), m("attention.head_count_kv")
         self.HD, self.FF, self.eps = m("attention.key_length"), m("feed_forward_length"), m("attention.layer_norm_rms_epsilon")
+        if resident is not None and (not isinstance(resident, int) or isinstance(resident, bool) or not 0 <= resident <= self.L):
+            raise ValueError("resident вне диапазона слоёв")
         self.maxt, self.log, dev = maxt, log, "cuda"
-        self.ck = types.SimpleNamespace(eos={151645, 151643})
+        self.ck = types.SimpleNamespace(eos=eos_ids(g))
         self.inv = (1.0 / (m("rope.freq_base") ** (torch.arange(0, self.HD, 2, dtype=torch.float32) / self.HD))).to(dev)
         # выход (словарь) и нормировки — всегда в видеокарте
         buf, N, K, t = g.raw("output.weight" if "output.weight" in g.tensors else "token_embd.weight")
@@ -148,7 +153,7 @@ class GGUFEngine(Engine):
     def _acquire(self, l):
         job = self.pending.popleft()
         assert job["l"] == l
-        job["done"].wait()
+        self.loader.wait(job)
         torch.cuda.current_stream().wait_event(job["ev"])
         self.cur = job
         pk = self._pk(l)
@@ -167,7 +172,7 @@ class GGUFEngine(Engine):
             return
         while self.pending:
             job = self.pending.popleft()
-            job["done"].wait()
+            self.loader.wait(job)
             ev = torch.cuda.Event(); ev.record()
             job["rel"]["ev"] = ev
             job["rel"]["done"].set()
@@ -244,7 +249,7 @@ class GGUFEngine(Engine):
         T = len(tokens)
         self._set_phase("d1" if T == 1 else "dN")
         if self.all_gpu:
-            B = next(b for b in BUCKETS if b >= T)
+            B = T  # граф обрабатывает только реальные строки, без записи KV за конец контекста
             if B not in self.graphs:
                 self._capture(B)
             self.xb[:B].zero_()
@@ -261,13 +266,20 @@ class GGUFEngine(Engine):
         return T
 
     def _capture(self, B):
-        """Пробные прогоны и запись графа пишут k, v на позиции self.pos..+B — уводим их в запасную область в конце
-        кэша, иначе портится уже посчитанное начало текста (было: первый ответ после запуска зависел от этого)."""
+        """Capture использует рабочие адреса KV, но восстанавливает затронутый хвост."""
+        if not 1 <= B <= min(16, self.maxt):
+            raise ValueError("размер графа не помещается в контекст")
         saved = self.pos.clone()
-        self.pos.fill_(self.maxt - 16)
+        start = self.maxt - B
+        # Граф должен ссылаться на настоящие KV: отдельные временные KV здесь непригодны.
+        backups = [(cache, cache[:, start:].clone())
+                   for caches in (self.Kc, self.Vc) for cache in caches.values()]
+        self.pos.fill_(start)
         try:
             self._capture_at(B)
         finally:
+            for cache, tail in backups:
+                cache[:, start:].copy_(tail)
             self.pos.copy_(saved)
 
     def _capture_at(self, B):
@@ -279,7 +291,7 @@ class GGUFEngine(Engine):
                 self._head(B)
         torch.cuda.current_stream().wait_stream(s)
         g = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(g):
+        with torch.cuda.graph(g, capture_error_mode="thread_local"):
             self._layers(self.xb[:B], B, 0)
             self._head(B)
         self.graphs[B] = g
@@ -306,8 +318,8 @@ class GGUFEngine(Engine):
         if self.hyb_ids:
             self._hyb_to_cpu(start, n)
 
-    def _pick(self, T, temperature, top_p, rng, mask=None):
-        lg = self.logits[:T]
+    def _pick(self, T, temperature, top_p, rng, mask=None, row0=0):
+        lg = self.logits[row0:row0 + T]
         if mask is not None:
             from .constrain import Constraint
             Constraint.apply(lg, mask)
@@ -333,11 +345,12 @@ class GGUFEngine(Engine):
         return sum(self.g.raw(f"blk.{l}.{GM[n]}.weight")[0].size for n in GM) * 1.1 + 2 * self.KV * self.maxt * self.HD * 2
 
     def _reset_loader(self):
-        if self.all_gpu:
+        self.phase = None
+        if not hasattr(self, "pending"):
             return
         while self.pending:
             job = self.pending.popleft()
-            job["done"].wait()
+            self.loader.wait(job)
             ev = torch.cuda.Event(); ev.record()
             job["rel"]["ev"] = ev
             job["rel"]["done"].set()
@@ -355,13 +368,16 @@ class GGUFEngine(Engine):
         torch.cuda.synchronize()
         if self.place[l] in ("stream", "hyb"):
             pk = self._pk(l)
-            self.W[l] = {n: _unpack(pk[n][0].to("cuda"), pk[n][1]) for n in GM}
-            self.HW.pop(l, None)
+            weights = {n: _unpack(pk[n][0].to("cuda"), pk[n][1]) for n in GM}
+            kc, vc = self.Kc[l], self.Vc[l]
         else:
             cl = self.W[l]
-            self.W[l] = {n: repack(*self.g.raw(f"blk.{l}.{GM[n]}.weight")) for n in GM}
-            self.Kc[l] = torch.from_numpy(cl.K).to("cuda", torch.float16)
-            self.Vc[l] = torch.from_numpy(cl.V).to("cuda", torch.float16)
+            weights = {n: repack(*self.g.raw(f"blk.{l}.{GM[n]}.weight")) for n in GM}
+            kc = torch.from_numpy(cl.K).to("cuda", torch.float16)
+            vc = torch.from_numpy(cl.V).to("cuda", torch.float16)
+        self.W[l] = weights
+        self.Kc[l], self.Vc[l] = kc, vc
+        self.HW.pop(l, None)
         self.place[l] = "gpu"
         self._ids()
         self.graphs = {}
@@ -372,12 +388,15 @@ class GGUFEngine(Engine):
         torch.cuda.synchronize()
         pk = {}
         for n in GM:
-            b, lay = _pack(self.W[l][n])
-            pk[n] = (self.arena.put(b.cpu()), lay)
+            host = {k: v.cpu() if torch.is_tensor(v) else v for k, v in self.W[l][n].items()}
+            b, lay = _pack(host)  # упаковка на CPU: аварийный путь не выделяет копию весов в VRAM
+            pk[n] = (self.arena.put(b), lay)
         self.W[l] = pk
         self.place[l] = "stream"
         self._ids()
         self.graphs = {}
+        self.phase = None
+        torch.cuda.empty_cache()
         if not hasattr(self, "loader"):
             import collections
             self.loader = Loader()
@@ -392,10 +411,14 @@ class GGUFEngine(Engine):
     def autofit(self, margin=0.35 * GiB, warm=256):
         """Прогрев (чтение запроса, пачка, шаг), замер настоящего запаса видеопамяти и перенос в видеокарту
         стольких слоёв, сколько влезает с запасом margin (сначала подкачиваемые, потом процессорные)."""
-        toks = [1000 + (i * 7919) % 50000 for i in range(warm + 20)]
-        self.process(toks[:warm], 0)
-        self.process(toks[warm:warm + 16], warm)
-        self.process(toks[warm + 16:warm + 17], warm + 16)
+        warm = min(warm, max(1, self.maxt - 17))
+        toks = [min(1000, self.V - 1) + (i * 7919) % max(1, self.V - min(1000, self.V - 1))
+                for i in range(warm + 17)]
+        self.process(toks[:min(warm, self.maxt)], 0)
+        if warm + 16 <= self.maxt:
+            self.process(toks[warm:warm + 16], warm)
+        if warm + 17 <= self.maxt:
+            self.process(toks[warm + 16:warm + 17], warm + 16)
         torch.cuda.synchronize()
         peak = torch.cuda.max_memory_allocated() - torch.cuda.memory_allocated()  # кратковременный пик сверх постоянного
         moved = 0
@@ -422,28 +445,52 @@ class GGUFEngine(Engine):
                  f"теперь в видеокарте {self.place.count('gpu')}, по шине {len(self.stream_ids)}, на процессоре "
                  f"{len(self.cpu_ids)}, гибридных {len(self.hyb_ids)}; свободно {free / GiB:.2f} ГиБ")
 
-    def process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None, mask=None):
-        try:
-            return self._process(tokens, pos0, temperature, top_p, rng, mask)
-        except torch.OutOfMemoryError:
-            # нехватка видеопамяти: вытеснить слой(и) на подкачку и повторить
-            gpu = [i for i in range(self.L) if self.place[i] == "gpu"]
-            for l in gpu[-(3 if self.all_gpu else 1):]:
-                self._demote(l)
-            self.log(f"нехватка видеопамяти: слоёв в видеокарте теперь {self.place.count('gpu')}")
-            self.ctx = self.ctx[:pos0]
-            torch.cuda.empty_cache()
-            return self._process(tokens, pos0, temperature, top_p, rng, mask)
+    def process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None, mask=None, last_only=False):
+        prefix = list(self.ctx[:pos0])
+        import copy
+        random_state = copy.deepcopy(rng.bit_generator.state) if rng is not None else None
+        original = None
+        for attempt in range(self.L + 1):
+            try:
+                if attempt:
+                    if rng is not None:
+                        rng.bit_generator.state = copy.deepcopy(random_state)
+                    if prefix:
+                        self._process(prefix, 0)  # восстановить согласованный KV всех слоёв
+                return self._process(tokens, pos0, temperature, top_p, rng, mask, last_only)
+            except torch.OutOfMemoryError as exc:
+                original = original or exc
+                self.ctx = []
+                gpu = [i for i in range(self.L) if self.place[i] == "gpu"]
+                if not gpu or attempt == self.L:
+                    raise original
+                try:
+                    for l in gpu[-(3 if self.all_gpu else 1):]:
+                        self._demote(l)
+                except Exception as recovery:
+                    self.ctx = []
+                    raise original from recovery
+                self.log(f"нехватка видеопамяти: слоёв в видеокарте теперь {self.place.count('gpu')}")
+                torch.cuda.empty_cache()
 
-    def _process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None, mask=None):
+    def _process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None, mask=None, last_only=False):
+        self._validate_process(tokens, pos0)
         if pos0 + len(tokens) > self.maxt:
             raise ValueError(f"текст длиннее {self.maxt} слов")
-        self.ctx = self.ctx[:pos0] + list(tokens)
-        if len(tokens) > 16:
-            self._prefill(tokens, pos0)
-            return self._pick(1, temperature, top_p, rng, mask)
-        T = self._decode(tokens, pos0)
-        return self._pick(T, temperature, top_p, rng, mask)
+        previous = self.ctx[:pos0]
+        try:
+            if len(tokens) > 16:
+                self._prefill(tokens, pos0)
+                result = self._pick(1, temperature, top_p, rng, mask)
+            else:
+                T = self._decode(tokens, pos0)
+                result = (self._pick(1, temperature, top_p, rng, mask, row0=T - 1) if last_only
+                          else self._pick(T, temperature, top_p, rng, mask))
+        except Exception:
+            self.ctx = []
+            raise
+        self.ctx = previous + list(tokens)
+        return result
 
 
 def open_gguf(name, **kw):
@@ -451,5 +498,5 @@ def open_gguf(name, **kw):
     g = GGUF(find_ollama(name) if ":" in name and not name.endswith(".gguf") else name)
     if g.meta.get("general.architecture") == "qwen3moe":
         from .moe import MoEEngine
-        return MoEEngine(name, **{k: v for k, v in kw.items() if k in ("maxt", "log")})
+        return MoEEngine(name, **kw)
     return GGUFEngine(name, **kw)

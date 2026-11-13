@@ -25,7 +25,9 @@ def kv_diff(eng, n):
 
 def main():
     name, dname = sys.argv[1], sys.argv[2]
-    N = 64
+    N = next((int(arg.split("=", 1)[1]) for arg in sys.argv if arg.startswith("--tokens=")), 64)
+    if not 1 <= N <= 1024:
+        raise ValueError("неверная длина проверки")
     torch.set_grad_enabled(False)
     tk = AutoTokenizer.from_pretrained(find_model("Qwen3-8B"))
     draft = GGUFEngine(dname, maxt=1024, vram_reserve=0)
@@ -54,11 +56,13 @@ def main():
                 g = list(eng.generate(ids, N, draft=draft, force=f, stats=st))
             dkv = kv_diff(eng, len(ids) + len(g) - 1)
             worst = max(worst, dkv)
-            ok = g == ref
+            ok = g == ref and dkv == 0.0
             allok &= ok
             res.append(f"{mname}: {'тот же' if ok else 'ОТЛИЧАЕТСЯ'} (переключений {st.get('switches', 0)}, кэш {dkv:.1e})")
         print(f"  запрос {i + 1}: " + "; ".join(res), flush=True)
     print(f"ИТОГ: текст не зависит от переключений: {allok}; наибольшее расхождение копий кэша {worst:.1e}")
+    if not allok:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,8 @@
+# Проверенные версии общих Python-зависимостей (Mac, аудит 2026-11-13).
+# torch с CUDA и Triton устанавливаются отдельно под целевую ОС/драйвер.
+numpy==2.5.4
+numba==0.68.1
+transformers==5.22.1
+safetensors==0.8.0
+xgrammar==0.2.9
+jsonschema==4.26.0

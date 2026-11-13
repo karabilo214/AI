@@ -6,6 +6,7 @@ import statistics
 import sys
 
 from .bench import chat
+from .bench_validation import paired_rows, validate_speed, compare_run
 
 PARA = ("The Industrial Revolution began in Britain in the late 18th century and spread to Europe and North America. "
         "It transformed economies that had been based on agriculture and handicrafts into economies based on large-scale "
@@ -51,7 +52,7 @@ def run(name, url, model):
     for cat, q in WIDE:
         out, fin, ttft, wall = chat(url, model, q, 200)
         n, s = fin.get("eval_count", 0), fin.get("eval_duration", 0) / 1e9
-        res.append({"cat": cat, "q": q, "out": out, "n": n, "gen_s": s, "tps": n / max(s, 1e-9), "ttft": ttft, "wall": wall})
+        res.append({"cat": cat, "q": q, "out": out, "n": n, "gen_s": s, "tps": n / max(s, 1e-9), "ttft": ttft, "wall": wall, "run": fin["_run"]})
         print(f"  {cat:12s} {n:4d} слов, {n / max(s, 1e-9):5.1f} слов/с, первое слово {ttft:.2f} с", flush=True)
     json.dump(res, open(f"wide_{name}.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("WIDE_DONE", flush=True)
@@ -60,6 +61,10 @@ def run(name, url, model):
 def compare(fa, fb):
     a = json.load(open(fa, encoding="utf-8"))
     b = json.load(open(fb, encoding="utf-8"))
+    paired_rows(a, b, "q")
+    validate_speed(a); validate_speed(b)
+    for left, right in zip(a, b):
+        compare_run(left.get("run"), right.get("run"))
     r = [x["tps"] / y["tps"] for x, y in zip(a, b)]
     print(f"{'запрос':12s} {'A слов/с':>9s} {'B слов/с':>9s} {'A/B':>6s}")
     for x, y, q in zip(a, b, r):
@@ -67,7 +72,7 @@ def compare(fa, fb):
     sa, sb = sum(x["n"] for x in a), sum(y["n"] for y in b)
     ta, tb = sum(x["gen_s"] for x in a), sum(y["gen_s"] for y in b)
     print(f"итого: A {sa / ta:.1f} слов/с, B {sb / tb:.1f}; A/B по запросам: медиана {statistics.median(r):.2f}, "
-          f"мин {min(r):.2f}, макс {max(r):.2f}; A не медленнее B в {sum(q >= 0.98 for q in r)}/{len(r)}; "
+          f"мин {min(r):.2f}, макс {max(r):.2f}; A не медленнее B в {sum(q >= 1.0 for q in r)}/{len(r)}; "
           f"первое слово медиана A {statistics.median(x['ttft'] for x in a):.2f} с, B {statistics.median(y['ttft'] for y in b):.2f} с")
     cats = sorted(set(x["cat"] for x in a))
     print("по видам: " + "; ".join(f"{c} {statistics.median(q for x, q in zip(a, r) if x['cat'] == c):.2f}" for c in cats))

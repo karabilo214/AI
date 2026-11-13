@@ -22,7 +22,16 @@ def find_model(name):
     hits = sorted(glob.glob(os.path.join(root, f"models--{org or 'Qwen'}--{m}", "snapshots", "*")))
     if not hits:
         raise FileNotFoundError(f"модель {name} не найдена (папка или кэш {root})")
-    return hits[-1]
+    ref = os.path.join(root, f"models--{org or 'Qwen'}--{m}", "refs", "main")
+    if os.path.isfile(ref):
+        revision = open(ref, encoding="utf-8").read().strip()
+        candidate = os.path.join(root, f"models--{org or 'Qwen'}--{m}", "snapshots", revision)
+        if candidate in hits:
+            return candidate
+        raise FileNotFoundError("refs/main ссылается на отсутствующую ревизию")
+    if len(hits) != 1:
+        raise ValueError("несколько ревизий модели: укажите папку snapshot явно")
+    return hits[0]
 
 
 class Ckpt:
@@ -64,7 +73,8 @@ class Ckpt:
         with open(path, "rb") as h:
             n = struct.unpack("<Q", h.read(8))[0]
             meta = json.loads(h.read(n))[k]
-        assert meta["dtype"] == "BF16", meta["dtype"]
+        if meta["dtype"] != "BF16":
+            raise ValueError(f"HF-путь требует BF16, получено {meta['dtype']}")
         a, b = meta["data_offsets"]
         return np.memmap(path, dtype=np.uint16, mode="r", offset=8 + n + a, shape=tuple(meta["shape"]))
 

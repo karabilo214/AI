@@ -30,6 +30,8 @@ def ram_info():
 
 def make_plan(ck, maxt, draft_bytes=0, cpu=True, vram_reserve=0.8 * GiB, force_resident=None, log=print):
     L = ck.L
+    if force_resident is not None and (not isinstance(force_resident, int) or not 0 <= force_resident <= L):
+        raise ValueError("resident вне диапазона слоёв")
     P = ck.layer_params()
     n = sum(a * b for a, b in P.values())
     c12 = int(n * 1.505)  # 12 бит + исключения
@@ -44,7 +46,7 @@ def make_plan(ck, maxt, draft_bytes=0, cpu=True, vram_reserve=0.8 * GiB, force_r
     else:
         slots = 2 * c12 + (b16 if cpu else 0)  # буферы подкачки (+ буфер bf16 для слоёв процессора при чтении запроса)
         R = int((free - base - slots - L * kv) // c12) if force_resident is None else force_resident
-        R = max(0, min(L - 1, R))
+        R = max(0, min(L if force_resident is not None else L - 1, R))
     place = ["gpu"] * R
     for i in range(R, L):
         place.append("cpu" if (cpu and (i - R) % 2 == 1) else "stream")
@@ -56,4 +58,34 @@ def make_plan(ck, maxt, draft_bytes=0, cpu=True, vram_reserve=0.8 * GiB, force_r
         f"по шине {place.count('stream')}, на процессоре {place.count('cpu')}; RAM под слои {need / GiB:.1f} ГиБ")
     if need > avail:
         log("  внимание: RAM может не хватить — слои будут читаться с диска (медленно)")
+    return plan
+
+
+def plan_gguf(name, maxt=2048, cpu=True, force_resident=None, log=print):
+    """План по метаданным, без создания движка и загрузки весов в GPU."""
+    from .gguf import GGUF, find_ollama
+    g = GGUF(find_ollama(name) if ":" in name and not name.endswith(".gguf") else name)
+    arch = g.meta["general.architecture"]
+    if arch not in ("qwen3", "qwen3moe"):
+        raise NotImplementedError(arch)
+    L = g.meta[f"{arch}.block_count"]
+    if maxt < 1 or force_resident is not None and not 0 <= force_resident <= L:
+        raise ValueError("неверные maxt/resident")
+    layer_bytes = [sum(g.raw(n)[0].size for n in g.tensors if n.startswith(f"blk.{i}.")) for i in range(L)]
+    kv = 2 * g.meta[f"{arch}.attention.head_count_kv"] * maxt * g.meta[f"{arch}.attention.key_length"] * 2
+    free = torch.cuda.mem_get_info()[0] if torch.cuda.is_available() else 0
+    output = "output.weight" if "output.weight" in g.tensors else "token_embd.weight"
+    budget = free - int(.9 * GiB) - g.raw(output)[0].size - L * kv
+    R = 0
+    ordered = list(reversed(layer_bytes)) if arch == "qwen3moe" else layer_bytes
+    while R < L and sum(ordered[:R + 1]) + (2 * max(layer_bytes) if R + 1 < L and arch == "qwen3" else 0) <= budget:
+        R += 1
+    R = R if force_resident is None else force_resident
+    place = (["cpu"] * (L - R) + ["gpu"] * R) if arch == "qwen3moe" else (["gpu"] * R + ["cpu" if cpu and i % 2 else "stream" for i in range(L - R)])
+    plan = {"place": place, "R": R, "layer_file_bytes": layer_bytes, "kv_per_layer": kv, "vram_free": free,
+            "ram_avail": ram_info()[1], "estimate": True}
+    log(f"GGUF {arch}: слоёв {L}, GPU {R}, CPU {place.count('cpu')}, подкачка {place.count('stream')}; "
+        f"веса слоёв в файле {sum(layer_bytes)} байт, KV на слой {kv} байт; план предварительный, без прогрева")
+    if arch == "qwen3moe" and not cpu and R < L:
+        raise NotImplementedError("подкачка MoE без CPU не поддерживается")
     return plan

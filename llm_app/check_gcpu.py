@@ -27,6 +27,7 @@ def main():
                 if i == 0 and T == 8:
                     W = g.full(f"blk.{i}.{n}.weight").astype(np.float64)
                     ref = X.astype(np.float64) @ W.T
+                    assert np.abs(Y - ref).max() / np.abs(ref).max() < 1e-4, n
                     print(f"  {n} {m.t}: ошибка {np.abs(Y - ref).max() / np.abs(ref).max():.1e}")
                 t0 = time.perf_counter()
                 for _ in range(3):

@@ -79,32 +79,85 @@ class Arena:
 
 
 class Loader:
-    """Поток-помощник: задания на подкачку по порядку; ждёт освобождения буфера, копирует кусками."""
+    """Подкачка с передачей ошибок, ограниченными ожиданиями и явным закрытием."""
+    TIMEOUT = 60.0
 
     def __init__(self):
         self.q, self.cs = queue.Queue(), torch.cuda.Stream()
-        threading.Thread(target=self._run, daemon=True).start()
+        self._stop = threading.Event()
+        self.thread = threading.Thread(target=self._run, name="llm-loader", daemon=True)
+        self.thread.start()
+
+    @classmethod
+    def wait(cls, job, cancel=None):
+        end = time.monotonic() + cls.TIMEOUT
+        while not job["done"].wait(min(0.05, max(0, end - time.monotonic()))):
+            if cancel is not None and cancel.is_set():
+                raise RuntimeError("подкачка закрыта")
+            if time.monotonic() >= end:
+                raise TimeoutError("истекло время ожидания подкачки")
+        if job.get("error") is not None:
+            raise RuntimeError("ошибка подкачки весов") from job["error"]
+
+    def _event(self, event):
+        # Кусок 10 МБ копируется < 1 мс. Опрос со сном здесь нельзя: на Windows wait(0.001) спит ~16 мс
+        # (шаг таймера), и подкачка слоя замедлялась в ~20 раз. Остановка проверяется перед каждым куском.
+        if self._stop.is_set():
+            raise RuntimeError("подкачка закрыта")
+        event.synchronize()
 
     def _run(self):
-        torch.cuda.set_device(0)
         CH = 10 * 2**20
+        failure = None
         while True:
             job = self.q.get()
-            if job["wait"] is not None:
-                job["wait"]["done"].wait()
-                self.cs.wait_event(job["wait"]["ev"])
-            pend = []
-            for src, dst in job["pairs"]:
-                for a in range(0, src.numel(), CH):
-                    with torch.cuda.stream(self.cs):
-                        dst[a:a + CH].copy_(src[a:a + CH], non_blocking=True)
-                        e = torch.cuda.Event(); e.record(self.cs)
-                    pend.append(e)
-                    if len(pend) > 2:
-                        pend.pop(0).synchronize()
-            ev = torch.cuda.Event(); ev.record(self.cs)
-            job["ev"] = ev
-            job["done"].set()
+            if job is None:
+                return
+            try:
+                if failure is not None:
+                    raise RuntimeError("загрузчик ранее завершился с ошибкой") from failure
+                if self._stop.is_set():
+                    raise RuntimeError("подкачка закрыта")
+                torch.cuda.set_device(self.cs.device)
+                if job["wait"] is not None:
+                    self.wait(job["wait"], self._stop)
+                    self.cs.wait_event(job["wait"]["ev"])
+                pend = []
+                for src, dst in job["pairs"]:
+                    for a in range(0, src.numel(), CH):
+                        if self._stop.is_set():
+                            raise RuntimeError("подкачка закрыта")
+                        with torch.cuda.stream(self.cs):
+                            dst[a:a + CH].copy_(src[a:a + CH], non_blocking=True)
+                            event = torch.cuda.Event(); event.record(self.cs)
+                        pend.append(event)
+                        if len(pend) > 2:
+                            self._event(pend.pop(0))
+                event = torch.cuda.Event(); event.record(self.cs)
+                job["ev"] = event
+            except Exception as exc:
+                failure = exc
+                job["error"] = exc
+                if job.get("rel") is not None:
+                    job["rel"]["error"] = exc
+                    job["rel"]["done"].set()
+            finally:
+                job["done"].set()
+
+    def close(self):
+        self._stop.set()
+        # Освобождаем ожидание release, если потребитель уже отменён.
+        self.q.put(None)
+        self.thread.join(timeout=5)
+        if self.thread.is_alive():
+            raise RuntimeError("поток подкачки не завершился")
+        # Поток CPU мог закончить, когда последняя DMA-копия ещё выполняется.
+        # Не освобождаем её буферы до завершения команд CUDA.
+        end = time.monotonic() + self.TIMEOUT
+        while not self.cs.query():
+            if time.monotonic() >= end:
+                raise TimeoutError("копирование CUDA не завершилось при закрытии")
+            time.sleep(0.001)
 
 
 def _u8(a):
@@ -114,6 +167,8 @@ def _u8(a):
 
 class Engine:
     def __init__(self, name, maxt=2048, cpu=True, resident=None, log=print):
+        if not isinstance(maxt, int) or isinstance(maxt, bool) or maxt < 1:
+            raise ValueError("maxt должно быть положительным целым")
         t0 = time.time()
         ck = self.ck = Ckpt(name)
         self.L, self.D, self.H, self.KV, self.HD, self.FF, self.eps = ck.L, ck.D, ck.H, ck.KV, ck.HD, ck.FF, ck.eps
@@ -180,6 +235,11 @@ class Engine:
         log(f"загружено за {self.load_s:.0f} с: видеокарта {torch.cuda.memory_allocated() / GiB:.2f} ГиБ, "
             f"закреплено RAM {arena.pinned / GiB:.2f} ГиБ (обычной {arena.plain / GiB:.2f})")
 
+    def close(self):
+        loader = getattr(self, "loader", None)
+        if loader is not None:
+            loader.close()
+
     # ---------------- подкачка ----------------
     def _request(self, l):
         if l is None:
@@ -207,7 +267,7 @@ class Engine:
     def _acquire(self, l):
         job = self.pending.popleft()
         assert job["l"] == l, (job["l"], l)
-        job["done"].wait()
+        self.loader.wait(job)
         torch.cuda.current_stream().wait_event(job["ev"])
         self.cur = job
         if job["kind"] == "c":
@@ -226,7 +286,7 @@ class Engine:
             return
         while self.pending:  # дождаться и отпустить начатую подкачку прошлой фазы
             job = self.pending.popleft()
-            job["done"].wait()
+            self.loader.wait(job)
             ev = torch.cuda.Event(); ev.record()
             job["rel"]["ev"] = ev
             job["rel"]["done"].set()
@@ -308,7 +368,7 @@ class Engine:
         T = len(tokens)
         self._set_phase("decode")
         if self.all_gpu:
-            B = next(b for b in BUCKETS if b >= T)
+            B = T  # граф обрабатывает только реальные строки, без записи KV за конец контекста
             self.xb[:B].zero_()
             self.xb[:T].copy_(self._emb(tokens))
             self.pos.fill_(pos0)
@@ -326,13 +386,20 @@ class Engine:
         return T
 
     def _capture(self, B):
-        """Пробные прогоны и запись графа пишут k, v на позиции self.pos..+B — уводим их в запасную область в конце
-        кэша, иначе портится уже посчитанное начало текста (было: первый ответ после запуска зависел от этого)."""
+        """Capture использует рабочие адреса KV, но восстанавливает затронутый хвост."""
+        if not 1 <= B <= min(16, self.maxt):
+            raise ValueError("размер графа не помещается в контекст")
         saved = self.pos.clone()
-        self.pos.fill_(self.maxt - 16)
+        start = self.maxt - B
+        # Граф должен ссылаться на настоящие KV: отдельные временные KV здесь непригодны.
+        backups = [(cache, cache[:, start:].clone())
+                   for caches in (self.Kc, self.Vc) for cache in caches.values()]
+        self.pos.fill_(start)
         try:
             self._capture_at(B)
         finally:
+            for cache, tail in backups:
+                cache[:, start:].copy_(tail)
             self.pos.copy_(saved)
 
     def _capture_at(self, B):
@@ -344,7 +411,7 @@ class Engine:
                 self.head.bounds(self.hb[:B], B)
         torch.cuda.current_stream().wait_stream(s)
         g = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(g):
+        with torch.cuda.graph(g, capture_error_mode="thread_local"):
             self._layers(self.xb[:B], B, 0)
             self.head.bounds(self.hb[:B], B)
         self.graphs[B] = g
@@ -383,17 +450,45 @@ class Engine:
         rmsg_k[(1,)](X[n - 1:n], self.ck_norm, self.hb[:1], self.eps, D, DP=triton.next_power_of_2(D))
         self.head.bounds(self.hb[:1], 1)
 
-    def process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None):
+    def _validate_process(self, tokens, pos0):
+        if not isinstance(pos0, int) or isinstance(pos0, bool) or not 0 <= pos0 <= len(self.ctx):
+            raise ValueError("позиция не принадлежит валидному префиксу")
+        if not tokens:
+            raise ValueError("пустой проход не поддерживается")
+        vocab = getattr(self, "V", None)
+        if vocab is None and hasattr(self, "emb_in"):
+            vocab = self.emb_in.shape[0]
+        for token in tokens:
+            try:
+                index = token.__index__()
+            except (AttributeError, TypeError) as exc:
+                raise ValueError("ID токена должен быть целым") from exc
+            if isinstance(token, bool) or index < 0 or vocab is not None and index >= vocab:
+                raise ValueError("ID токена вне словаря")
+
+    def process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None, last_only=False):
         """Прогнать слова tokens с позиции pos0 (k, v раньше pos0 уже в кэше). Возвращает выбранное следующее
         слово после каждого из них (после чтения запроса > 16 слов — только после последнего)."""
+        self._validate_process(tokens, pos0)
         if pos0 + len(tokens) > self.maxt:
             raise ValueError(f"текст длиннее {self.maxt} слов")
-        self.ctx = self.ctx[:pos0] + list(tokens)
-        if len(tokens) > 16:
-            self._prefill(tokens, pos0)
-            return self.head.pick(self.hb[:1], 1, temperature, top_p, rng, run_bounds=False)
-        T = self._decode(tokens, pos0)
-        return self.head.pick(self.hb[:T], T, temperature, top_p, rng, run_bounds=False)
+        previous = self.ctx[:pos0]
+        try:
+            if len(tokens) > 16:
+                self._prefill(tokens, pos0)
+                result = self.head.pick(self.hb[:1], 1, temperature, top_p, rng, run_bounds=False)
+            else:
+                T = self._decode(tokens, pos0)
+                if last_only:
+                    result = self.head.pick(self.hb[T - 1:T], 1, temperature, top_p, rng, run_bounds=True)
+                else:
+                    result = self.head.pick(self.hb[:T], T, temperature, top_p, rng, run_bounds=False)
+        except Exception:
+            self.ctx = []  # частичный проход мог испортить любой слой кэша
+            raise
+        self.ctx = previous + list(tokens)
+        return result
+
 
     def common(self, seq):
         n = 0
@@ -414,30 +509,49 @@ class Engine:
         force(i) -> "step" | "spec" — принудительный режим на шаге i (для проверки, что текст не зависит от
         истории переключений). cons — ограничение грамматикой (constrain.Constraint; только движок GGUF).
         stats (dict): prompt_n, prompt_ms, gen_n, gen_ms, passes, drafted, accepted, steps1, switches."""
+        if k is not None and (not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= 15):
+            raise ValueError("k должно быть целым от 1 до 15 (None — адаптивно)")
+        if not isinstance(max_new, int) or isinstance(max_new, bool) or max_new < 0:
+            raise ValueError("max_new должно быть неотрицательным целым")
+        if max_new == 0:
+            if stats is not None:
+                stats.update(prompt_n=0, prompt_ms=0.0, first_token_ms=0.0,
+                             gen_n=0, decode_n=0, gen_ms=0.0, passes=0, drafted=0, accepted=0)
+            return
+        if not prompt:
+            raise ValueError("пустой запрос не поддерживается; передайте BOS или текст")
         rng = np.random.default_rng(seed)
         P = len(prompt)
+        if P > self.maxt:
+            raise ValueError(f"запрос длиннее контекста {self.maxt}")
+        # Последний выданный токен ещё не обязан иметь строку KV.
+        max_new = min(max_new, self.maxt - P + 1)
         c = min(self.common(prompt), P - 1)
         if cons is not None and not getattr(self, "supports_mask", False):
             raise NotImplementedError("ограничение грамматикой поддержано только для моделей GGUF")
         mk = (lambda path=(): cons.masks(list(path))) if cons is not None else (lambda path=(): (None, 0))
         torch.cuda.synchronize(); t0 = time.perf_counter()
         bm, _ = mk()
-        tok = self.process(prompt[c:], c, temperature, top_p, rng, **({"mask": bm} if cons else {}))[-1]
+        tok = self.process(prompt[c:], c, temperature, top_p, rng, last_only=True,
+                           **({"mask": bm} if cons else {}))[-1]
         if cons:
             cons.commit(0, 0, tok)
         t1 = time.perf_counter()
         st = stats if stats is not None else {}
-        st.update(prompt_n=P - c, prompt_ms=(t1 - t0) * 1000, gen_n=0, gen_ms=0.0, passes=0, drafted=0, accepted=0)
+        st.update(prompt_n=P - c, prompt_ms=(t1 - t0) * 1000, first_token_ms=(t1 - t0) * 1000,
+                  gen_n=1, decode_n=0, gen_ms=0.0, passes=0, drafted=0, accepted=0)
         gen = [tok]
         cost = self._cost = getattr(self, "_cost", {"td": None, "pts": []})  # шаг угадывателя, (T, время прохода)
         yield tok
         while len(gen) < max_new and gen[-1] not in self.ck.eos:
+            step_start = time.perf_counter()
             if temperature <= 0 and draft is not None:
                 seq = prompt + gen
-                kmax = min(k or 15, max_new - len(gen) - 1)
+                kmax = min(k or 15, 15, max_new - len(gen) - 1, self.maxt - len(seq),
+                           max(0, draft.maxt - len(seq)))
                 thr = None if k else self._draft_thr()
                 ta = time.perf_counter()
-                d = draft.draft(seq, kmax, cum=thr)
+                d = draft.draft(seq, kmax, cum=thr) if kmax > 0 else []
                 tb = time.perf_counter()
                 if d:
                     td = (tb - ta) / len(d)
@@ -481,6 +595,7 @@ class Engine:
                 new = self.process([gen[-1]], P + len(gen) - 1, temperature, top_p, rng, **({"mask": bm} if cons else {}))
                 if cons:
                     cons.commit(0, 0, new[0])
+            st["gen_ms"] += (time.perf_counter() - step_start) * 1000
             st["passes"] += 1
             if draft is not None and temperature <= 0:
                 cost["prev"] = cost.get("last")
@@ -488,8 +603,8 @@ class Engine:
                 if len(gen) >= max_new or gen[-1] in self.ck.eos:
                     break
                 gen.append(t)
-                st["gen_n"] = len(gen) - 1
-                st["gen_ms"] = (time.perf_counter() - t1) * 1000
+                st["gen_n"] = len(gen)
+                st["decode_n"] = len(gen) - 1
                 yield t
 
     @staticmethod

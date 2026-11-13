@@ -16,11 +16,13 @@ import triton.language as tl
 
 def repack(buf, N, K, t, dev="cuda"):
     """buf — байты тензора GGUF (numpy/memmap). Возвращает словарь тензоров на dev."""
+    if N <= 0 or K <= 0 or K % 256:
+        raise ValueError("GPU-матрица требует N > 0 и K, кратное 256")
     b = torch.from_numpy(np.array(buf)).to(dev)
     if t == "F16":
         return {"t": t, "N": N, "K": K, "W": b.view(torch.float16).view(N, K)}
     if t == "F32":
-        return {"t": "F16", "N": N, "K": K, "W": b.view(torch.float32).view(N, K).half()}
+        return {"t": t, "N": N, "K": K, "W": b.view(torch.float32).view(N, K)}
     nb = K // 256
     if t == "Q4_K":
         blk = b.view(N, nb, 144)
@@ -270,14 +272,22 @@ def ggemv_tc(x, w, y, mode, T, cfg=None, ys=None):
     if t == "Q4_K":
         X3, SX = xprep(x, T, K)
         BN, nw = cfg or CFGTC.get((t, N, K), (32, 4))
+        if N % BN:
+            raise ValueError("число строк не кратно блоку GPU-ядра")
         q4k_tc_k[(N // BN,)](X3, SX, w["Q"], w["SC"], w["MN"], w["D"], y, T, N, K, ys, mode, BN=BN, num_warps=nw)
     elif t == "Q6_K":
         X3, SX = xprep(x, T, K)
         BN, nw = cfg or CFGTC.get((t, N, K), (32, 4))
+        if N % BN:
+            raise ValueError("число строк не кратно блоку GPU-ядра")
         q6k_tc_k[(N // BN,)](X3, w["QL"], w["QH"], w["SC"], w["D"], y, T, N, K, ys, mode, BN=BN, num_warps=nw)
     else:  # F16 — обычные вычислители (небольшие матрицы, счёт fp32)
         TT = _tt(T)
         BN, BK, nw = cfg or CFG.get((t, N, K, TT), (4, 256, 1))
+        if N % BN:
+            raise ValueError("число строк не кратно блоку GPU-ядра")
+        if K % BK:
+            raise ValueError("длина строки не кратна блоку GPU-ядра")
         f16_k[(N // BN,)](x, w["W"], y, T, N, K, ys, mode, BN=BN, BK=BK, TT=TT, num_warps=nw)
 
 
@@ -303,12 +313,22 @@ def ggemv(x, w, y, mode, T, cfg=None, ys=None):
     ys = ys or N
     if t == "Q4_K":
         BN, NC, nw = cfg or CFG.get((t, N, K, TT), (8, 8, 1))
+        while K % (NC * 64):  # шаг ядра должен делить длину строки (у экспертов MoE бывает 768)
+            NC //= 2
+        if N % BN:
+            raise ValueError("число строк не кратно блоку GPU-ядра")
         q4k_k[(N // BN,)](x, w["Q"], w["SC"], w["MN"], w["D"], y, T, N, K, ys, mode, BN=BN, NC=NC, TT=TT, num_warps=nw)
     elif t == "Q6_K":
         BN, nw = cfg or CFG.get((t, N, K, TT), (4, 1))
+        if N % BN:
+            raise ValueError("число строк не кратно блоку GPU-ядра")
         q6k_k[(N // BN,)](x, w["QL"], w["QH"], w["SC"], w["D"], y, T, N, K, ys, mode, BN=BN, TT=TT, num_warps=nw)
-    elif t == "F16":
+    elif t in ("F16", "F32"):
         BN, BK, nw = cfg or CFG.get((t, N, K, TT), (4, 256, 1))
+        if N % BN:
+            raise ValueError("число строк не кратно блоку GPU-ядра")
+        if K % BK:
+            raise ValueError("длина строки не кратна блоку GPU-ядра")
         f16_k[(N // BN,)](x, w["W"], y, T, N, K, ys, mode, BN=BN, BK=BK, TT=TT, num_warps=nw)
     else:
         raise NotImplementedError(t)
@@ -324,3 +344,80 @@ def cfg_space(t):
     if t == "Q6_K":
         return [(bn, nw) for bn in (1, 2, 4, 8) for nw in (1, 2, 4)]
     return [(bn, bk, nw) for bn in (1, 2, 4, 8) for bk in (128, 256, 512) for nw in (1, 2, 4)]
+
+
+# ---------------- MoE: групповые ядра (все пары «слово-эксперт» слоя за один запуск) ----------------
+# Эксперты в видеокарте сложены подряд (слот s — строки s*N .. s*N+N-1 общих массивов). Программа: пара p и
+# блок строк; эксперт = SLOT[p], вход = строка TOK[p] матрицы X, выход — строка p матрицы Y [P, N].
+@triton.jit
+def q4k_moe_k(X, Q, SC, MN, D, Y, SLOT, TOK, N, K, BN: tl.constexpr, NC: tl.constexpr):
+    p = tl.program_id(0)
+    s = tl.load(SLOT + p)
+    t = tl.load(TOK + p)
+    rl = tl.program_id(1) * BN + tl.arange(0, BN)
+    rn = s * N + rl
+    c = tl.arange(0, NC)
+    l = tl.arange(0, 32)
+    acc = tl.zeros((BN,), dtype=tl.float32)
+    Xt = X + t * K
+    for k0 in range(0, K, NC * 64):
+        q = tl.load(Q + rn[:, None, None] * (K // 2) + k0 // 2 + c[None, :, None] * 32 + l[None, None, :]).to(tl.int32)
+        so = rn[:, None] * (K // 32) + k0 // 32 + 2 * c[None, :]
+        do = (rn[:, None] * (K // 256) + k0 // 256 + c[None, :] // 4) * 2
+        d = tl.load(D + do).to(tl.float32)
+        dm = tl.load(D + do + 1).to(tl.float32)
+        xo = Xt + k0 + c[:, None] * 64 + l[None, :]
+        xlo = tl.load(xo)
+        xhi = tl.load(xo + 32)
+        dl = tl.sum((q & 15).to(tl.float32) * xlo[None, :, :], axis=2)
+        dh = tl.sum((q >> 4).to(tl.float32) * xhi[None, :, :], axis=2)
+        acc += tl.sum(d * (tl.load(SC + so).to(tl.float32) * dl + tl.load(SC + so + 1).to(tl.float32) * dh)
+                      - dm * (tl.load(MN + so).to(tl.float32) * tl.sum(xlo, axis=1)[None, :]
+                              + tl.load(MN + so + 1).to(tl.float32) * tl.sum(xhi, axis=1)[None, :]), axis=1)
+    tl.store(Y + p * N + rl, acc)
+
+
+@triton.jit
+def q6k_moe_k(X, QL, QH, SC, D, Y, SLOT, TOK, N, K, BN: tl.constexpr):
+    p = tl.program_id(0)
+    s = tl.load(SLOT + p)
+    t = tl.load(TOK + p)
+    rl = tl.program_id(1) * BN + tl.arange(0, BN)
+    rn = s * N + rl
+    hc = tl.arange(0, 4)[:, None, None]
+    h = hc // 2
+    c = hc % 2
+    sI = tl.arange(0, 2)[None, :, None]
+    i = tl.arange(0, 16)[None, None, :]
+    l = sI * 16 + i
+    r4 = rn[:, None, None, None]
+    Xt = X + t * K
+    acc = tl.zeros((BN,), dtype=tl.float32)
+    for k0 in range(0, K, 256):
+        L = tl.load(QL + r4 * (K // 2) + k0 // 2 + (h * 64 + c * 32 + l)[None]).to(tl.int32)
+        H = tl.load(QH + r4 * (K // 4) + k0 // 4 + (h * 32 + l)[None]).to(tl.int32)
+        sh = (2 * c)[None]
+        qlo = ((L & 15) | (((H >> sh) & 3) << 4)) - 32
+        qhi = ((L >> 4) | (((H >> (sh + 4)) & 3) << 4)) - 32
+        so = r4 * (K // 16) + k0 // 16 + (h * 8 + 2 * c + sI)[None]
+        wlo = tl.load(SC + so).to(tl.float32) * qlo.to(tl.float32)
+        whi = tl.load(SC + so + 4).to(tl.float32) * qhi.to(tl.float32)
+        d = tl.load(D + rn * (K // 256) + k0 // 256).to(tl.float32)
+        xo = Xt + k0 + h * 128 + c * 32 + l
+        v = wlo * tl.load(xo)[None] + whi * tl.load(xo + 64)[None]
+        acc += d * tl.sum(tl.sum(tl.sum(v, axis=3), axis=2), axis=1)
+    tl.store(Y + p * N + rl, acc)
+
+
+def moe_gemv(x, w, y, slot, tok, P):
+    """y[p] = W[slot[p]] x[tok[p]] для p < P; w — сложенные эксперты (repack, N — строк одного эксперта)."""
+    t, N, K = w["t"], w["N"], w["K"]
+    if t == "Q4_K":
+        NC = 8
+        while K % (NC * 64):
+            NC //= 2
+        q4k_moe_k[(P, N // 8)](x, w["Q"], w["SC"], w["MN"], w["D"], y, slot, tok, N, K, BN=8, NC=NC, num_warps=1)
+    elif t == "Q6_K":
+        q6k_moe_k[(P, N // 4)](x, w["QL"], w["QH"], w["SC"], w["D"], y, slot, tok, N, K, BN=4, num_warps=1)
+    else:
+        raise NotImplementedError(t)

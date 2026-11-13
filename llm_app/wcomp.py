@@ -119,6 +119,8 @@ def gemvc1(x, c, y, mode, BN=None, w=None, lnw=None, eps=1e-6):
     N, K = c["N"], c["K"]
     if BN is None:
         BN, w = CFG1.get((N, K, mode), (8, 4))
+    if N % BN:
+        raise ValueError("число строк не кратно BN")
     gemvc1_k[(N // BN,)](x, c["m8"], c["e4"], c["base"], c["rp"], c["er"], c["ec"], c["ev"], y,
                         lnw if lnw is not None else x, eps, N, K, mode,
                         BN=BN, HALF=c["CH"] // 2, RMS=lnw is not None, KR=triton.next_power_of_2(K), num_warps=w)
@@ -233,6 +235,8 @@ def gemvc_tc(x, c, y, mode, T, BN=None, w=None, S=None):
     if BN is None:
         BN, w, S = CFGT.get((N, K, mode), (32, 4, 1))
     S = S or 1
+    if N % BN:
+        raise ValueError("число строк не кратно BN")
     part, cnt = _sk_buf(N, max(S, 8), x.device)
     gemvc_tc_k[(triton.cdiv(N, BN), S)](x, c["m8"], c["e4"], c["base"], c["rp"], c["er"], c["ec"], c["ev"], y, part, cnt,
                                        T, N, K, mode, BN=BN, S=S, num_warps=w)

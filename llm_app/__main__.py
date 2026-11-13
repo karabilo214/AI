@@ -26,35 +26,48 @@ def main():
     ap.add_argument("--force-greedy", action="store_true",
                     help="всегда жадный выбор (агенты часто шлют температуру > 0; угадывание точное только при жадном)")
     a = ap.parse_args()
+    if a.maxt < 1 or not 0 <= a.k <= 15 or a.resident is not None and a.resident < 0:
+        ap.error("maxt > 0, k от 0 до 15, resident >= 0")
     import torch
     from transformers import AutoTokenizer
 
-    from .engine import Engine
     from .model import find_model
     torch.set_grad_enabled(False)
     gguf = ":" in a.model or a.model.endswith(".gguf")
+    if a.cmd == "plan":
+        from .plan import make_plan, plan_gguf
+        if a.draft:
+            print("План основной модели без загрузки draft; окончательное размещение определяется после прогрева.")
+        if gguf:
+            plan_gguf(a.model, a.maxt, cpu=not a.no_cpu, force_resident=a.resident)
+        else:
+            from .model import Ckpt
+            make_plan(Ckpt(a.model), a.maxt, cpu=not a.no_cpu, force_resident=a.resident)
+        return
+    from .engine import Engine
     draft = None
     if a.draft:
         if ":" in a.draft or a.draft.endswith(".gguf"):
             from .gengine import GGUFEngine
-            draft = GGUFEngine(a.draft, maxt=a.maxt, vram_reserve=0)
+            from .gengine import open_gguf
+            draft = open_gguf(a.draft, maxt=a.maxt, vram_reserve=0)
         else:
             draft = Engine(a.draft, maxt=a.maxt, cpu=False)
-    if a.cmd == "plan":
-        from .model import Ckpt
-        from .plan import make_plan
-        make_plan(Ckpt(a.model), a.maxt, cpu=not a.no_cpu, force_resident=a.resident)
-        return
     if gguf:
         from .gengine import open_gguf
         eng = open_gguf(a.model, maxt=a.maxt, resident=a.resident,
                         cpu=False if a.no_cpu else ("hybrid" if draft is not None else True))
-        if a.resident is None:
-            eng.autofit()
         tk = AutoTokenizer.from_pretrained(find_model(a.tokenizer))
+        if a.resident is None:
+            eng.autofit(tokenizer=tk) if hasattr(eng, "gexp") else eng.autofit()
     else:
         eng = Engine(a.model, maxt=a.maxt, cpu=not a.no_cpu, resident=a.resident)
         tk = AutoTokenizer.from_pretrained(find_model(a.model))
+    from .tokenizer_check import validate_tokenizer, validate_draft
+    validate_tokenizer(eng, tk)
+    if draft is not None:
+        draft_tk = tk if hasattr(draft, "g") else AutoTokenizer.from_pretrained(draft.ck.dir)
+        validate_draft(eng, draft, tk, draft_tk)
     from .server import App, serve
     app = App(eng, tk, os.path.basename(a.model.rstrip("/\\")), draft=draft, k=a.k or None,
               api_key=a.api_key, force_greedy=a.force_greedy)
@@ -74,7 +87,7 @@ def main():
                     out += v
                     sys.stdout.write(v); sys.stdout.flush()
                 elif kind == "end":
-                    print(f"\n[{v['gen_n']} слов, {1000 * v['gen_n'] / max(v['gen_ms'], 1):.1f} слов/с]")
+                    print(f"\n[{v['gen_n']} слов, {1000 * v['decode_n'] / max(v['gen_ms'], 1):.1f} слов/с]")
             msgs.append({"role": "assistant", "content": out})
 
 

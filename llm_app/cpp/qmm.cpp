@@ -1,8 +1,8 @@
 // Умножение на веса GGUF (Q4_K, Q6_K, F16) на процессоре: Y[t] (+)= W X[t], t < T, счёт fp32 (как в видеокарте,
 // чтобы шаг на процессоре и проверка пачки в видеокарте давали одинаковые числа). Блок из 256 весов строки
-// распаковывается один раз в буфер (в кэше процессора) и умножается на все слова пачки; AVX-512, OpenMP по строкам.
-// Собирается для Windows кросс-компилятором: x86_64-w64-mingw32-g++ -O3 -march=znver4 -shared -static
-// Потоки — свой постоянный пул (строки раздаются кусками через атомарный счётчик).
+// распаковывается один раз в буфер (в кэше процессора) и умножается на все слова пачки; AVX-512, собственный пул по строкам.
+// Собирается для Windows кросс-компилятором: x86_64-w64-mingw32-g++ -O3 -march=x86-64-v4 -mf16c -shared -static
+// Потоки — свой постоянный пул с барьером выхода из поколения (см. struct Pool).
 #include <immintrin.h>
 #include <stdint.h>
 #include <string.h>
@@ -16,57 +16,101 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
 #define EXPORT extern "C" __declspec(dllexport)
+#else
+#define EXPORT extern "C" __attribute__((visibility("default")))
+#endif
+EXPORT int qmm_abi_version() { return 2; }
 
 // ---- постоянный пул потоков ----
+// У каждого вызова run() свой объект задачи (Job) в стеке run(): свой счётчик кусков, своя функция.
+// Рабочий читает указатель на текущую задачу только под замком и только при смене поколения.
+// run() возвращается лишь после того, как КАЖДЫЙ рабочий подтвердил выход из этого поколения (барьер),
+// даже если ему не досталось ни одного куска. Поэтому следующее поколение публикуется только когда все
+// вышли из прошлого: рабочий не может увидеть устаревшую задачу, пропустить поколение или обратиться к
+// уже уничтоженному Job. Внешние вызовы run() — по очереди (run_m).
+struct Job {
+    const std::function<void(int, int)>* f;
+    int total, chunk;
+    std::atomic<int> next{0};
+};
+
 struct Pool {
     std::vector<std::thread> th;
-    std::mutex m;
-    std::condition_variable cv;
-    std::function<void(int, int)> job;  // (начало, конец)
-    std::atomic<int> next{0}, done{0};
-    int total = 0, chunk = 1, gen = 0, nworkers = 0;
+    std::mutex m, run_m;
+    std::condition_variable cv, cv_done;
+    Job* cur = nullptr;
+    unsigned gen = 0;
+    int nworkers = 0, exited = 0;
     bool stop = false;
+    std::atomic<int> failed{0};
 
-    void work() {
+    void work(Job& j) {
         for (;;) {
-            int a = next.fetch_add(chunk);
-            if (a >= total) break;
-            int b = a + chunk < total ? a + chunk : total;
-            job(a, b);
-            done.fetch_add(b - a);
+            int a = j.next.fetch_add(j.chunk);
+            if (a >= j.total) break;
+            int b = a + j.chunk < j.total ? a + j.chunk : j.total;
+            try {
+                (*j.f)(a, b);
+            } catch (...) {  // исключение не должно убить процесс; ошибка — флагом
+                failed.store(1);
+            }
         }
     }
     void start(int n) {
-        nworkers = n - 1;
+        nworkers = n > 1 ? n - 1 : 0;
         for (int i = 0; i < nworkers; i++)
             th.emplace_back([this] {
-                int seen = 0;
+                unsigned seen = 0;
                 for (;;) {
+                    Job* j;
                     {
                         std::unique_lock<std::mutex> lk(m);
                         cv.wait(lk, [&] { return stop || gen != seen; });
                         if (stop) return;
                         seen = gen;
+                        j = cur;
                     }
-                    work();
+                    work(*j);
+                    {
+                        std::lock_guard<std::mutex> lk(m);
+                        if (++exited == nworkers) cv_done.notify_one();
+                    }
                 }
             });
     }
-    void run(int n, int ch, std::function<void(int, int)> f) {
+    void run(int n, int ch, const std::function<void(int, int)>& f) {
+        if (n <= 0) return;
+        std::lock_guard<std::mutex> rl(run_m);
+        Job j;
+        j.f = &f; j.total = n; j.chunk = ch > 0 ? ch : 1;
+        if (nworkers == 0) { work(j); return; }
         {
             std::lock_guard<std::mutex> lk(m);
-            job = f; total = n; chunk = ch; next = 0; done = 0; gen++;
+            cur = &j; exited = 0; ++gen;
         }
         cv.notify_all();
-        work();
-        while (done.load() < total) _mm_pause();
+        work(j);
+        std::unique_lock<std::mutex> lk(m);
+        cv_done.wait(lk, [&] { return exited == nworkers; });  // барьер: все вышли из поколения
+        cur = nullptr;
+    }
+    void shutdown() {
+        {
+            std::lock_guard<std::mutex> lk(m);
+            stop = true;
+        }
+        cv.notify_all();
+        for (auto& t : th) t.join();
+        th.clear();
     }
 };
+static std::atomic<int> nthreads{8};
+static std::once_flag pool_once;
 static Pool* pool = nullptr;
-static int nthreads = 8;
-static Pool& P() {
-    if (!pool) { pool = new Pool(); pool->start(nthreads); }
+static Pool& P() {  // создаётся один раз, потокобезопасно
+    std::call_once(pool_once, [] { pool = new Pool(); pool->start(nthreads.load()); });
     return *pool;
 }
 
@@ -167,15 +211,25 @@ static void mm(const uint8_t* W, int N, int K, const float* X, int T, float* Y, 
     });
 }
 
-EXPORT void q4k_mm(const uint8_t* W, int N, int K, const float* X, int T, float* Y, int ys, int add) {
+// Проверка входа: пачка 1..16 (массивы acc[16]), длина строки кратна 256, размеры положительны. 0 — успех.
+static inline int bad_shape(int N, int K, int T, int ys) {
+    return !(N > 0 && K > 0 && K % 256 == 0 && T >= 1 && T <= 16 && ys >= N);
+}
+
+EXPORT int q4k_mm(const uint8_t* W, int N, int K, const float* X, int T, float* Y, int ys, int add) {
+    if (bad_shape(N, K, T, ys) || !W || !X || !Y) return -1;
     mm<0>(W, N, K, X, T, Y, ys, add);
+    return 0;
 }
 
-EXPORT void q6k_mm(const uint8_t* W, int N, int K, const float* X, int T, float* Y, int ys, int add) {
+EXPORT int q6k_mm(const uint8_t* W, int N, int K, const float* X, int T, float* Y, int ys, int add) {
+    if (bad_shape(N, K, T, ys) || !W || !X || !Y) return -1;
     mm<1>(W, N, K, X, T, Y, ys, add);
+    return 0;
 }
 
-EXPORT void f16_mm(const uint16_t* W, int N, int K, const float* X, int T, float* Y, int ys, int add) {
+EXPORT int f16_mm(const uint16_t* W, int N, int K, const float* X, int T, float* Y, int ys, int add) {
+    if (bad_shape(N, K, T, ys) || !W || !X || !Y) return -1;
     P().run(N, 16, [=](int r0, int r1) {
         alignas(64) float w[256];
         for (int r = r0; r < r1; r++) {
@@ -189,9 +243,12 @@ EXPORT void f16_mm(const uint16_t* W, int N, int K, const float* X, int T, float
             store(Y, ys, r, T, acc, add);
         }
     });
+    return 0;
 }
 
-EXPORT void set_threads(int n) { if (!pool) nthreads = n; }  // до первого вызова
+EXPORT void set_threads(int n) { if (n >= 1 && n <= 256) nthreads = n; }  // действует до первого вызова
+EXPORT void pool_shutdown() { if (pool) pool->shutdown(); }
+EXPORT int take_failed() { return P().failed.exchange(0); }  // 1 — в рабочем потоке было исключение
 EXPORT int get_threads() { return nthreads; }
 
 // ---------------- MoE: эксперты слоя для T слов (k экспертов на слово) ----------------
@@ -203,16 +260,28 @@ static inline void decode_any(int typ, const uint8_t* b, float* w) {
 }
 static inline int bsize(int typ) { return typ == 0 ? 144 : 210; }
 
-EXPORT void moe_ffn(const uint8_t* G, const uint8_t* U, const uint8_t* Dn, int tg, int tu, int td, int D, int F,
-                    int T, int k, const int* ids, const float* wts, const float* X, float* H, float* Z) {
+EXPORT int moe_ffn(const uint8_t* G, const uint8_t* U, const uint8_t* Dn, int tg, int tu, int td, int D, int F,
+                   int T, int k, const int* ids, const float* wts, const float* X, float* H, float* Z) {
+    if (!(D > 0 && F > 0 && D % 256 == 0 && F % 256 == 0 && T >= 1 && k >= 1 && T * k <= 4096) || !G || !U || !Dn)
+        return -1;
+    for (int t = 0; t < 3; t++) {
+        int ty = t == 0 ? tg : t == 1 ? tu : td;
+        if (ty != 0 && ty != 1) return -1;
+    }
     const int NP = T * k;
     // группы: эксперт -> список пар
-    std::vector<int> order(NP);
-    for (int i = 0; i < NP; i++) order[i] = i;
+    // пары с весом 0 (их эксперт считает видеокарта) пропускаем, их вклад — ноль
+    std::vector<int> order;
+    for (int i = 0; i < NP; i++) {
+        if (wts[i] != 0.f) order.push_back(i);
+        else memset(Z + (size_t)i * D, 0, sizeof(float) * D);
+    }
+    const int NQ = (int)order.size();
     std::sort(order.begin(), order.end(), [&](int a, int b) { return ids[a] < ids[b]; });
     std::vector<int> gs;  // начала групп в order
-    for (int i = 0; i < NP; i++) if (i == 0 || ids[order[i]] != ids[order[i - 1]]) gs.push_back(i);
-    gs.push_back(NP);
+    for (int i = 0; i < NQ; i++) if (i == 0 || ids[order[i]] != ids[order[i - 1]]) gs.push_back(i);
+    gs.push_back(NQ);
+    if (NQ == 0) return 0;
     const int ng = (int)gs.size() - 1;
     const size_t rbg = (size_t)(D / 256) * bsize(tg), rbu = (size_t)(D / 256) * bsize(tu), rbd = (size_t)(F / 256) * bsize(td);
     const int RC = 32;  // строк в куске работы
@@ -283,4 +352,5 @@ EXPORT void moe_ffn(const uint8_t* G, const uint8_t* U, const uint8_t* Dn, int t
             }
         }
     });
+    return 0;
 }

@@ -2,6 +2,10 @@
 (мимо кэша). Результат сохраняется в ~/.cache/llm_app/tune.json (ключ: видеокарта + форма) и при следующих
 запусках берётся оттуда."""
 import json
+import hashlib
+import math
+import tempfile
+from pathlib import Path
 import os
 import statistics
 
@@ -37,7 +41,19 @@ def _try(f):
 def tune(shapes, log=print):
     """shapes: список (N, K, MODE). Заполняет wcomp.CFG1 и wcomp.CFGT."""
     gpu = torch.cuda.get_device_name()
-    db = json.load(open(CACHE)) if os.path.exists(CACHE) else {}
+    version = hashlib.sha256(Path(wcomp.__file__).read_bytes()).hexdigest() + "|" + torch.__version__
+    try:
+        if os.path.exists(CACHE):
+            with open(CACHE, encoding="utf-8") as handle:
+                cached = json.load(handle)
+        else:
+            cached = {}
+        db = cached.get("entries", {}) if isinstance(cached, dict) and cached.get("version") == version else {}
+        if not isinstance(db, dict):
+            db = {}
+    except (ValueError, OSError):
+        db = {}
+        log("кэш настройки повреждён; выполняется новая настройка")
     todo = [s for s in shapes if f"{gpu}|{s}" not in db]
     for N, K, mode in todo:
         log(f"  настройка ядер под {N}x{K} (вид {mode})...")
@@ -48,12 +64,22 @@ def tune(shapes, log=print):
                  for bn in (1, 2, 4, 8, 16) for w in (1, 2, 4) if N % bn == 0)
         rt = min((_try(lambda: [gemvc_tc(x, c, y, mode, 16, bn, w, S) for c in cs]), bn, w, S)
                  for bn in (16, 32, 64) for w in (2, 4) for S in (1, 2, 4))
+        if not math.isfinite(r1[0]) or not math.isfinite(rt[0]):
+            raise RuntimeError(f"не найдено рабочее ядро для {N}x{K}")
         db[f"{gpu}|{(N, K, mode)}"] = {"one": list(r1[1:]), "batch": list(rt[1:])}
         del cs
         torch.cuda.empty_cache()
     if todo:
         os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-        json.dump(db, open(CACHE, "w"), indent=1)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile("w", dir=os.path.dirname(CACHE), delete=False) as handle:
+                temporary = handle.name
+                json.dump({"version": version, "entries": db}, handle, indent=1)
+            os.replace(temporary, CACHE)
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.unlink(temporary)
     for N, K, mode in shapes:
         d = db[f"{gpu}|{(N, K, mode)}"]
         wcomp.CFG1[(N, K, mode)] = tuple(d["one"])

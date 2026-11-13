@@ -30,29 +30,39 @@ def main():
     ap.add_argument("--no-cpu", action="store_true")
     ap.add_argument("--n", type=int, default=48)
     a = ap.parse_args()
+    if a.n < 1:
+        ap.error("n должно быть положительным")
     torch.set_grad_enabled(False)
     tk = AutoTokenizer.from_pretrained(find_model(a.model))
     draft = Engine(a.draft, maxt=1024, cpu=False) if a.draft else None
     eng = Engine(a.model, maxt=1024, cpu=not a.no_cpu, resident=a.resident)
     outs = []
+    extra_ok = True
     for t in TEXTS:
         ids = tk.encode(t)
         st = {}
         g = list(eng.generate(ids, a.n, stats=st))
         outs.append((ids, g))
-        print(f"  запрос {len(ids)} слов: чтение {st['prompt_ms']:.0f} мс, генерация {st['gen_ms'] / max(st['gen_n'], 1):.1f} мс/слово"
+        print(f"  запрос {len(ids)} слов: чтение {st['prompt_ms']:.0f} мс, генерация {st['gen_ms'] / max(st['decode_n'], 1):.1f} мс/слово"
               f" | {tk.decode(g)[:70]!r}", flush=True)
     # то же начало + продолжение: кэш начала
-    ids2 = outs[2][0] + outs[2][1][:20]
+    previous = outs[2][1]
+    split = min(20, len(previous) - 1)
+    expected = previous[split:split + 16]
+    ids2 = outs[2][0] + previous[:split]
     st = {}
-    g2 = list(eng.generate(ids2, 16, stats=st))
-    print(f"  с кэшем начала: пересчитано {st['prompt_n']} слов из {len(ids2)}, совпадение с первым текстом "
-          f"{g2[:len(outs[2][1]) - 20] == outs[2][1][20:20 + len(g2)]}")
+    g2 = list(eng.generate(ids2, len(expected), stats=st))
+    print(f"  с кэшем начала: пересчитано {st['prompt_n']} слов из {len(ids2)}, совпадение {g2 == expected}")
+    extra_ok &= g2 == expected
     if draft:
         for ids, g in outs:
             st = {}
             gd = list(eng.generate(ids, a.n, draft=draft, stats=st))
-            print(f"  с угадывателем: тот же текст {gd == g}, генерация {st['gen_ms'] / max(st['gen_n'], 1):.1f} мс/слово")
+            extra_ok &= gd == g
+            print(f"  с угадывателем: тот же текст {gd == g}, генерация {st['gen_ms'] / max(st['decode_n'], 1):.1f} мс/слово")
+    eng.close()
+    if draft is not None:
+        draft.close()
     del eng, draft
     torch.cuda.empty_cache()
     ref = Reference(a.model)
@@ -64,6 +74,8 @@ def main():
         if first < len(g):
             print(f"  расхождение с эталоном на слове {first}")
     print(f"текст как у эталона fp32: {same}/{len(outs)}")
+    if same != len(outs) or not extra_ok:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

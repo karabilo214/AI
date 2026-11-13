@@ -2,8 +2,12 @@
 Блок весов распаковывается один раз и умножается на все слова пачки. Масштабы Q4_K/Q6_K раскладываются при
 загрузке в небольшие массивы float32; сами 4/6-битные числа — из файла без копии."""
 import ctypes
+import hashlib
+import json
+from pathlib import Path
 import os
 import sys
+import threading
 
 import numba as nb
 import numpy as np
@@ -101,21 +105,58 @@ def f32_mm(W, X, Y, add):
 
 
 _DLL = None
+_DLL_LOCK = threading.Lock()
+
+
+def _cpp_cpu_supported(features=None):
+    if features is None:
+        try:
+            features = np._core._multiarray_umath.__cpu_features__
+        except AttributeError:
+            return False
+    return bool(features.get("X86_V4") and features.get("F16C"))
 
 
 def _dll():
-    """Ядра на C++ (cpp/qmm.dll, AVX-512, свой пул потоков); None — тогда Numba."""
+    """AVX-512 только после проверки ISA/ABI; иначе плотный движок использует Numba."""
     global _DLL
-    if _DLL is None and sys.platform == "win32" and os.environ.get("LLM_NO_CPP") != "1":
-        p = os.path.join(os.path.dirname(__file__), "cpp", "qmm.dll")
-        if os.path.exists(p):
-            d = ctypes.CDLL(p)
-            for f in ("q4k_mm", "q6k_mm", "f16_mm"):
-                getattr(d, f).argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_int,
-                                          ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
-            d.set_threads(int(os.environ.get("LLM_CPP_THREADS", "16")))
+    if os.environ.get("LLM_NO_CPP") == "1" or sys.platform not in ("win32", "linux") or not _cpp_cpu_supported():
+        return None
+    with _DLL_LOCK:
+        if _DLL is None:
+            filename = "qmm.dll" if sys.platform == "win32" else "qmm.so"
+            path = os.path.join(os.path.dirname(__file__), "cpp", filename)
+            if not os.path.exists(path):
+                return None
+            manifest_path = Path(path + ".build.json")
+            if not manifest_path.exists():
+                raise RuntimeError("нет манифеста qmm; пересоберите cpp/build.sh")
+            manifest = json.loads(manifest_path.read_text())
+            source = Path(__file__).with_name("cpp") / "qmm.cpp"
+            if (manifest.get("source_sha256") != hashlib.sha256(source.read_bytes()).hexdigest()
+                    or manifest.get("binary_sha256") != hashlib.sha256(Path(path).read_bytes()).hexdigest()):
+                raise RuntimeError("qmm не соответствует исходнику; пересоберите cpp/build.sh")
+            d = ctypes.CDLL(path)
+            d.qmm_abi_version.restype = ctypes.c_int
+            if d.qmm_abi_version() != 2:
+                raise RuntimeError("несовместимая версия qmm; пересоберите cpp/build.sh")
+            for name in ("q4k_mm", "q6k_mm", "f16_mm"):
+                fn = getattr(d, name)
+                fn.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_int,
+                               ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
+                fn.restype = ctypes.c_int
+            d.moe_ffn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int] * 7 + [ctypes.c_void_p] * 5
+            d.moe_ffn.restype = ctypes.c_int
+            d.take_failed.restype = ctypes.c_int
+            d.set_threads.argtypes = [ctypes.c_int]
+            threads = int(os.environ.get("LLM_CPP_THREADS", "16"))
+            if not 1 <= threads <= 256:
+                raise ValueError("LLM_CPP_THREADS должно быть от 1 до 256")
+            d.set_threads(threads)
+            import atexit
+            atexit.register(d.pool_shutdown)
             _DLL = d
-    return _DLL or None
+        return _DLL
 
 
 class CpuMat:
@@ -146,13 +187,24 @@ class CpuMat:
             self.W = dequant(a, t, N * K).reshape(N, K).astype(np.float32)
 
     def mm(self, X, Y, SX, add=False):
+        if (X.ndim != 2 or Y.ndim != 2 or X.shape[1] != self.K or Y.shape != (X.shape[0], self.N)
+                or X.dtype != np.float32 or Y.dtype != np.float32 or not X.flags.c_contiguous
+                or Y.strides[1] != 4 or not Y.flags.writeable or not 1 <= X.shape[0] <= 16):
+            raise ValueError("неверные формы, типы или шаги матричного умножения")
         d = _dll()
-        if d is not None and self.t in ("Q4_K", "Q6_K", "F16"):
+        if d is not None and self.K % 256 == 0 and self.t in ("Q4_K", "Q6_K", "F16"):
             f = {"Q4_K": d.q4k_mm, "Q6_K": d.q6k_mm, "F16": d.f16_mm}[self.t]
             assert X.flags.c_contiguous and X.dtype == np.float32 and Y.dtype == np.float32
-            f(self.raw.ctypes.data, self.N, self.K, X.ctypes.data, X.shape[0], Y.ctypes.data, Y.strides[0] // 4, int(add))
+            rc = f(self.raw.ctypes.data, self.N, self.K, X.ctypes.data, X.shape[0], Y.ctypes.data, Y.strides[0] // 4, int(add))
+            if rc != 0:
+                raise ValueError(f"qmm: недопустимые размеры ({self.t}, N={self.N}, K={self.K}, T={X.shape[0]})")
+            if d.take_failed():
+                raise RuntimeError("qmm: исключение в рабочем потоке")
             return
         if self.t == "Q4_K":
+            if SX is None:
+                SX = np.empty((X.shape[0], self.K // 32), np.float32)
+                sub_sums(X, SX)
             q4k_mm(self.QS, self.DSC, self.DMN, X, SX, Y, add)
         elif self.t == "Q6_K":
             q6k_mm(self.QL, self.QH, self.DS, X, Y, add)
@@ -184,7 +236,7 @@ class GCpuLayer:
         m["k"].mm(h, qkv[:, H * HD:(H + KV) * HD], sx)
         m["v"].mm(h, qkv[:, (H + KV) * HD:], sx)
         att = np.empty((T, H * HD), np.float32)
-        qk_rope_attn(qkv, self.s["qn"], self.s["kn"], inv, pos0, self.K, self.V, att, H, KV, HD, self.eps)
+        qk_rope_attn(qkv, self.s["qn"], self.s["kn"], inv, pos0, self.K, self.V, att, H, KV, HD, self.eps, True)
         sa = np.empty((T, att.shape[1] // 32), np.float32)
         sub_sums(att, sa)
         m["o"].mm(att, X, sa, True)

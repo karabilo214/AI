@@ -4,6 +4,8 @@
 import json
 import sys
 
+from .bench_validation import paired_rows, compare_run
+
 
 def prefix(a, b):
     n = 0
@@ -19,6 +21,9 @@ def main():
     ref = rs[0]
     print(f"{'участник':28s} {'генерация':>10s} {'1-е слово':>9s} {'GSM8K':>7s} {'время задач':>12s} {'текст = точный':>15s} {'общее начало':>13s}")
     for r in rs:
+        paired_rows(ref["gsm"], r["gsm"], "q")
+        for left, right in paired_rows(ref["speed"], r["speed"], "ask"):
+            compare_run(left.get("run"), right.get("run"))
         same = [a["out"] == b["out"] for a, b in zip(ref["gsm"], r["gsm"])]
         pre = sorted(prefix(a["out"], b["out"]) / max(len(a["out"]), 1) for a, b in zip(ref["gsm"], r["gsm"]))
         ok = sum(g["ok"] for g in r["gsm"])

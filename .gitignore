@@ -26,3 +26,5 @@ human_brain/docs/report_*.md
 llm_opt/data/
 # собранные ядра (llm_app/cpp/build.sh)
 llm_app/cpp/*.dll
+llm_app/cpp/pool_test_bin
+llm_app/cpp/*.build.json

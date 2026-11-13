@@ -21,6 +21,21 @@ ASKS = [
 GSM_HINT = "\nSolve the problem step by step. At the end, write the final answer as a number after '####'."
 
 
+_RUN_CACHE = {}
+
+def run_metadata(url, model, n):
+    key = (url, model)
+    if key not in _RUN_CACHE:
+        try:
+            with urllib.request.urlopen(url + "/health", timeout=5) as response:
+                server = json.load(response).get("run_metadata", {})
+        except (OSError, ValueError):
+            server = {}
+        _RUN_CACHE[key] = server
+    return {"version": 1, "model": model, "server": _RUN_CACHE[key],
+            "parameters": {"temperature": 0, "top_k": 1, "seed": 0, "num_ctx": 2048, "think": False, "num_predict": n}}
+
+
 def chat(url, model, text, n, stream=True):
     body = json.dumps({"model": model, "messages": [{"role": "user", "content": text}], "stream": stream, "think": False,
                        "keep_alive": "30m", "options": {"temperature": 0, "top_k": 1, "seed": 0, "num_predict": n,
@@ -33,13 +48,19 @@ def chat(url, model, text, n, stream=True):
             if not line.strip():
                 continue
             o = json.loads(line)
+            if o.get("error"):
+                raise RuntimeError(str(o["error"]))
             piece = o.get("message", {}).get("content", "")
             if piece and ttft is None:
                 ttft = time.perf_counter() - t0
             out += piece
             if o.get("done"):
                 fin = o
-    return out, fin, ttft or 0.0, time.perf_counter() - t0
+    if not fin:
+        raise RuntimeError("сервер оборвал ответ без финального события")
+    wall = time.perf_counter() - t0
+    fin["_run"] = run_metadata(url, model, n)
+    return out, fin, ttft or 0.0, wall
 
 
 GSM_URL = "https://raw.githubusercontent.com/openai/grade-school-math/master/grade_school_math/data/test.jsonl"
@@ -69,7 +90,7 @@ def main():
         out, fin, ttft, wall = chat(url, model, a, 256)
         e = {"ask": a, "out": out, "ttft_s": ttft, "wall_s": wall, "prompt_n": fin.get("prompt_eval_count"),
              "prompt_s": fin.get("prompt_eval_duration", 0) / 1e9, "gen_n": fin.get("eval_count"),
-             "gen_s": fin.get("eval_duration", 0) / 1e9}
+             "gen_s": fin.get("eval_duration", 0) / 1e9, "run": fin["_run"]}
         res["speed"].append(e)
         print(f"  {e['gen_n']} слов: генерация {e['gen_n'] / max(e['gen_s'], 1e-9):.1f} слов/с, первое слово через "
               f"{ttft:.2f} с, всего {wall:.1f} с", flush=True)

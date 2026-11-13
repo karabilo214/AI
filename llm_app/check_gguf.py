@@ -39,6 +39,7 @@ def main():
             (ggemv if T == 1 else ggemv_tc)(x, w, y, mode, T)
             ref = x.double() @ W.T + (y0.double() if mode else 0)
             err = ((y.double() - ref).abs().max() / ref.abs().max()).item()
+            assert err < 1e-4, (name, T, err)
             yb = torch.zeros(T, N, device="cuda")
             res = []
             for cf in (cfg_space(t) if T == 1 else cfg_space_tc(t)):
@@ -47,7 +48,13 @@ def main():
                 except Exception:
                     pass
             res.sort()
+            if not res:
+                raise RuntimeError("нет рабочей конфигурации")
             tm, cf = res[0]
+            selected = y0.clone() if mode else torch.zeros_like(y0)
+            (ggemv if T == 1 else ggemv_tc)(x, w, selected, mode, T, cf)
+            selected_err = ((selected.double() - ref).abs().max() / ref.abs().max()).item()
+            assert selected_err < 1e-4, (name, T, cf, selected_err)
             print(f"{name} {t} {N}x{K} T={T}: ошибка {err:.1e}; {tm * 1000:.0f} мкс ({nbytes(w) / tm / 1e6:.0f} ГБ/с) {cf}", flush=True)
 
 

@@ -184,6 +184,10 @@ def rope_attn_k(QKV, QN, KN, INV, POS, KC, VC, OUT, maxt, eps, scale, NH: tl.con
     ka, kb = ka * c - kb * s, kb * c + ka * s
     rd = tl.arange(0, HDIM)
     v = tl.load(QKV + (NH + NKV + g) * HDIM + rd)
+    # Одиночный шаг использует ту же точность текущих KV, что и пачка.
+    ka = ka.to(KC.dtype.element_ty).to(tl.float32)
+    kb = kb.to(KC.dtype.element_ty).to(tl.float32)
+    v = v.to(VC.dtype.element_ty).to(tl.float32)
     if h % G == 0:
         dst = (g * maxt + pos) * HDIM
         tl.store(KC + dst + r, ka); tl.store(KC + dst + half + r, kb)
