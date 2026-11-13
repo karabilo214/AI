@@ -1,0 +1,5 @@
+# Байты исходников участвуют в манифестах native и ключах автонастройки.
+*.py text eol=lf
+*.cpp text eol=lf
+*.sh text eol=lf
+*.toml text eol=lf
