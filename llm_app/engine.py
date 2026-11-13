@@ -326,6 +326,16 @@ class Engine:
         return T
 
     def _capture(self, B):
+        """Пробные прогоны и запись графа пишут k, v на позиции self.pos..+B — уводим их в запасную область в конце
+        кэша, иначе портится уже посчитанное начало текста (было: первый ответ после запуска зависел от этого)."""
+        saved = self.pos.clone()
+        self.pos.fill_(self.maxt - 16)
+        try:
+            self._capture_at(B)
+        finally:
+            self.pos.copy_(saved)
+
+    def _capture_at(self, B):
         s = torch.cuda.Stream()
         s.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(s):
@@ -395,19 +405,26 @@ class Engine:
 
     # ---------------- генерация ----------------
     def generate(self, prompt, max_new=256, temperature=0.0, top_p=1.0, seed=None, draft=None, k=None, stats=None,
-                 force=None):
+                 force=None, cons=None):
         """Слова по одному (генератор). Жадный выбор + draft (другой движок той же семьи) — угадывание вперёд,
         текст тот же, что без него. k — постоянная длина черновика; k=None — по стоимости: черновик продлевается,
         пока вероятность «все слова угаданы» (произведение уверенностей угадывателя) выше порога
         thr = 2 * (шаг угадывателя + прирост прохода на слово) / проход, измеряемых на ходу.
         Выбор «одиночный шаг или проверка черновика» — с гистерезисом и учётом измеренной цены переключения.
         force(i) -> "step" | "spec" — принудительный режим на шаге i (для проверки, что текст не зависит от
-        истории переключений). stats (dict): prompt_n, prompt_ms, gen_n, gen_ms, passes, drafted, accepted, steps1, switches."""
+        истории переключений). cons — ограничение грамматикой (constrain.Constraint; только движок GGUF).
+        stats (dict): prompt_n, prompt_ms, gen_n, gen_ms, passes, drafted, accepted, steps1, switches."""
         rng = np.random.default_rng(seed)
         P = len(prompt)
         c = min(self.common(prompt), P - 1)
+        if cons is not None and not getattr(self, "supports_mask", False):
+            raise NotImplementedError("ограничение грамматикой поддержано только для моделей GGUF")
+        mk = (lambda path=(): cons.masks(list(path))) if cons is not None else (lambda path=(): (None, 0))
         torch.cuda.synchronize(); t0 = time.perf_counter()
-        tok = self.process(prompt[c:], c, temperature, top_p, rng)[-1]
+        bm, _ = mk()
+        tok = self.process(prompt[c:], c, temperature, top_p, rng, **({"mask": bm} if cons else {}))[-1]
+        if cons:
+            cons.commit(0, 0, tok)
         t1 = time.perf_counter()
         st = stats if stats is not None else {}
         st.update(prompt_n=P - c, prompt_ms=(t1 - t0) * 1000, gen_n=0, gen_ms=0.0, passes=0, drafted=0, accepted=0)
@@ -430,7 +447,10 @@ class Engine:
                     st["switches"] = st.get("switches", 0) + 1
                 cost["last"] = "step" if want_step else "spec"
                 if want_step:
-                    res = self.process([gen[-1]], len(seq) - 1)  # черновику мало веры — дешёвый одиночный шаг
+                    bm, _ = mk()
+                    res = self.process([gen[-1]], len(seq) - 1, **({"mask": bm} if cons else {}))  # черновику мало веры — дешёвый одиночный шаг
+                    if cons:
+                        cons.commit(0, 0, res[0])
                     tc = time.perf_counter()
                     if cost.get("prev") == "spec" and cost.get("c1") is not None:  # первый шаг после смены
                         cost["sw"] = 0.7 * cost.get("sw", 0.0) + 0.3 * max(0.0, (tc - tb) - cost["c1"])
@@ -439,7 +459,8 @@ class Engine:
                     new = res[:1]
                     st["steps1"] = st.get("steps1", 0) + 1
                 else:
-                    res = self.process([gen[-1]] + d, len(seq) - 1)
+                    bm, adv = mk(d)
+                    res = self.process([gen[-1]] + d, len(seq) - 1, **({"mask": bm} if cons else {}))
                     tc = time.perf_counter()
                     if cost.get("prev") != "step":  # проход после смены режима в оценку прохода не берём
                         cost["pts"] = (cost["pts"] + [(len(d) + 1, tc - tb)])[-64:]
@@ -447,6 +468,8 @@ class Engine:
                     while n < len(d) and d[n] == res[n]:
                         n += 1
                     new = d[:n] + [res[n]]
+                    if cons:
+                        cons.commit(adv, n, res[n])
                     st["drafted"] += len(d)
                     st["accepted"] += n
                     if d:  # поправка уверенности угадывателя: принято / ожидалось
@@ -454,7 +477,10 @@ class Engine:
                         if e > 0.05:
                             cost["cal"] = min(1.5, max(0.2, 0.85 * cost.get("cal", 1.0) + 0.15 * n / e))
             else:
-                new = self.process([gen[-1]], P + len(gen) - 1, temperature, top_p, rng)
+                bm, _ = mk()
+                new = self.process([gen[-1]], P + len(gen) - 1, temperature, top_p, rng, **({"mask": bm} if cons else {}))
+                if cons:
+                    cons.commit(0, 0, new[0])
             st["passes"] += 1
             if draft is not None and temperature <= 0:
                 cost["prev"] = cost.get("last")

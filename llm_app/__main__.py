@@ -21,7 +21,10 @@ def main():
     ap.add_argument("--resident", type=int, default=None, help="сколько слоёв держать в видеокарте (по умолчанию — сколько влезет)")
     ap.add_argument("--tokenizer", default="Qwen3-8B", help="токенизатор (для моделей GGUF): папка или имя в кэше HF")
     ap.add_argument("--port", type=int, default=11435)
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 — доступ по сети")
+    ap.add_argument("--api-key", default=None, help="ключ доступа (Authorization: Bearer ... или x-api-key)")
+    ap.add_argument("--force-greedy", action="store_true",
+                    help="всегда жадный выбор (агенты часто шлют температуру > 0; угадывание точное только при жадном)")
     a = ap.parse_args()
     import torch
     from transformers import AutoTokenizer
@@ -43,9 +46,9 @@ def main():
         make_plan(Ckpt(a.model), a.maxt, cpu=not a.no_cpu, force_resident=a.resident)
         return
     if gguf:
-        from .gengine import GGUFEngine
-        eng = GGUFEngine(a.model, maxt=a.maxt, resident=a.resident,
-                         cpu=False if a.no_cpu else ("hybrid" if draft is not None else True))
+        from .gengine import open_gguf
+        eng = open_gguf(a.model, maxt=a.maxt, resident=a.resident,
+                        cpu=False if a.no_cpu else ("hybrid" if draft is not None else True))
         if a.resident is None:
             eng.autofit()
         tk = AutoTokenizer.from_pretrained(find_model(a.tokenizer))
@@ -53,7 +56,8 @@ def main():
         eng = Engine(a.model, maxt=a.maxt, cpu=not a.no_cpu, resident=a.resident)
         tk = AutoTokenizer.from_pretrained(find_model(a.model))
     from .server import App, serve
-    app = App(eng, tk, os.path.basename(a.model.rstrip("/\\")), draft=draft, k=a.k or None)
+    app = App(eng, tk, os.path.basename(a.model.rstrip("/\\")), draft=draft, k=a.k or None,
+              api_key=a.api_key, force_greedy=a.force_greedy)
     if a.cmd == "serve":
         serve(app, a.host, a.port)
     else:
@@ -65,11 +69,12 @@ def main():
                 break
             msgs.append({"role": "user", "content": q})
             out = ""
-            for piece, fin in app.run(app.chat_ids(msgs), {"temperature": 0.0}):
-                out += piece
-                sys.stdout.write(piece); sys.stdout.flush()
-                if fin:
-                    print(f"\n[{fin['eval_count']} слов, {fin['eval_count'] / max(fin['eval_duration'], 1) * 1e9:.1f} слов/с]")
+            for kind, v in app.run(app.build_ids(msgs), 1024, 0.0):
+                if kind == "text":
+                    out += v
+                    sys.stdout.write(v); sys.stdout.flush()
+                elif kind == "end":
+                    print(f"\n[{v['gen_n']} слов, {1000 * v['gen_n'] / max(v['gen_ms'], 1):.1f} слов/с]")
             msgs.append({"role": "assistant", "content": out})
 
 

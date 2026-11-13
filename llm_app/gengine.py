@@ -20,6 +20,7 @@ GM = {"q": "attn_q", "k": "attn_k", "v": "attn_v", "o": "attn_output", "gate": "
 
 
 class GGUFEngine(Engine):
+    supports_mask = True
     def __init__(self, name, maxt=2048, resident=None, log=print, vram_reserve=None, extra_vram=0, cpu=True):
         """cpu: True — слои вне видеокарты через один считает процессор (из файла модели), пока следующий едет по
         шине; "hybrid" — такие слои («hyb») при одиночном шаге считает процессор, а при проходе пачкой они
@@ -58,7 +59,7 @@ class GGUFEngine(Engine):
         else:
             R = resident
         alt = "hyb" if cpu == "hybrid" else "cpu"
-        self.cpu_frac = float(os.environ.get("LLM_CPU_FRAC", "0.44"))  # доля слоёв вне видеокарты на процессоре
+        self.cpu_frac = float(os.environ.get("LLM_CPU_FRAC", "0.58"))  # доля слоёв вне видеокарты на процессоре
         self.place = ["gpu"] * R + self._spread(self.L - R, alt if cpu else None)
         tot, avail = ram_info()
         log(f"GGUF {name}: {self.L} слоёв, {sum(lb) / GiB:.2f} ГиБ весов слоёв; видеокарта свободно {free / GiB:.1f} ГиБ -> "
@@ -260,6 +261,16 @@ class GGUFEngine(Engine):
         return T
 
     def _capture(self, B):
+        """Пробные прогоны и запись графа пишут k, v на позиции self.pos..+B — уводим их в запасную область в конце
+        кэша, иначе портится уже посчитанное начало текста (было: первый ответ после запуска зависел от этого)."""
+        saved = self.pos.clone()
+        self.pos.fill_(self.maxt - 16)
+        try:
+            self._capture_at(B)
+        finally:
+            self.pos.copy_(saved)
+
+    def _capture_at(self, B):
         s = torch.cuda.Stream()
         s.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(s):
@@ -295,8 +306,11 @@ class GGUFEngine(Engine):
         if self.hyb_ids:
             self._hyb_to_cpu(start, n)
 
-    def _pick(self, T, temperature, top_p, rng):
+    def _pick(self, T, temperature, top_p, rng, mask=None):
         lg = self.logits[:T]
+        if mask is not None:
+            from .constrain import Constraint
+            Constraint.apply(lg, mask)
         if temperature <= 0:
             mx, am = lg.max(-1)
             self.last_conf = (1.0 / (lg - mx[:, None]).exp().sum(-1)).tolist()  # вероятность выбранного слова
@@ -408,9 +422,9 @@ class GGUFEngine(Engine):
                  f"теперь в видеокарте {self.place.count('gpu')}, по шине {len(self.stream_ids)}, на процессоре "
                  f"{len(self.cpu_ids)}, гибридных {len(self.hyb_ids)}; свободно {free / GiB:.2f} ГиБ")
 
-    def process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None):
+    def process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None, mask=None):
         try:
-            return self._process(tokens, pos0, temperature, top_p, rng)
+            return self._process(tokens, pos0, temperature, top_p, rng, mask)
         except torch.OutOfMemoryError:
             # нехватка видеопамяти: вытеснить слой(и) на подкачку и повторить
             gpu = [i for i in range(self.L) if self.place[i] == "gpu"]
@@ -419,14 +433,23 @@ class GGUFEngine(Engine):
             self.log(f"нехватка видеопамяти: слоёв в видеокарте теперь {self.place.count('gpu')}")
             self.ctx = self.ctx[:pos0]
             torch.cuda.empty_cache()
-            return self._process(tokens, pos0, temperature, top_p, rng)
+            return self._process(tokens, pos0, temperature, top_p, rng, mask)
 
-    def _process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None):
+    def _process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None, mask=None):
         if pos0 + len(tokens) > self.maxt:
             raise ValueError(f"текст длиннее {self.maxt} слов")
         self.ctx = self.ctx[:pos0] + list(tokens)
         if len(tokens) > 16:
             self._prefill(tokens, pos0)
-            return self._pick(1, temperature, top_p, rng)
+            return self._pick(1, temperature, top_p, rng, mask)
         T = self._decode(tokens, pos0)
-        return self._pick(T, temperature, top_p, rng)
+        return self._pick(T, temperature, top_p, rng, mask)
+
+
+def open_gguf(name, **kw):
+    """Модель GGUF по имени Ollama или пути: MoE (qwen3moe) -> MoEEngine, иначе GGUFEngine."""
+    g = GGUF(find_ollama(name) if ":" in name and not name.endswith(".gguf") else name)
+    if g.meta.get("general.architecture") == "qwen3moe":
+        from .moe import MoEEngine
+        return MoEEngine(name, **{k: v for k, v in kw.items() if k in ("maxt", "log")})
+    return GGUFEngine(name, **kw)

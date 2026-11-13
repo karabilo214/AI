@@ -8,7 +8,7 @@ import urllib.request
 import torch
 from transformers import AutoTokenizer
 
-from .gengine import GGUFEngine
+from .gengine import open_gguf
 from .model import find_model
 from .selftest import TEXTS
 
@@ -29,7 +29,7 @@ def main():
     ref = [ollama(name, t, N) for t in TEXTS]  # сначала Ollama (потом она выгружается: keep_alive 0)
     time.sleep(3)
     torch.set_grad_enabled(False)
-    eng = GGUFEngine(name, maxt=1024, resident=R, cpu="--no-cpu" not in sys.argv)
+    eng = open_gguf(name, maxt=1024, resident=R, cpu="--no-cpu" not in sys.argv)
     for t, (ro, ospeed) in zip(TEXTS, ref):
         ids = tk.encode(t)
         st = {}
@@ -38,6 +38,8 @@ def main():
         same = 0
         while same < min(len(mine), len(ro)) and mine[same] == ro[same]:
             same += 1
+        if hasattr(eng, "moe_s"):
+            print(f"    из них эксперты на процессоре: {eng.moe_s * 1000 / max(st['gen_n'], 1):.1f} мс/слово"); eng.moe_s = 0.0
         print(f"  наш {st['gen_ms'] / max(st['gen_n'], 1):.1f} мс/слово ({1000 * st['gen_n'] / max(st['gen_ms'], 1):.1f} слов/с), "
               f"Ollama {ospeed:.1f} слов/с; совпало с начала {same} из {len(ro)} символов\n    наш:    {mine[:90]!r}\n    Ollama: {ro[:90]!r}", flush=True)
 

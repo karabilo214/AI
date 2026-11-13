@@ -17,7 +17,8 @@ def main():
     torch.set_grad_enabled(False)
     tk = AutoTokenizer.from_pretrained(find_model("Qwen3-8B"))
     draft = GGUFEngine(dname, maxt=1024, vram_reserve=0) if ":" in dname else Engine(dname, maxt=1024, cpu=False)
-    eng = GGUFEngine(name, maxt=1024, cpu=sys.argv[4] if len(sys.argv) > 4 else False)
+    cpu = sys.argv[4] if len(sys.argv) > 4 else False
+    eng = GGUFEngine(name, maxt=1024, cpu={"cpu": True, "no": False}.get(cpu, cpu))
     eng.autofit()
     for t in TEXTS:
         ids = tk.encode(t)

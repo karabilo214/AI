@@ -24,3 +24,5 @@ AGENTS.md
 human_brain/docs/report_*.md
 # данные wikitext (скачиваются) — не в git
 llm_opt/data/
+# собранные ядра (llm_app/cpp/build.sh)
+llm_app/cpp/*.dll

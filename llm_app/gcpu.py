@@ -1,6 +1,10 @@
 """Слой GGUF на процессоре (Numba): веса читаются прямо из файла модели (memmap), счёт fp32.
 Блок весов распаковывается один раз и умножается на все слова пачки. Масштабы Q4_K/Q6_K раскладываются при
 загрузке в небольшие массивы float32; сами 4/6-битные числа — из файла без копии."""
+import ctypes
+import os
+import sys
+
 import numba as nb
 import numpy as np
 
@@ -96,6 +100,24 @@ def f32_mm(W, X, Y, add):
                 Y[t, r] = s
 
 
+_DLL = None
+
+
+def _dll():
+    """Ядра на C++ (cpp/qmm.dll, AVX-512, свой пул потоков); None — тогда Numba."""
+    global _DLL
+    if _DLL is None and sys.platform == "win32" and os.environ.get("LLM_NO_CPP") != "1":
+        p = os.path.join(os.path.dirname(__file__), "cpp", "qmm.dll")
+        if os.path.exists(p):
+            d = ctypes.CDLL(p)
+            for f in ("q4k_mm", "q6k_mm", "f16_mm"):
+                getattr(d, f).argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_int,
+                                          ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
+            d.set_threads(int(os.environ.get("LLM_CPP_THREADS", "16")))
+            _DLL = d
+    return _DLL or None
+
+
 class CpuMat:
     """Матрица GGUF для процессора."""
 
@@ -103,6 +125,7 @@ class CpuMat:
         buf, N, K, t = g.raw(name)
         self.t, self.N, self.K = t, N, K
         a = np.asarray(buf)
+        self.raw = a  # байты из файла (memmap) — для ядер C++
         nb_ = K // 256
         if t == "Q4_K":
             blk = a.reshape(N, nb_, 144)
@@ -123,6 +146,12 @@ class CpuMat:
             self.W = dequant(a, t, N * K).reshape(N, K).astype(np.float32)
 
     def mm(self, X, Y, SX, add=False):
+        d = _dll()
+        if d is not None and self.t in ("Q4_K", "Q6_K", "F16"):
+            f = {"Q4_K": d.q4k_mm, "Q6_K": d.q6k_mm, "F16": d.f16_mm}[self.t]
+            assert X.flags.c_contiguous and X.dtype == np.float32 and Y.dtype == np.float32
+            f(self.raw.ctypes.data, self.N, self.K, X.ctypes.data, X.shape[0], Y.ctypes.data, Y.strides[0] // 4, int(add))
+            return
         if self.t == "Q4_K":
             q4k_mm(self.QS, self.DSC, self.DMN, X, SX, Y, add)
         elif self.t == "Q6_K":
