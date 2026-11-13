@@ -1,0 +1,111 @@
+name: RAMVI CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ramvi-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package and checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+        working-directory: ramvi
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install development tools
+        run: |
+          python -m pip install --upgrade 'pip>=25.1'
+          python -m pip install --group dev
+      - name: Lint, format and types
+        run: |
+          python -m ruff check .
+          python -m ruff format --check .
+          python -m mypy
+      - name: Lightweight tests
+        run: python -m pytest
+      - name: Build wheel
+        run: python -m pip wheel --no-deps --no-build-isolation --wheel-dir "$RUNNER_TEMP/ramvi-wheels" ./engine
+      - name: Install wheel outside checkout and check CLI
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import subprocess
+          import tempfile
+          import venv
+
+          wheel = next((pathlib.Path(os.environ['RUNNER_TEMP']) / 'ramvi-wheels').glob('*.whl'))
+          with tempfile.TemporaryDirectory(prefix='ramvi-installed-') as folder:
+              root = pathlib.Path(folder)
+              venv.create(root / 'env', with_pip=True)
+              scripts = root / 'env' / ('Scripts' if os.name == 'nt' else 'bin')
+              python = scripts / ('python.exe' if os.name == 'nt' else 'python')
+              command = scripts / ('ramvi-engine.exe' if os.name == 'nt' else 'ramvi-engine')
+              env = {key: value for key, value in os.environ.items() if key != 'PYTHONPATH'}
+              subprocess.run([python, '-m', 'pip', 'install', '--no-index', '--no-deps', wheel],
+                             cwd=root, env=env, check=True, timeout=60)
+              code = """
+          import sys, importlib.resources as resources, ramvi_engine
+          assert 'site-packages' in ramvi_engine.__file__
+          assert 'torch' not in sys.modules and 'triton' not in sys.modules
+          assert resources.files('ramvi_engine.native').joinpath('qmm.cpp').is_file()
+          assert resources.files('ramvi_engine.generation').joinpath('grammar_worker.py').is_file()
+          """
+              subprocess.run([python, '-c', code], cwd=root, env=env, check=True, timeout=15)
+              for args in ([python, '-m', 'ramvi_engine', '--help'], [command, '--help']):
+                  result = subprocess.run(args, cwd=root, env=env, check=True,
+                                          capture_output=True, text=True, timeout=15)
+                  assert '{serve,chat,plan}' in result.stdout
+          PY
+
+  cpu:
+    name: Engine unit tests (CPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: ramvi
+    env:
+      CUDA_VISIBLE_DEVICES: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU runtime and development tools
+        run: |
+          python -m pip install --upgrade 'pip>=25.1'
+          python -m pip install --group dev
+          python -m pip install 'torch==2.15.0' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-build-isolation -e ./engine
+          python -m pip check
+      - name: Verify CPU-only Torch
+        run: python -c "import torch; assert torch.version.cuda is None; assert not torch.cuda.is_available()"
+      - name: Package tests with runtime dependencies
+        run: python -m pytest
+      - name: Legacy unit tests through compatibility layer
+        working-directory: .
+        run: python -m unittest discover -s llm_app/tests -t .
