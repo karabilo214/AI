@@ -150,3 +150,42 @@ def test_internal_imports_are_absolute_and_independent_of_legacy() -> None:
             ):
                 bad.append(f"{file.relative_to(PACKAGE_ROOT)}:{node.lineno}")
     assert not bad, bad
+
+
+def test_metadata_hash_covers_nested_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hash сервера замечает правки ядра и учитывает относительные пути файлов."""
+    module = importlib.import_module("ramvi_engine.server.app")
+    package = tmp_path / "ramvi_engine"
+    server = package / "server"
+    core = package / "core"
+    server.mkdir(parents=True)
+    core.mkdir()
+    app_source = server / "app.py"
+    engine_source = core / "engine.py"
+    app_source.write_bytes(b"# server\n")
+    engine_source.write_bytes(b"# core version 1\n")
+    monkeypatch.setattr(module, "__file__", str(app_source))
+    app = module.App(SimpleNamespace(maxt=2048, place=["gpu"]), None, "fixture")
+
+    def digest() -> str:
+        value = app.metadata()["code_sha256"]
+        assert isinstance(value, str)
+        return value
+
+    original = digest()
+    expected = hashlib.sha256()
+    for source in sorted(package.rglob("*.py")):
+        expected.update(source.relative_to(package).as_posix().encode())
+        expected.update(source.read_bytes())
+    assert original == expected.hexdigest()
+    engine_source.write_bytes(b"# core version 2\n")
+    changed = digest()
+    assert changed != original
+    engine_source.rename(core / "renamed.py")
+    assert digest() != changed
+    (core / "ignored.log").write_bytes(b"runtime log")
+    before_log_change = digest()
+    (core / "ignored.log").write_bytes(b"different runtime log")
+    assert digest() == before_log_change
