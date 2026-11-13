@@ -77,6 +77,19 @@ def _split(full, think):
     return reasoning, "".join(pieces), calls, False
 
 
+def _held(text, markers):
+    """Длина хвоста text, который может оказаться началом одной из меток (его пока не отдаём клиенту).
+    Раньше держали фиксированные len(метки)-1 символов: первый кусок ответа уходил только после ~11 символов,
+    то есть после первого прохода угадывания (+0.5-1 с к первому слову)."""
+    best = 0
+    for m in markers:
+        for n in range(min(len(m) - 1, len(text)), best, -1):
+            if text.endswith(m[:n]):
+                best = n
+                break
+    return best
+
+
 def _first_stop(content, stops):
     hits = [(content.find(stop), i, stop) for i, stop in enumerate(stops) if stop in content]
     return min(hits)[2] if hits else None
@@ -195,7 +208,7 @@ class App:
         if self.force_greedy:
             temperature = 0.0
         stop = [s for s in (stop or []) if s]
-        hold = max([len("<tool_call>")] + [len(s) for s in stop]) - 1
+        markers = ["<tool_call>", "</think>"] + stop
         st, gen, seen = {}, [], 0
         matched_stop = None
         sent_r, sent_c, finish = 0, 0, "length"
@@ -215,11 +228,11 @@ class App:
                 hit = _first_stop(c, stop)
                 if hit is not None:
                     c = c[:c.index(hit)]
-                safe_r = max(sent_r, len(r) - 7) if open_think else len(r)
+                safe_r = max(sent_r, len(r) - _held(r, ["</think>"])) if open_think else len(r)
                 if safe_r > sent_r:
                     yield "reasoning", r[sent_r:safe_r]
                     sent_r = safe_r
-                safe = len(c) if hit is not None else max(sent_c, len(c) - hold)
+                safe = len(c) if hit is not None else max(sent_c, len(c) - _held(c, markers))
                 if not open_think and safe > sent_c:
                     yield "text", c[sent_c:safe]
                     sent_c = safe
