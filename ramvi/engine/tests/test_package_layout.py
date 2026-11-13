@@ -37,6 +37,7 @@ assert 'torch' not in sys.modules and 'triton' not in sys.modules
         env={**os.environ, "PYTHONPATH": str(ENGINE_ROOT)},
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=15,
         check=True,
     )
@@ -54,6 +55,7 @@ def test_legacy_and_canonical_help_match() -> None:
             env={**os.environ, "PYTHONPATH": str(ENGINE_ROOT)},
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=15,
             check=True,
         )
@@ -189,3 +191,25 @@ def test_metadata_hash_covers_nested_sources(
     before_log_change = digest()
     (core / "ignored.log").write_bytes(b"different runtime log")
     assert digest() == before_log_change
+
+
+def test_windows_output_preserves_russian_in_redirected_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Контроль CP1252 воспроизводит Windows pipe без зависимости от locale Mac."""
+    import io
+
+    module = importlib.import_module("ramvi_engine.console")
+    output_bytes, error_bytes = io.BytesIO(), io.BytesIO()
+    with (
+        io.TextIOWrapper(output_bytes, encoding="cp1252", write_through=True) as output,
+        io.TextIOWrapper(error_bytes, encoding="cp1252", write_through=True) as error,
+    ):
+        monkeypatch.setattr(
+            module, "sys", SimpleNamespace(platform="win32", stdout=output, stderr=error)
+        )
+        module.configure_output()
+        output.write("Справка RAMVI")
+        error.write("Ошибка RAMVI")
+        assert output_bytes.getvalue().decode("utf-8") == "Справка RAMVI"
+        assert error_bytes.getvalue().decode("utf-8") == "Ошибка RAMVI"

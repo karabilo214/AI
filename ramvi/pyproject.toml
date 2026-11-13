@@ -81,7 +81,7 @@ exclude = [
 python_version = "3.12"
 strict = true
 warn_unused_configs = true
-files = ["tests", "engine/tests"]
+files = ["tests", "engine/tests", "engine/ramvi_engine/console.py"]
 
 [tool.pytest.ini_options]
 minversion = "9.2"

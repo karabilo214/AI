@@ -98,6 +98,14 @@ def allowed_layout_changes(name: str, source: str) -> str:
                 1,
             )
         )
+    if name == "__main__":
+        source = source.replace(
+            '    ap = argparse.ArgumentParser(prog="ramvi-engine")',
+            "    from ramvi_engine.console import configure_output\n"
+            "    configure_output()\n"
+            '    ap = argparse.ArgumentParser(prog="ramvi-engine")',
+            1,
+        )
     return source
 
 

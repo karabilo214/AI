@@ -12,6 +12,8 @@ warnings.filterwarnings("ignore", message=".*non-writable.*")
 
 def main() -> None:
     """Запустить serve, chat или plan для RAMVI Engine."""
+    from ramvi_engine.console import configure_output
+    configure_output()
     ap = argparse.ArgumentParser(prog="ramvi-engine")
     ap.add_argument("cmd", choices=["serve", "chat", "plan"])
     ap.add_argument("--model", required=True)

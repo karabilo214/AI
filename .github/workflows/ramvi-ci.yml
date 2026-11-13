@@ -74,7 +74,7 @@ jobs:
               subprocess.run([python, '-c', code], cwd=root, env=env, check=True, timeout=15)
               for args in ([python, '-m', 'ramvi_engine', '--help'], [command, '--help']):
                   result = subprocess.run(args, cwd=root, env=env, check=True,
-                                          capture_output=True, text=True, timeout=15)
+                                          capture_output=True, text=True, encoding='utf-8', timeout=15)
                   assert '{serve,chat,plan}' in result.stdout
           PY
 
