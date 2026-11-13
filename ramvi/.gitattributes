@@ -3,3 +3,5 @@
 *.cpp text eol=lf
 *.sh text eol=lf
 *.toml text eol=lf
+# Ruff проверяет Python-примеры внутри Markdown.
+*.md text eol=lf
