@@ -4,6 +4,7 @@ dev = [
     "mypy==2.4.1",
     "pytest==9.2.0",
     "ruff==0.17.5",
+    "setuptools==84.2.1",
 ]
 
 [tool.ruff]
@@ -18,14 +19,72 @@ select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
+exclude = [
+    "engine/ramvi_engine/generation/head.py",
+    "engine/ramvi_engine/core/engine.py",
+    "engine/ramvi_engine/core/gengine.py",
+    "engine/ramvi_engine/core/moe.py",
+    "engine/ramvi_engine/core/reference.py",
+    "engine/ramvi_engine/kernels/tkernels.py",
+    "engine/ramvi_engine/kernels/wcomp.py",
+    "engine/ramvi_engine/kernels/gkernels.py",
+    "engine/ramvi_engine/kernels/vocab8.py",
+    "engine/ramvi_engine/kernels/q4.py",
+    "engine/ramvi_engine/kernels/prefill.py",
+    "engine/ramvi_engine/kernels/prefill_kernels.py",
+    "engine/ramvi_engine/cpu/cpu_layer.py",
+    "engine/ramvi_engine/cpu/gcpu.py",
+    "engine/ramvi_engine/formats/gguf.py",
+    "engine/ramvi_engine/formats/model.py",
+    "engine/ramvi_engine/formats/tokenizer_check.py",
+    "engine/ramvi_engine/planning/plan.py",
+    "engine/ramvi_engine/planning/tune.py",
+    "engine/ramvi_engine/planning/measured_plan.py",
+    "engine/ramvi_engine/generation/constrain.py",
+    "engine/ramvi_engine/generation/grammar_worker.py",
+    "engine/ramvi_engine/server/app.py",
+    "engine/ramvi_engine/server/validation.py",
+    "engine/ramvi_engine/cli.py",
+    "engine/ramvi_engine/native/write_manifest.py",
+]
+
+# Перенос старого кода без массового изменения стиля и хешей ядер.
+[tool.ruff.lint.per-file-ignores]
+"engine/ramvi_engine/generation/head.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/core/engine.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/core/gengine.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/core/moe.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/core/reference.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/kernels/tkernels.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/kernels/wcomp.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/kernels/gkernels.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/kernels/vocab8.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/kernels/q4.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/kernels/prefill.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/kernels/prefill_kernels.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/cpu/cpu_layer.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/cpu/gcpu.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/formats/gguf.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/formats/model.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/formats/tokenizer_check.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/planning/plan.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/planning/tune.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/planning/measured_plan.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/generation/constrain.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/generation/grammar_worker.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/server/app.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/server/validation.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/cli.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/ramvi_engine/native/write_manifest.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 warn_unused_configs = true
-files = ["tests"]
+files = ["tests", "engine/tests"]
 
 [tool.pytest.ini_options]
 minversion = "9.2"
-testpaths = ["tests"]
+testpaths = ["tests", "engine/tests"]
+pythonpath = ["engine"]
 addopts = "-ra --strict-config --strict-markers"

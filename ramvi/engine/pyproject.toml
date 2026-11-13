@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools==84.2.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ramvi-engine"
+version = "0.1.0"
+description = "Локальный движок выполнения моделей RAMVI"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "torch",
+    "numpy==2.5.4",
+    "numba==0.68.1",
+    "transformers==5.22.1",
+    "safetensors==0.8.0",
+    "xgrammar==0.2.9",
+    "jsonschema==4.26.0",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "triton; sys_platform == 'linux'",
+    "triton-windows; sys_platform == 'win32'",
+]
+
+[project.scripts]
+ramvi-engine = "ramvi_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ramvi_engine*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"ramvi_engine.native" = ["*.cpp", "*.sh"]

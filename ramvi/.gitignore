@@ -35,5 +35,6 @@ dist/
 *.dll
 *.so
 *.dylib
+engine/ramvi_engine/native/*.build.json
 node_modules/
 target/

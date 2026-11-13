@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 here = Path(__file__).resolve().parent
-src = (here / "qmm.cpp").read_text()
+src = (here.parents[1] / "ramvi" / "engine" / "ramvi_engine" / "native" / "qmm.cpp").read_text()
 pool = src[src.index("struct Job {"):src.index("static std::atomic<int> nthreads")]
 # крючки: задержка перед ожиданием поколения и после взятия задачи
 pool = pool.replace("unsigned seen = 0;\n                for (;;) {",

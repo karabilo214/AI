@@ -9,7 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_local_documentation_links_resolve() -> None:
     """Перенос документа не должен оставлять ссылки на отсутствующие файлы."""
-    documents = [ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.md"))]
+    documents = [
+        ROOT / "README.md",
+        ROOT / "engine" / "README.md",
+        *sorted((ROOT / "docs").rglob("*.md")),
+    ]
     missing: list[str] = []
     for document in documents:
         text = document.read_text(encoding="utf-8")

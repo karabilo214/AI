@@ -1,0 +1,152 @@
+"""Контракты нового пакета и переходного слоя, не требующие видеокарты."""
+
+import ast
+import hashlib
+import importlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from typing import NoReturn
+
+import pytest
+
+ENGINE_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = ENGINE_ROOT.parents[1]
+PACKAGE_ROOT = ENGINE_ROOT / "ramvi_engine"
+
+
+def test_package_and_cli_help_do_not_import_compute_libraries(tmp_path: Path) -> None:
+    """Пакет и справка работают вне репозитория, без загрузки Torch/Triton."""
+    code = """
+import runpy, sys
+import ramvi_engine
+assert 'torch' not in sys.modules and 'triton' not in sys.modules
+sys.argv = ['ramvi-engine', '--help']
+try:
+    runpy.run_module('ramvi_engine', run_name='__main__')
+except SystemExit as error:
+    assert error.code == 0
+assert 'torch' not in sys.modules and 'triton' not in sys.modules
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(ENGINE_ROOT)},
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
+    assert "ramvi-engine" in result.stdout
+    assert "{serve,chat,plan}" in result.stdout
+
+
+def test_legacy_and_canonical_help_match() -> None:
+    """Прежняя точка входа принимает тот же набор параметров."""
+    outputs = []
+    for name in ("llm_app", "ramvi_engine"):
+        result = subprocess.run(
+            [sys.executable, "-m", name, "--help"],
+            cwd=PROJECT_ROOT,
+            env={**os.environ, "PYTHONPATH": str(ENGINE_ROOT)},
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=True,
+        )
+        outputs.append(result.stdout)
+    assert outputs[0] == outputs[1]
+
+
+@pytest.mark.parametrize(
+    ("legacy", "canonical"),
+    [
+        ("server", "server.app"),
+        ("request_validation", "server.validation"),
+        ("gguf", "formats.gguf"),
+        ("gcpu", "cpu.gcpu"),
+        ("constrain", "generation.constrain"),
+        ("measured_plan", "planning.measured_plan"),
+    ],
+)
+def test_legacy_alias_is_the_same_module(legacy: str, canonical: str) -> None:
+    """Совместимость не создаёт копию кэшей, блокировок или глобального состояния."""
+    if legacy not in ("server", "request_validation"):
+        pytest.importorskip("numpy")
+        pytest.importorskip("torch")
+        if legacy == "gcpu":
+            pytest.importorskip("numba")
+    sys.path.insert(0, str(PROJECT_ROOT))
+    try:
+        old = importlib.import_module(f"llm_app.{legacy}")
+        new = importlib.import_module(f"ramvi_engine.{canonical}")
+    finally:
+        sys.path.remove(str(PROJECT_ROOT))
+    assert old is new
+    assert Path(new.__file__ or "").is_relative_to(PACKAGE_ROOT)
+
+
+def test_native_loader_uses_package_directory_and_verifies_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """После переноса DLL ищется рядом с native, а чужой исходник отклоняется."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("torch")
+    pytest.importorskip("numba")
+    module = importlib.import_module("ramvi_engine.cpu.gcpu")
+    package = tmp_path / "ramvi_engine"
+    cpu = package / "cpu"
+    native = package / "native"
+    cpu.mkdir(parents=True)
+    native.mkdir()
+    source = native / "qmm.cpp"
+    library = native / "qmm.dll"
+    source.write_bytes(b"source fixture")
+    library.write_bytes(b"binary fixture")
+    library.with_suffix(".dll.build.json").write_text(
+        json.dumps(
+            {
+                "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                "binary_sha256": hashlib.sha256(library.read_bytes()).hexdigest(),
+            }
+        )
+    )
+    seen: list[str] = []
+
+    def intercept(path: str) -> NoReturn:
+        seen.append(path)
+        raise RuntimeError("native load reached")
+
+    monkeypatch.setattr(module, "__file__", str(cpu / "gcpu.py"))
+    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(module, "_DLL", None)
+    monkeypatch.setattr(module, "_cpp_cpu_supported", lambda: True)
+    monkeypatch.setattr(module.ctypes, "CDLL", intercept)
+    monkeypatch.delenv("LLM_NO_CPP", raising=False)
+    with pytest.raises(RuntimeError, match="native load reached"):
+        module._dll()
+    assert seen == [str(library)]
+    seen.clear()
+    source.write_bytes(b"different source")
+    with pytest.raises(RuntimeError, match="не соответствует исходнику"):
+        module._dll()
+    assert seen == []
+
+
+def test_internal_imports_are_absolute_and_independent_of_legacy() -> None:
+    """Пакет не зависит от переходного llm_app и относительных путей импорта."""
+    bad: list[str] = []
+    for file in PACKAGE_ROOT.rglob("*.py"):
+        for node in ast.walk(ast.parse(file.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and (
+                node.level or (node.module or "").startswith("llm_app")
+            ):
+                bad.append(f"{file.relative_to(PACKAGE_ROOT)}:{node.lineno}")
+            if isinstance(node, ast.Import) and any(
+                alias.name.startswith("llm_app") for alias in node.names
+            ):
+                bad.append(f"{file.relative_to(PACKAGE_ROOT)}:{node.lineno}")
+    assert not bad, bad
