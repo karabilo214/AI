@@ -22,7 +22,7 @@ python -m ramvi_engine chat --model qwen3:14b --draft qwen3:0.6b
 python -m ramvi_engine plan --model qwen3:14b
 ```
 
-В переходный период команды `python -m llm_app ...` и старые импорты направляются к тем же модулям. Новые импорты — абсолютные, например `ramvi_engine.core.gengine.GGUFEngine`. Проверочные скрипты пока остаются в `llm_app` до пункта 1.6.
+Импорты абсолютные, например `ramvi_engine.core.gengine.GGUFEngine`. Проверки и замеры размещены в `tools/`; общий запуск из корня репозитория — `python -m ramvi.engine.tools`. [Список команд](../docs/architecture/TOOLS_MIGRATION.md).
 
 ## Native
 
@@ -32,17 +32,22 @@ python -m ramvi_engine plan --model qwen3:14b
 sh ramvi/engine/ramvi_engine/native/build.sh
 ```
 
-Библиотека создаётся рядом с исходником; загрузчик проверяет ISA, ABI и хеши манифеста. Готовый бинарник не хранится в git. Прежний `llm_app/cpp/build.sh` временно делегирует сборку в этот каталог.
+Библиотека создаётся рядом с исходником; загрузчик проверяет ISA, ABI и хеши манифеста. Готовый бинарник не хранится в git.
 
 ## Проверка переноса
 
 Из корня репозитория, в окружении движка:
 
 ```sh
-python -m unittest discover -s llm_app/tests -t .
+python -m ramvi.engine.tools unit -- -q
 python -m pytest -c ramvi/pyproject.toml ramvi/tests ramvi/engine/tests
 ```
 
-Windows/CUDA-проверка переноса выполнена: четыре полных ряда WIDE30, тексты совпали на 30/30 вопросах, общая скорость изменилась на −0,25%. [Полный отчёт](../docs/reports/WIDE30_MIGRATION_COMPARISON.md) содержит условия, повторы и сравнение с сохранённой Ollama. После последующих изменений по плану экзамен 1.9 повторяется.
+Итоговая Windows/CUDA-проверка этапа 1 выполнена: четыре полных ряда WIDE30, тексты совпали на 30/30 вопросах, общая скорость изменилась на +0,56%. [Полный отчёт](../docs/reports/STAGE1_ACCEPTANCE.md) содержит fp32, API, условия, повторы и сравнение с сохранённой Ollama. Эта небольшая разница не доказывает ускорение алгоритма. После последующих изменений движка экзамен повторяется.
 
 [План](../docs/PLAN.md) · [Карта переноса](../docs/architecture/ENGINE_MIGRATION.md) · [Лицензия](LICENSE).
+
+
+## Данные и настройки
+
+Переменные движка используют `RAMVI_*`; прежние `LLM_*` читаются как запасной вариант. `RAMVI_DATA_DIR` задаёт каталог данных, внутри него находятся cache/work/results. [Правила выбора каталогов](../docs/architecture/CONFIGURATION.md). Внешние кэши и пути моделей HF/Ollama сохраняются.

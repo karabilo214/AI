@@ -24,7 +24,6 @@ AGENTS.md
 human_brain/docs/report_*.md
 # данные wikitext (скачиваются) — не в git
 llm_opt/data/
-# собранные ядра (llm_app/cpp/build.sh)
-llm_app/cpp/*.dll
-llm_app/cpp/pool_test_bin
-llm_app/cpp/*.build.json
+
+# Локальный архив исходного пакета с данными и бинарниками
+/archive/llm_app_local_*/

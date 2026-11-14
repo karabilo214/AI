@@ -45,12 +45,16 @@ assert 'torch' not in sys.modules and 'triton' not in sys.modules
     assert "{serve,chat,plan}" in result.stdout
 
 
-def test_legacy_and_canonical_help_match() -> None:
-    """Прежняя точка входа принимает тот же набор параметров."""
+def test_module_and_direct_cli_help_match() -> None:
+    """Модульный вход и основная CLI-функция принимают одинаковые параметры."""
     outputs = []
-    for name in ("llm_app", "ramvi_engine"):
+    commands = (
+        [sys.executable, "-m", "ramvi_engine", "--help"],
+        [sys.executable, "-c", "from ramvi_engine.cli import main; main()", "--help"],
+    )
+    for command in commands:
         result = subprocess.run(
-            [sys.executable, "-m", name, "--help"],
+            command,
             cwd=PROJECT_ROOT,
             env={**os.environ, "PYTHONPATH": str(ENGINE_ROOT)},
             capture_output=True,
@@ -64,7 +68,7 @@ def test_legacy_and_canonical_help_match() -> None:
 
 
 @pytest.mark.parametrize(
-    ("legacy", "canonical"),
+    ("label", "canonical"),
     [
         ("server", "server.app"),
         ("request_validation", "server.validation"),
@@ -74,21 +78,17 @@ def test_legacy_and_canonical_help_match() -> None:
         ("measured_plan", "planning.measured_plan"),
     ],
 )
-def test_legacy_alias_is_the_same_module(legacy: str, canonical: str) -> None:
-    """Совместимость не создаёт копию кэшей, блокировок или глобального состояния."""
-    if legacy not in ("server", "request_validation"):
+def test_canonical_module_imports_without_legacy(label: str, canonical: str) -> None:
+    """Канонические модули загружаются из пакета без прежних переходных файлов."""
+    if label not in ("server", "request_validation"):
         pytest.importorskip("numpy")
         pytest.importorskip("torch")
-        if legacy == "gcpu":
+        if label == "gcpu":
             pytest.importorskip("numba")
-    sys.path.insert(0, str(PROJECT_ROOT))
-    try:
-        old = importlib.import_module(f"llm_app.{legacy}")
-        new = importlib.import_module(f"ramvi_engine.{canonical}")
-    finally:
-        sys.path.remove(str(PROJECT_ROOT))
-    assert old is new
-    assert Path(new.__file__ or "").is_relative_to(PACKAGE_ROOT)
+    module = importlib.import_module(f"ramvi_engine.{canonical}")
+    assert module.__name__ == f"ramvi_engine.{canonical}"
+    assert Path(module.__file__ or "").resolve().is_relative_to(PACKAGE_ROOT)
+    assert "llm_app" not in sys.modules
 
 
 def test_native_loader_uses_package_directory_and_verifies_source(
@@ -128,6 +128,7 @@ def test_native_loader_uses_package_directory_and_verifies_source(
     monkeypatch.setattr(module, "_cpp_cpu_supported", lambda: True)
     monkeypatch.setattr(module.ctypes, "CDLL", intercept)
     monkeypatch.delenv("LLM_NO_CPP", raising=False)
+    monkeypatch.delenv("RAMVI_NO_CPP", raising=False)
     with pytest.raises(RuntimeError, match="native load reached"):
         module._dll()
     assert seen == [str(library)]
@@ -213,3 +214,8 @@ def test_windows_output_preserves_russian_in_redirected_streams(
         error.write("Ошибка RAMVI")
         assert output_bytes.getvalue().decode("utf-8") == "Справка RAMVI"
         assert error_bytes.getvalue().decode("utf-8") == "Ошибка RAMVI"
+
+
+def test_legacy_package_is_absent() -> None:
+    """Завершённый этап 1 не оставляет старый пакет в рабочем дереве."""
+    assert not (PROJECT_ROOT / "llm_app").exists()
