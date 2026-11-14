@@ -4,6 +4,7 @@ import base64
 import os
 import signal
 import subprocess
+import sys
 
 
 def powershell(script: str) -> str:
@@ -33,7 +34,7 @@ def available() -> None:
 
 def kill_tree(pid: int) -> None:
     """Остановить дочернее дерево; POSIX-процесс должен иметь собственную сессию."""
-    if os.name == "nt":
+    if sys.platform == "win32":
         subprocess.run(
             ["taskkill", "/PID", str(pid), "/T", "/F"],
             capture_output=True,

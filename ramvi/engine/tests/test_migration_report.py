@@ -96,7 +96,7 @@ def test_identical_rows_have_hand_calculated_ratio_one(tmp_path: Path) -> None:
     assert before["generation_s"] == 120.0
     assert before["ttft_s"] == 0.25
     assert before["wall_s"] == 150.0
-    assert json.loads((output / "summary.json").read_text()) == summary
+    assert json.loads((output / "summary.json").read_text(encoding="utf-8")) == summary
     with (output / "comparison.csv").open(encoding="utf-8-sig", newline="") as handle:
         assert len(list(csv.DictReader(handle))) == 30
     text = (output / "WIDE30_MIGRATION_COMPARISON.md").read_text(encoding="utf-8")

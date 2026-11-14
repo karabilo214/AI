@@ -1,6 +1,7 @@
 """Единый запуск инструментов из корня репозитория, без загрузки CUDA в диспетчере."""
 
 import argparse
+import io
 import math
 import subprocess
 import sys
@@ -34,6 +35,10 @@ BENCHES = ("gsm8k", "wide", "o02", "compare", "report_migration")
 
 def main() -> int:
     """Выбрать проверку, передать её параметры и ограничить время дочернего процесса."""
+    if sys.platform == "win32":
+        for stream in (sys.stdout, sys.stderr):
+            if isinstance(stream, io.TextIOWrapper):
+                stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timeout", type=float, default=600, help="лимит времени в секундах")
     sub = parser.add_subparsers(dest="group", required=True)

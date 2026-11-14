@@ -119,7 +119,7 @@ TRANSPORT = ["_cors", "_json", "_start_stream", "_stream_error", "_sse"]
 @pytest.mark.parametrize("filename,names", GLOBALS.items())
 def test_global_helpers_preserve_behavior(filename: str, names: list[str]) -> None:
     """Перемещение вспомогательных функций не меняет их выражения."""
-    before, after = old_tree("app.py"), ast.parse((SERVER / filename).read_text())
+    before, after = old_tree("app.py"), ast.parse((SERVER / filename).read_text(encoding="utf-8"))
     for name in names:
         assert normalized(named_function(before, name)) == normalized(
             named_function(after, name)
@@ -130,7 +130,7 @@ def test_global_helpers_preserve_behavior(filename: str, names: list[str]) -> No
 def test_routes_preserve_behavior(filename: str, names: list[str]) -> None:
     """Прежние тела обработчиков остаются замыканиями на то же приложение."""
     before = named_class(old_tree("app.py"), "H")
-    after = ast.parse((SERVER / filename).read_text())
+    after = ast.parse((SERVER / filename).read_text(encoding="utf-8"))
     for name in names:
         assert normalized(named_function(before, name)) == normalized(
             named_function(after, name)
@@ -140,7 +140,7 @@ def test_routes_preserve_behavior(filename: str, names: list[str]) -> None:
 def test_application_and_transport_preserve_behavior() -> None:
     """Очередь, отмена, обработка HTTP и ограничения соединений перенесены целиком."""
     before = old_tree("app.py")
-    after = {p.name: ast.parse(p.read_text()) for p in SERVER.glob("*.py")}
+    after = {p.name: ast.parse(p.read_text(encoding="utf-8")) for p in SERVER.glob("*.py")}
     for old_class, filename, new_class, names in [
         ("App", "app.py", "App", ["__init__", "metadata", "build_ids", "chat_ids", "constraint"]),
         ("App", "streaming.py", "GenerationStream", ["run", "_run"]),
@@ -168,7 +168,10 @@ def test_application_and_transport_preserve_behavior() -> None:
 
 def test_request_validation_preserves_behavior() -> None:
     """Прежняя проверка чисел и возможностей не меняется при переносе преобразований."""
-    before, after = old_tree("validation.py"), ast.parse((SERVER / "validation.py").read_text())
+    before, after = (
+        old_tree("validation.py"),
+        ast.parse((SERVER / "validation.py").read_text(encoding="utf-8")),
+    )
     for name in ("validate_request", "validate_capabilities"):
         assert normalized(named_function(before, name)) == normalized(
             named_function(after, name)

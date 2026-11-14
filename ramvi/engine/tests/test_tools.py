@@ -81,3 +81,19 @@ def test_benchmark_data_and_validation_remain_available() -> None:
     validation = importlib.import_module("ramvi.engine.tools.bench.bench_validation")
     with pytest.raises(ValueError):
         validation.paired_rows([], [], "q")
+
+
+def test_help_supports_redirected_windows_encoding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Русская справка диспетчера не падает в Windows pipe с исходной CP1252."""
+    import io
+
+    buffer = io.BytesIO()
+    with io.TextIOWrapper(buffer, encoding="cp1252", write_through=True) as stream:
+        with monkeypatch.context() as patch:
+            patch.setattr(sys, "platform", "win32")
+            patch.setattr(sys, "argv", ["tools", "--help"])
+            patch.setattr(sys, "stdout", stream)
+            with pytest.raises(SystemExit) as result:
+                launcher.main()
+            assert result.value.code == 0
+        assert "Единый запуск" in buffer.getvalue().decode("utf-8")
