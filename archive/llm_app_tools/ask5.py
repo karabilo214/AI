@@ -2,9 +2,8 @@
 python -m llm_app.ask5 <имя> <url> <модель> [набор: hard5 | php3]"""
 import json
 import sys
-import time
 
-from .bench import chat
+from ramvi.engine.tools.bench.bench import chat
 
 QS = [
     "How many positive integers less than 1000 are divisible by 7 but not by 11? Explain your reasoning and give the final number.",

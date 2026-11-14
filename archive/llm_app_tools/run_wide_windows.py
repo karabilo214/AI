@@ -1,7 +1,6 @@
 """Полный WIDE30 через HTTP, с повтором и ограниченным временем процесса."""
 import argparse
 import datetime
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -42,11 +41,11 @@ def main():
 def server(out):
     import torch
     from transformers import AutoTokenizer
-    from .gengine import GGUFEngine
-    from .model import find_model
-    from .server import App,serve
-    from .tokenizer_check import validate_draft
-    from .bench_wide import WIDE
+    from ramvi_engine.core.gengine import GGUFEngine
+    from ramvi_engine.formats.model import find_model
+    from ramvi_engine.server.app import App,serve
+    from ramvi_engine.formats.tokenizer_check import validate_draft
+    from ramvi.engine.tools.bench.bench_wide import WIDE
     torch.set_grad_enabled(False)
     # Новая версия целиком; настройки заморожены на оба полных круга.
     os.environ['LLM_PREFILL']='blocked'
@@ -90,14 +89,14 @@ def server(out):
 
 
 def run(args,out):
-    from .bench import chat
-    from .bench_wide import WIDE
-    from .bench_validation import paired_rows,validate_speed
+    from ramvi.engine.tools.bench.bench import chat
+    from ramvi.engine.tools.bench.bench_wide import WIDE
+    from ramvi.engine.tools.bench.bench_validation import paired_rows,validate_speed
     deadline=datetime.datetime.fromisoformat(args.deadline).timestamp()
     env={**os.environ,'PYTHONUTF8':'1','PYTHONUNBUFFERED':'1','NUMBA_NUM_THREADS':'2',
          'WIDE_DEADLINE':args.deadline}
     with (out/'server.log').open('w',encoding='utf-8') as log:
-        child=subprocess.Popen([sys.executable,'-u','-m','llm_app.run_wide_windows','--serve',
+        child=subprocess.Popen([sys.executable,'-u','-m','archive.llm_app_tools.run_wide_windows','--serve',
                                 '--deadline',args.deadline,'--out',str(out)],stdout=log,stderr=subprocess.STDOUT,env=env)
         try:
             ready_until=min(deadline-30,time.time()+600)

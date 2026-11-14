@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import statistics as st
 
-from .bench_validation import paired_rows,validate_speed,compare_run
+from ramvi.engine.tools.bench.bench_validation import paired_rows,validate_speed,compare_run
 
 
 def main():
