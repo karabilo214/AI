@@ -6,7 +6,7 @@ class OllamaTest(unittest.TestCase):
         app=App(None,None,'test');app.build_ids=lambda *a:[1];app.constraint=lambda *a:None
         fin=dict(text='answer',reasoning='thought',tool_calls=[],finish='stop',total_s=1,prompt_n=1,
                  prompt_ms=1,gen_n=3,decode_n=2,gen_ms=1)
-        app.run=lambda *a:iter([('reasoning','thought'),('text','answer'),('end',fin)])
+        app.run=lambda *a,**kw:iter([('reasoning','thought'),('text','answer'),('end',fin)])
         h=object.__new__(make_handler(app));h._start_stream=lambda *a:None;h.wfile=io.BytesIO()
         h.ollama({'stream':True},True)
         chunks=[json.loads(line) for line in h.wfile.getvalue().splitlines()]

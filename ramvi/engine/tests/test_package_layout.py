@@ -42,7 +42,7 @@ assert 'torch' not in sys.modules and 'triton' not in sys.modules
         check=True,
     )
     assert "ramvi-engine" in result.stdout
-    assert "{serve,chat,plan}" in result.stdout
+    assert "{serve,chat,plan,capabilities}" in result.stdout
 
 
 def test_module_and_direct_cli_help_match() -> None:

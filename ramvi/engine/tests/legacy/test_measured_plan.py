@@ -52,7 +52,7 @@ class ScheduleTest(unittest.TestCase):
         from unittest.mock import patch
         from types import SimpleNamespace
         from ramvi_engine.planning.plan import make_plan
-        ck=SimpleNamespace(L=3,D=256,KV=1,HD=64,cfg={'vocab_size':1024},layer_params=lambda:{'qkv':(256,256)})
+        ck=SimpleNamespace(L=3,D=256,H=4,FF=512,KV=1,HD=64,cfg={'vocab_size':1024},layer_params=lambda:{'qkv':(256,256)})
         costs=[dict(gpu_s=.01),dict(gpu_s=.01,copy_s=.01,cpu_s=1.),dict(gpu_s=.01,copy_s=.01,cpu_s=1.)]
         with patch('ramvi_engine.planning.plan.torch.cuda.mem_get_info',return_value=(2**30,2**30)),patch('ramvi_engine.planning.plan.ram_info',return_value=(2**30,2**30)):
             result=make_plan(ck,256,force_resident=1,layer_costs=costs,log=lambda _:None)

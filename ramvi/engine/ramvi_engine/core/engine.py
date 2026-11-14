@@ -167,7 +167,7 @@ def _u8(a):
 
 
 class Engine:
-    def __init__(self, name, maxt=2048, cpu=True, resident=None, log=print):
+    def __init__(self, name, maxt=2048, cpu=True, resident=None, log=print, vram_reserve=None):
         if not isinstance(maxt, int) or isinstance(maxt, bool) or maxt < 1:
             raise ValueError("maxt должно быть положительным целым")
         t0 = time.time()
@@ -180,7 +180,7 @@ class Engine:
         self.emb_in = ck.mm("model.embed_tokens.weight")
         P = ck.layer_params()
         tune([(N, K, m) for (N, K), m in zip((P["qkv"], P["o"], P["gu"], P["down"]), (0, 1, 0, 2))], log=log)
-        self.plan = make_plan(ck, maxt, cpu=cpu, force_resident=resident, log=log)
+        self.plan = make_plan(ck, maxt, cpu=cpu, force_resident=resident, log=log, vram_reserve=0.8 * GiB if vram_reserve is None else vram_reserve)
         self.place = self.plan["place"]
         self.head = Head(ck.mm(ck.head_name()))
         arena = Arena(self.plan["pin_budget"])
@@ -420,7 +420,9 @@ class Engine:
     def _prefill(self, tokens, start):
         """Слова tokens на позициях start.. (послойно, кусками по 16); возвращает выход последнего слова в hb[:1]."""
         from ramvi_engine.kernels.prefill import enabled, layer
-        blocked = enabled(len(tokens))
+        from ramvi_engine.planning.automatic import batch_limit, prefill_enabled
+        blocked = prefill_enabled(self, len(tokens), enabled)
+        batch = batch_limit(self)
         n = len(tokens)
         self._set_phase("prefill")
         X = self._emb(tokens).cuda()
@@ -440,8 +442,8 @@ class Engine:
                       self.Ks if pl == "cpu" else self.Kc[l],
                       self.Vs if pl == "cpu" else self.Vc[l])
             else:
-                for c in range(0, n, 16):
-                    T = min(16, n - c)
+                for c in range(0, n, batch):
+                    T = min(batch, n - c)
                     xc = X[c:c + T]
                     self.pos.fill_(start + c)
                     if pl == "cpu":
@@ -521,6 +523,8 @@ class Engine:
         stats (dict): prompt_n, prompt_ms, gen_n, gen_ms, passes, drafted, accepted, steps1, switches."""
         import os
         gate_enabled = env("RAMVI_DRAFT_GATE", "0") == "1"
+        from ramvi_engine.planning.automatic import batch_limit
+        max_batch = batch_limit(self)
         if k is not None and (not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= 15):
             raise ValueError("k должно быть целым от 1 до 15 (None — адаптивно)")
         if not isinstance(max_new, int) or isinstance(max_new, bool) or max_new < 0:
@@ -560,7 +564,7 @@ class Engine:
             step_start = time.perf_counter()
             if temperature <= 0 and draft is not None:
                 seq = prompt + gen
-                kmax = min(k or 15, 15, max_new - len(gen) - 1, self.maxt - len(seq),
+                kmax = min(k or 15, max_batch - 1, 15, max_new - len(gen) - 1, self.maxt - len(seq),
                            max(0, draft.maxt - len(seq)))
                 # O02 включается явно: предварительный выбор и проверенные пробы.
                 # Обычная политика выбирает режим ниже, после черновика.

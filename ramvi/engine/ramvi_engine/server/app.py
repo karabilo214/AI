@@ -2,11 +2,27 @@
 
 import hashlib
 import json
+import os
 import threading
+import uuid
+from contextlib import nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 
+from ramvi_engine.lifecycle import EngineSession, GenerationCancelled, ModelUnavailable
+from ramvi_engine.metrics import MemoryMonitor, MetricsStore, plan_snapshot, with_error_metrics
+from ramvi_engine.protocol import (
+    EventContext,
+    EventFactory,
+    check_api_version,
+    validate_id,
+    versions,
+)
+from ramvi_engine.server.contracts import generation_context
+from ramvi_engine.server.events import EventLog
+from ramvi_engine.server.lifecycle_routes import PATHS, lifecycle_post
 from ramvi_engine.server.routes_anthropic import anthropic_routes
 from ramvi_engine.server.routes_ollama import ollama_routes
 from ramvi_engine.server.routes_openai import openai_routes
@@ -65,8 +81,109 @@ class App(GenerationStream):
         """Подготовить состояние и ограничители запросов."""
         self.eng, self.tk, self.name, self.draft, self.k = (engine, tokenizer, name, draft, k)
         self.api_key, self.force_greedy = (api_key, force_greedy)
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+        self.metrics = MetricsStore()
+        self.events = EventLog()
         self.slots = threading.BoundedSemaphore(8)
+
+    def _run(self: Any, *args: Any, **kwargs: Any) -> Any:
+        meter = self.metrics.begin(self.name)
+        context = kwargs.pop("_event_context", None) or EventContext(meter.id, response_id=meter.id)
+        factory = EventFactory(context)
+        self.events.publish(factory.emit("generation.started", {"model": self.name}))
+        monitor = MemoryMonitor()
+        stats: dict[str, Any] = {}
+        plan: dict[str, Any] = {}
+        recorded = False
+        try:
+            lease = (
+                self.eng.request(request_id=context.request_id)
+                if isinstance(self.eng, EngineSession)
+                else nullcontext()
+            )
+            with lease, self.lock:
+                if getattr(self.eng, "thinking_required", False):
+                    if len(args) > 6:
+                        args = (*args[:6], True, *args[7:])
+                    else:
+                        kwargs["think"] = True
+                gen = None
+                try:
+                    monitor.start(self.eng)
+                    kwargs["_metrics_stats"] = stats
+                    kwargs["_request_id"] = context.request_id
+                    gen = super()._run(*args, **kwargs)
+                    for kind, value in gen:
+                        meter.observe(kind, value)
+                        if kind in ("text", "reasoning"):
+                            for start in range(0, len(value), 8192):
+                                self.events.publish(
+                                    factory.emit(
+                                        "generation.delta",
+                                        {"kind": kind, "text": value[start : start + 8192]},
+                                    )
+                                )
+                        if kind == "end":
+                            plan = plan_snapshot(self.eng)
+                            record = meter.finish(stats, value, monitor.stop(), plan, "completed")
+                            record["request_id"] = context.request_id
+                            record["response_id"] = context.response_id
+                            self.metrics.finish(record)
+                            recorded = True
+                            value["metrics"] = record
+                            self.events.publish(
+                                factory.emit(
+                                    "generation.completed",
+                                    {"finish": value["finish"], "metrics": record},
+                                )
+                            )
+                        yield kind, value
+                finally:
+                    try:
+                        if gen is not None:
+                            gen.close()
+                    finally:
+                        monitor.stop()
+                        plan = plan_snapshot(self.eng)
+            if not recorded:
+                raise RuntimeError("генерация не выдала итоговое событие")
+        except BaseException as exc:
+            if not recorded:
+                outcome = (
+                    "cancelled"
+                    if isinstance(exc, GenerationCancelled)
+                    else ("aborted" if isinstance(exc, GeneratorExit) else "error")
+                )
+                record = meter.finish(
+                    stats, None, monitor.stop(), plan, outcome, type(exc).__name__
+                )
+                record["request_id"] = context.request_id
+                record["response_id"] = context.response_id
+                self.metrics.finish(record)
+                self.events.publish(
+                    factory.emit(
+                        "generation.failed", {"error_type": type(exc).__name__, "outcome": outcome}
+                    )
+                )
+                if type(exc).__name__ == "OutOfMemoryError":
+                    self.events.publish(
+                        factory.emit("engine.oom", {"state": "error", "model": self.name})
+                    )
+                if isinstance(exc, Exception):
+                    try:
+                        error: Any = exc
+                        error.ramvi_metrics = record
+                    except (AttributeError, TypeError):
+                        pass
+            raise
+
+    def effective_draft_loaded(self) -> bool:
+        """Учитывать реально загруженный draft после планирования и restart."""
+        if self.draft is None:
+            return False
+        if isinstance(self.eng, EngineSession):
+            return bool(self.eng.status()["draft_loaded"])
+        return True
 
     def metadata(self: Any) -> Any:
         """Вернуть идентификаторы модели, размещение и хеш исходников."""
@@ -90,7 +207,9 @@ class App(GenerationStream):
             "maxt": getattr(engine, "maxt", None),
             "place": getattr(engine, "place", None),
             "code_sha256": digest.hexdigest(),
-            "draft": self.draft is not None,
+            "draft": self.effective_draft_loaded(),
+            "thinking_required": bool(getattr(engine, "thinking_required", False)),
+            "chat_template_source": getattr(engine, "chat_template_source", "tokenizer"),
             "k": self.k,
             "force_greedy": self.force_greedy,
         }
@@ -111,6 +230,10 @@ class App(GenerationStream):
         """schema_or_json: "json" — любой JSON; dict — JSON Schema; None — без ограничения."""
         if schema_or_json is None:
             return None
+        if getattr(self.eng, "thinking_required", False):
+            raise ValueError(
+                "Thinking-only модель не поддерживает JSON-ограничение без reasoning adapter"
+            )
         from ramvi_engine.generation.constrain import Constraint
 
         V = getattr(self.eng, "V", None) or len(self.tk)
@@ -151,15 +274,76 @@ def make_handler(app: Any) -> Any:
             self.send_header("Content-Length", "0")
             self.end_headers()
 
+        def _api_contract(self: Any) -> bool:
+            self._request_id = uuid.uuid4().hex
+            try:
+                requested_id = self.headers.get("X-Request-ID")
+                if requested_id is not None:
+                    self._request_id = validate_id(requested_id)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+                return False
+            try:
+                requested = self.headers.get("X-RAMVI-API-Version")
+                if requested is not None:
+                    check_api_version(requested)
+            except ValueError as exc:
+                self._json({"error": str(exc), "versions": versions()}, 426)
+                return False
+            return True
+
         def do_GET(self: Any) -> Any:
             """Отдать состояние сервера и описания совместимых API."""
+            if not self._api_contract():
+                return
             p = self.path.split("?")[0]
             if p in ("/health", "/"):
                 return self._json(
-                    {"status": "ok", "model": app.name, "run_metadata": app.metadata()}
+                    {
+                        "status": "ok",
+                        "model": app.name,
+                        "run_metadata": app.metadata(),
+                        "versions": versions(),
+                        "instance_id": os.environ.get("RAMVI_INSTANCE_ID"),
+                    }
                 )
             if not self._auth():
                 return
+            if p == "/engine/versions":
+                return self._json({"versions": versions()})
+            if p == "/engine/events":
+                try:
+                    query = parse_qs(self.path.partition("?")[2], max_num_fields=4)
+                    if set(query) - {"after", "request_id"} or any(
+                        len(value) != 1 for value in query.values()
+                    ):
+                        raise ValueError("invalid event query")
+                    request_id = query.get("request_id", [None])[0]
+                    if request_id is not None:
+                        validate_id(request_id)
+                    return self._json(
+                        app.events.read(int(query.get("after", ["0"])[0]), request_id)
+                    )
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+            if p == "/engine/metrics":
+                return self._json(
+                    {
+                        "metrics": app.metrics.snapshot(),
+                        "plan": plan_snapshot(app.eng),
+                        "lifecycle": app.eng.status()
+                        if isinstance(app.eng, EngineSession)
+                        else None,
+                    }
+                )
+            if p == "/engine/status" and isinstance(app.eng, EngineSession):
+                return self._json(app.eng.status())
+            if p == "/capabilities":
+                from ramvi_engine.capabilities import engine_capabilities
+
+                return self._json(
+                    engine_capabilities(app.eng, draft_loaded=app.effective_draft_loaded())
+                )
             if p == "/v1/models":
                 return self._json(
                     {
@@ -187,6 +371,8 @@ def make_handler(app: Any) -> Any:
             self._stream_started = False
             if not self._auth():
                 return
+            if not self._api_contract():
+                return
             try:
                 length = self.headers.get("Content-Length", "0")
                 if (
@@ -205,12 +391,19 @@ def make_handler(app: Any) -> Any:
                 req = validate_request(json.loads(body.decode("utf-8") or "{}"))
             except (ValueError, UnicodeError, TypeError) as exc:
                 self.close_connection = True
-                return self._json({"error": {"message": str(exc)}}, 400)
+                return self._json(with_error_metrics({"error": {"message": str(exc)}}, exc), 400)
             except OSError:
                 self.close_connection = True
                 return
             p = self.path.split("?")[0]
             try:
+                if p in PATHS:
+                    return self._json(lifecycle_post(app, p, req, generation_context(self)))
+                if isinstance(app.eng, EngineSession) and app.eng.status()["state"] not in (
+                    "ready",
+                    "generating",
+                ):
+                    raise ModelUnavailable("модель не готова к запросу")
                 validate_capabilities(req, app.name, getattr(app.eng, "maxt", 2048), p)
                 if p == "/v1/chat/completions":
                     return self.openai_chat(req)
@@ -223,8 +416,25 @@ def make_handler(app: Any) -> Any:
             except (BrokenPipeError, ConnectionResetError):
                 self.close_connection = True
                 return
+            except ModelUnavailable as exc:
+                return self._json(
+                    with_error_metrics(
+                        {"error": {"message": str(exc), "type": "model_unavailable"}}, exc
+                    ),
+                    503,
+                )
+            except GenerationCancelled as exc:
+                return self._json(
+                    with_error_metrics({"error": {"message": str(exc), "type": "cancelled"}}, exc),
+                    409,
+                )
             except TimeoutError as exc:
-                return self._json({"error": {"message": str(exc), "type": "timeout_error"}}, 504)
+                return self._json(
+                    with_error_metrics(
+                        {"error": {"message": str(exc), "type": "timeout_error"}}, exc
+                    ),
+                    504,
+                )
             except (
                 ValueError,
                 TypeError,
@@ -235,7 +445,10 @@ def make_handler(app: Any) -> Any:
                 RuntimeError,
             ) as e:
                 return self._json(
-                    {"error": {"message": str(e), "type": "invalid_request_error"}}, 400
+                    with_error_metrics(
+                        {"error": {"message": str(e), "type": "invalid_request_error"}}, e
+                    ),
+                    400,
                 )
             self._json({"error": "not found"}, 404)
 
@@ -293,6 +506,9 @@ def serve(app: Any, host: Any = "127.0.0.1", port: Any = 11435) -> Any:
         srv.serve_forever()
     finally:
         srv.server_close()
-        for engine in (app.eng, app.draft):
-            if engine is not None and hasattr(engine, "close"):
-                engine.close()
+        if isinstance(app.eng, EngineSession):
+            app.eng.close()
+        else:
+            for engine in (app.eng, app.draft):
+                if engine is not None and hasattr(engine, "close"):
+                    engine.close()

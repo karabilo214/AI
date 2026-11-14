@@ -51,3 +51,23 @@ python -m pytest -c ramvi/pyproject.toml ramvi/tests ramvi/engine/tests
 ## Данные и настройки
 
 Переменные движка используют `RAMVI_*`; прежние `LLM_*` читаются как запасной вариант. `RAMVI_DATA_DIR` задаёт каталог данных, внутри него находятся cache/work/results. [Правила выбора каталогов](../docs/architecture/CONFIGURATION.md). Внешние кэши и пути моделей HF/Ollama сохраняются.
+
+## Карта возможностей
+
+`python -m ramvi_engine capabilities` возвращает JSON без загрузки модели и CUDA. Запущенный сервер предоставляет авторизованный `GET /capabilities`. Условия поддержки и ограничения: [карта возможностей](../docs/architecture/capabilities.md).
+
+## Оценка памяти
+
+Планировщики возвращают `resources` и `resource_fit` на основе общего `ResourceEstimate`. Тот же контракт используется для предварительного подбора моделей: [компоненты, API и ограничения](../docs/architecture/RESOURCE_ESTIMATE.md). Оценка не является гарантией отсутствия OOM.
+
+## Жизненный цикл
+
+CLI `serve`/`chat` используют `EngineSession`: load, warmup, cancel, unload и restart в одном процессе. HTTP-контракт, отмена и условия освобождения памяти: [жизненный цикл](../docs/architecture/ENGINE_LIFECYCLE.md).
+
+## Метрики генерации
+
+Все ответы генерации содержат `ramvi_metrics`; в потоке снимок приходит в завершающем событии. `GET /engine/metrics` возвращает авторизованный статус. Определения TTFT, tok/s, draft, выборочного RSS и CUDA allocator: [контракт метрик](../docs/architecture/ENGINE_METRICS.md).
+
+## Контракты этапа 2
+
+[Версии и события](../docs/architecture/ENGINE_PROTOCOL.md) · [Автоматическое размещение](../docs/architecture/AUTOMATIC_PLANNING.md) · [Независимый fp32 oracle](../docs/architecture/REFERENCE_VALIDATION.md) · [Изолированный процесс](../docs/architecture/ENGINE_PROCESS.md) · [Module Host](../docs/architecture/MODULE_CORE.md).

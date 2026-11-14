@@ -43,8 +43,8 @@ jobs:
           python -m mypy
       - name: Lightweight tests
         run: python -m pytest
-      - name: Build wheel
-        run: python -m pip wheel --no-deps --no-build-isolation --wheel-dir "$RUNNER_TEMP/ramvi-wheels" ./engine
+      - name: Build Engine and Service wheels
+        run: python -m pip wheel --no-deps --no-build-isolation --wheel-dir "$RUNNER_TEMP/ramvi-wheels" ./engine ./service
       - name: Install wheel outside checkout and check CLI
         run: |
           python - <<'PY'
@@ -54,7 +54,8 @@ jobs:
           import tempfile
           import venv
 
-          wheel = next((pathlib.Path(os.environ['RUNNER_TEMP']) / 'ramvi-wheels').glob('*.whl'))
+          wheels = sorted((pathlib.Path(os.environ['RUNNER_TEMP']) / 'ramvi-wheels').glob('*.whl'))
+          assert len(wheels) == 2
           with tempfile.TemporaryDirectory(prefix='ramvi-installed-') as folder:
               root = pathlib.Path(folder)
               venv.create(root / 'env', with_pip=True)
@@ -62,12 +63,15 @@ jobs:
               python = scripts / ('python.exe' if os.name == 'nt' else 'python')
               command = scripts / ('ramvi-engine.exe' if os.name == 'nt' else 'ramvi-engine')
               env = {key: value for key, value in os.environ.items() if key != 'PYTHONPATH'}
-              subprocess.run([python, '-m', 'pip', 'install', '--no-index', '--no-deps', wheel],
+              subprocess.run([python, '-m', 'pip', 'install', '--no-index', '--no-deps', *wheels],
                              cwd=root, env=env, check=True, timeout=60)
               code = """
-          import sys, importlib.resources as resources, ramvi_engine
+          import sys, importlib.resources as resources, ramvi_engine, ramvi_service
+          from ramvi_service.modules.host import ModuleHost
+          from ramvi_engine.engine_process import EngineProcess
           assert 'site-packages' in ramvi_engine.__file__
-          assert 'torch' not in sys.modules and 'triton' not in sys.modules
+          assert 'site-packages' in ramvi_service.__file__
+          assert not any(name in sys.modules for name in ('torch', 'triton', 'numpy', 'transformers'))
           assert resources.files('ramvi_engine.native').joinpath('qmm.cpp').is_file()
           assert resources.files('ramvi_engine.generation').joinpath('grammar_worker.py').is_file()
           """
@@ -75,7 +79,8 @@ jobs:
               for args in ([python, '-m', 'ramvi_engine', '--help'], [command, '--help']):
                   result = subprocess.run(args, cwd=root, env=env, check=True,
                                           capture_output=True, text=True, encoding='utf-8', timeout=15)
-                  assert '{serve,chat,plan}' in result.stdout
+                  for name in ('capabilities', 'serve', 'chat', 'plan'):
+                      assert name in result.stdout
           PY
 
   cpu:

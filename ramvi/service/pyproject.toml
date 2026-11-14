@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools==84.2.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ramvi-service"
+version = "0.1.0"
+description = "Лёгкие контракты и координация модулей RAMVI"
+requires-python = ">=3.12"
+dependencies = ["ramvi-engine>=0.1.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ramvi_service*"]
+namespaces = false

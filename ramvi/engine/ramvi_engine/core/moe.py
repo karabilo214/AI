@@ -80,7 +80,8 @@ class MoEEngine(GGUFEngine):
         if not isinstance(maxt, int) or isinstance(maxt, bool) or maxt < 1:
             raise ValueError("maxt должно быть положительным целым")
         t0 = time.time()
-        g = self.g = GGUF(find_ollama(name) if ":" in name and not name.endswith(".gguf") else name)
+        from ramvi_engine.model_location import resolve_gguf_name
+        g = self.g = GGUF(resolve_gguf_name(name, find_ollama))
         a = g.meta["general.architecture"]
         if a != "qwen3moe":
             raise NotImplementedError(f"MoE: архитектура {a} не поддержана")
@@ -232,9 +233,11 @@ class MoEEngine(GGUFEngine):
         return T
 
     def _prefill(self, tokens, start):
+        from ramvi_engine.planning.automatic import batch_limit
+        batch = batch_limit(self)
         n = len(tokens)
-        for c in range(0, n, 16):
-            x = self._run(tokens[c:c + 16], start + c)
-        T = min(16, n - (n - 1) // 16 * 16)
+        for c in range(0, n, batch):
+            x = self._run(tokens[c:c + batch], start + c)
+        T = min(batch, n - (n - 1) // batch * batch)
         rmsg_k[(1,)](x[T - 1:T], self._norm, self.hb[:1], self.eps, self.D, DP=triton.next_power_of_2(self.D))
         self._head(1)

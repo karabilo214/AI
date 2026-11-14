@@ -6,6 +6,8 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from ramvi_engine.metrics import with_metrics
+from ramvi_engine.server.contracts import generation_context
 from ramvi_engine.server.validation import _schema_from_openai, openai_messages
 
 
@@ -36,6 +38,7 @@ def openai_routes(app: Any) -> Any:
             stop,
             think,
             app.constraint(schema),
+            _event_context=generation_context(self),
         )
         cid, created = ("chatcmpl-" + uuid.uuid4().hex[:24], int(time.time()))
         fr = {
@@ -79,14 +82,19 @@ def openai_routes(app: Any) -> Any:
             if fin["tool_calls"]:
                 msg["tool_calls"] = calls_of(fin)
             return self._json(
-                {
-                    "id": cid,
-                    "object": "chat.completion",
-                    "created": created,
-                    "model": app.name,
-                    "choices": [{"index": 0, "message": msg, "finish_reason": fr[fin["finish"]]}],
-                    "usage": usage(fin),
-                }
+                with_metrics(
+                    {
+                        "id": cid,
+                        "object": "chat.completion",
+                        "created": created,
+                        "model": app.name,
+                        "choices": [
+                            {"index": 0, "message": msg, "finish_reason": fr[fin["finish"]]}
+                        ],
+                        "usage": usage(fin),
+                    },
+                    fin,
+                )
             )
         self._start_stream("text/event-stream")
         chunk: Callable[..., Any] = lambda delta, finish=None: {  # noqa: E731 - перенесённая функция протокола
@@ -107,7 +115,7 @@ def openai_routes(app: Any) -> Any:
                     self._sse(
                         chunk({"tool_calls": [dict(c, index=i) for i, c in enumerate(calls_of(v))]})
                     )
-                self._sse(chunk({}, fr[v["finish"]]))
+                self._sse(with_metrics(chunk({}, fr[v["finish"]]), v))
                 if (req.get("stream_options") or {}).get("include_usage"):
                     self._sse(
                         {
@@ -146,6 +154,7 @@ def openai_routes(app: Any) -> Any:
             float(req.get("top_p", 1.0)),
             req.get("seed"),
             stop,
+            _event_context=generation_context(self),
         )
         if req.get("stream"):
             cid = "cmpl-" + uuid.uuid4().hex[:24]
@@ -158,13 +167,16 @@ def openai_routes(app: Any) -> Any:
                 if kind == "end":
                     finish = "length" if value["finish"] == "length" else "stop"
                 self._sse(
-                    {
-                        "id": cid,
-                        "object": "text_completion",
-                        "created": int(time.time()),
-                        "model": app.name,
-                        "choices": [{"index": 0, "text": text, "finish_reason": finish}],
-                    }
+                    with_metrics(
+                        {
+                            "id": cid,
+                            "object": "text_completion",
+                            "created": int(time.time()),
+                            "model": app.name,
+                            "choices": [{"index": 0, "text": text, "finish_reason": finish}],
+                        },
+                        value if kind == "end" else None,
+                    )
                 )
             self._sse("[DONE]")
             return
@@ -173,24 +185,27 @@ def openai_routes(app: Any) -> Any:
             if kind == "end":
                 fin = value
         return self._json(
-            {
-                "id": "cmpl-" + uuid.uuid4().hex[:24],
-                "object": "text_completion",
-                "created": int(time.time()),
-                "model": app.name,
-                "choices": [
-                    {
-                        "index": 0,
-                        "text": fin["text"],
-                        "finish_reason": "length" if fin["finish"] == "length" else "stop",
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": fin["prompt_n"],
-                    "completion_tokens": fin["gen_n"],
-                    "total_tokens": fin["prompt_n"] + fin["gen_n"],
+            with_metrics(
+                {
+                    "id": "cmpl-" + uuid.uuid4().hex[:24],
+                    "object": "text_completion",
+                    "created": int(time.time()),
+                    "model": app.name,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "text": fin["text"],
+                            "finish_reason": "length" if fin["finish"] == "length" else "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": fin["prompt_n"],
+                        "completion_tokens": fin["gen_n"],
+                        "total_tokens": fin["prompt_n"] + fin["gen_n"],
+                    },
                 },
-            }
+                fin,
+            )
         )
 
     return (openai_chat, openai_completion)

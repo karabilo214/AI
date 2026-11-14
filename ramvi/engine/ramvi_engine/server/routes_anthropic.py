@@ -4,6 +4,8 @@ import json
 import uuid
 from typing import Any
 
+from ramvi_engine.metrics import with_metrics
+from ramvi_engine.server.contracts import generation_context
 from ramvi_engine.server.validation import _maybe_json, anthropic_messages, anthropic_tools
 
 
@@ -28,6 +30,7 @@ def anthropic_routes(app: Any) -> Any:
             None,
             req.get("stop_sequences"),
             think,
+            _event_context=generation_context(self),
         )
         mid = "msg_" + uuid.uuid4().hex[:24]
         sr = {
@@ -62,16 +65,19 @@ def anthropic_routes(app: Any) -> Any:
                 if kind == "end":
                     fin = v
             return self._json(
-                {
-                    "id": mid,
-                    "type": "message",
-                    "role": "assistant",
-                    "model": app.name,
-                    "content": blocks(fin),
-                    "stop_reason": sr[fin["finish"]],
-                    "stop_sequence": fin.get("stop_sequence"),
-                    "usage": {"input_tokens": fin["prompt_n"], "output_tokens": fin["gen_n"]},
-                }
+                with_metrics(
+                    {
+                        "id": mid,
+                        "type": "message",
+                        "role": "assistant",
+                        "model": app.name,
+                        "content": blocks(fin),
+                        "stop_reason": sr[fin["finish"]],
+                        "stop_sequence": fin.get("stop_sequence"),
+                        "usage": {"input_tokens": fin["prompt_n"], "output_tokens": fin["gen_n"]},
+                    },
+                    fin,
+                )
             )
         self._start_stream("text/event-stream", "anthropic")
         self._sse(
@@ -171,14 +177,17 @@ def anthropic_routes(app: Any) -> Any:
                     self._sse({"type": "content_block_stop", "index": idx}, "content_block_stop")
                     idx += 1
                 self._sse(
-                    {
-                        "type": "message_delta",
-                        "delta": {
-                            "stop_reason": sr[v["finish"]],
-                            "stop_sequence": v.get("stop_sequence"),
+                    with_metrics(
+                        {
+                            "type": "message_delta",
+                            "delta": {
+                                "stop_reason": sr[v["finish"]],
+                                "stop_sequence": v.get("stop_sequence"),
+                            },
+                            "usage": {"output_tokens": v["gen_n"]},
                         },
-                        "usage": {"output_tokens": v["gen_n"]},
-                    },
+                        v,
+                    ),
                     "message_delta",
                 )
                 self._sse({"type": "message_stop"}, "message_stop")

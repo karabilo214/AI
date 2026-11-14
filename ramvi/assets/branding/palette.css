@@ -1,0 +1,72 @@
+/* Generated from palette.json. Shared semantic names for desktop adapters and web. */
+:root {
+  --ramvi-violet-950: #240B46;
+  --ramvi-violet-800: #4C1885;
+  --ramvi-violet-700: #6928BD;
+  --ramvi-violet-600: #793BE0;
+  --ramvi-violet-400: #B58AFF;
+  --ramvi-violet-200: #DECDFB;
+  --ramvi-violet-100: #EFE6FC;
+  --ramvi-coral-500: #FF8868;
+  --ramvi-coral-300: #FFB59E;
+}
+:root, [data-theme="light"] {
+  color-scheme: light;
+  --ramvi-background: #F7F5FB;
+  --ramvi-surface: #FFFFFF;
+  --ramvi-surface-raised: #FFFFFF;
+  --ramvi-surface-muted: #EFEAF6;
+  --ramvi-text: #241735;
+  --ramvi-text-muted: #685B78;
+  --ramvi-border: #DDD4E8;
+  --ramvi-control-border: #887997;
+  --ramvi-primary: #6928BD;
+  --ramvi-primary-hover: #57209F;
+  --ramvi-primary-pressed: #481883;
+  --ramvi-on-primary: #FFFFFF;
+  --ramvi-accent: #FF8868;
+  --ramvi-on-accent: #35162C;
+  --ramvi-focus: #793BE0;
+  --ramvi-selection: #E9DAFC;
+  --ramvi-on-selection: #481883;
+  --ramvi-success: #20734D;
+  --ramvi-success-bg: #E6F5EC;
+  --ramvi-warning: #815400;
+  --ramvi-warning-bg: #FFF3D8;
+  --ramvi-error: #B12C49;
+  --ramvi-error-bg: #FDEBF0;
+  --ramvi-info: #2C5FA4;
+  --ramvi-info-bg: #EAF1FD;
+  --ramvi-disabled-bg: #E9E4EF;
+  --ramvi-disabled-text: #7A6F87;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --ramvi-background: #14101C;
+  --ramvi-surface: #1E172A;
+  --ramvi-surface-raised: #291F38;
+  --ramvi-surface-muted: #322640;
+  --ramvi-text: #F4EFFB;
+  --ramvi-text-muted: #C0B2D0;
+  --ramvi-border: #493959;
+  --ramvi-control-border: #8A769F;
+  --ramvi-primary: #B58AFF;
+  --ramvi-primary-hover: #C7A6FF;
+  --ramvi-primary-pressed: #A476F0;
+  --ramvi-on-primary: #241035;
+  --ramvi-accent: #FFAA8F;
+  --ramvi-on-accent: #35162C;
+  --ramvi-focus: #C7A6FF;
+  --ramvi-selection: #493066;
+  --ramvi-on-selection: #F0E4FF;
+  --ramvi-success: #83D7AA;
+  --ramvi-success-bg: #16382B;
+  --ramvi-warning: #EBC477;
+  --ramvi-warning-bg: #3C3018;
+  --ramvi-error: #FF9FB1;
+  --ramvi-error-bg: #421F30;
+  --ramvi-info: #9FC7FF;
+  --ramvi-info-bg: #1B304C;
+  --ramvi-disabled-bg: #31283D;
+  --ramvi-disabled-text: #9A8AA9;
+}

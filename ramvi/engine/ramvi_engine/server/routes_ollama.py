@@ -4,6 +4,7 @@ import json
 import time
 from typing import Any
 
+from ramvi_engine.server.contracts import generation_context
 from ramvi_engine.server.validation import _schema_from_ollama, openai_messages
 
 
@@ -36,10 +37,12 @@ def ollama_routes(app: Any) -> Any:
             o.get("stop"),
             think,
             app.constraint(schema),
+            _event_context=generation_context(self),
         )
 
         def fin_fields(f: Any) -> Any:
             return {
+                "ramvi_metrics": f.get("metrics"),
                 "done": True,
                 "done_reason": "stop" if f["finish"] != "length" else "length",
                 "total_duration": int(f["total_s"] * 1000000000.0),

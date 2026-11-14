@@ -32,7 +32,8 @@ class GGUFEngine(Engine):
         import os
         if vram_reserve is None:
             vram_reserve = float(env("RAMVI_VRAM_RESERVE_GIB", "0.9")) * GiB
-        g = self.g = GGUF(find_ollama(name) if ":" in name and not name.endswith(".gguf") else name)
+        from ramvi_engine.model_location import resolve_gguf_name
+        g = self.g = GGUF(resolve_gguf_name(name, find_ollama))
         a = g.meta["general.architecture"]
         if a != "qwen3":
             raise NotImplementedError(f"архитектура {a} пока не поддержана")
@@ -316,22 +317,24 @@ class GGUFEngine(Engine):
     def _prefill(self, tokens, start):
         """Послойно: каждый слой (в т.ч. подкачанный) сразу на весь запрос кусками по 16."""
         from ramvi_engine.kernels.prefill import enabled, layer
-        blocked = enabled(len(tokens))
+        from ramvi_engine.planning.automatic import batch_limit, prefill_enabled
+        blocked = prefill_enabled(self, len(tokens), enabled)
+        batch = batch_limit(self)
         self._active_routes = None
         n = len(tokens)
         self._set_phase("dN")
         X = self._emb(tokens).cuda()
         for l in range(self.L):
             if self.place[l] == "cpu":
-                for c in range(0, n, 16):
-                    self._cpu_layer(l, X[c:c + 16], start + c)
+                for c in range(0, n, batch):
+                    self._cpu_layer(l, X[c:c + batch], start + c)
                 continue
             W = self.W[l] if self.place[l] == "gpu" else self._acquire(l)
             if blocked:
                 layer(self, l, W, X, start, self.Kc[l], self.Vc[l], gguf=True)
             else:
-                for c in range(0, n, 16):
-                    T = min(16, n - c)
+                for c in range(0, n, batch):
+                    T = min(batch, n - c)
                     self.pos.fill_(start + c)
                     self._batch_layer(l, X[c:c + T], T, W, self.Kc[l], self.Vc[l], None)
             if self.place[l] != "gpu":
@@ -498,6 +501,8 @@ class GGUFEngine(Engine):
             except torch.OutOfMemoryError as exc:
                 original = original or exc
                 self.ctx = []
+                if not getattr(self, "allow_oom_demote", True):
+                    raise
                 gpu = [i for i in range(self.L) if self.place[i] == "gpu"]
                 if not gpu or attempt == self.L:
                     raise original
@@ -532,7 +537,8 @@ class GGUFEngine(Engine):
 
 def open_gguf(name, **kw):
     """Модель GGUF по имени Ollama или пути: MoE (qwen3moe) -> MoEEngine, иначе GGUFEngine."""
-    g = GGUF(find_ollama(name) if ":" in name and not name.endswith(".gguf") else name)
+    from ramvi_engine.model_location import resolve_gguf_name
+    g = GGUF(resolve_gguf_name(name, find_ollama))
     if g.meta.get("general.architecture") == "qwen3moe":
         from ramvi_engine.core.moe import MoEEngine
         return MoEEngine(name, **kw)

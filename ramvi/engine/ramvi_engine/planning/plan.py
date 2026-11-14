@@ -29,6 +29,7 @@ def ram_info():
 
 
 def make_plan(ck, maxt, draft_bytes=0, cpu=True, vram_reserve=0.8 * GiB, force_resident=None, log=print, layer_costs=None):
+    from ramvi_engine.planning.resources import MemoryUsage, estimate_hf
     L = ck.L
     if force_resident is not None and (not isinstance(force_resident, int) or not 0 <= force_resident <= L):
         raise ValueError("resident вне диапазона слоёв")
@@ -58,6 +59,12 @@ def make_plan(ck, maxt, draft_bytes=0, cpu=True, vram_reserve=0.8 * GiB, force_r
     need = place.count("stream") * c12 + place.count("cpu") * b16
     plan = {"place": place, "R": R, "vram_free": free, "ram_avail": avail, "ram_need": need,
             "pin_budget": int(0.4 * tot_ram) if sys.platform == "win32" else int(0.6 * tot_ram)}
+    resources = estimate_hf(ck, place, maxt, draft=MemoryUsage(vram=int(draft_bytes)),
+                            reserve=MemoryUsage(vram=int(vram_reserve)))
+    plan["resources"] = resources.to_dict()
+    plan["resource_fit"] = resources.assess(vram_available=int(free), ram_available=int(avail))
+    if not plan["resource_fit"]["estimated_fit"]:
+        log("  внимание: подробная оценка ресурсов превышает доступный бюджет; нужен меньший план/контекст")
     log(f"план: видеокарта свободно {free / GiB:.1f} ГиБ, RAM доступно {avail / GiB:.1f} ГиБ; слоёв в видеокарте {R} из {L}, "
         f"по шине {place.count('stream')}, на процессоре {place.count('cpu')}; RAM под слои {need / GiB:.1f} ГиБ")
     if need > avail:
@@ -68,7 +75,9 @@ def make_plan(ck, maxt, draft_bytes=0, cpu=True, vram_reserve=0.8 * GiB, force_r
 def plan_gguf(name, maxt=2048, cpu=True, force_resident=None, log=print):
     """План по метаданным, без создания движка и загрузки весов в GPU."""
     from ramvi_engine.formats.gguf import GGUF, find_ollama
-    g = GGUF(find_ollama(name) if ":" in name and not name.endswith(".gguf") else name)
+    from ramvi_engine.planning.resources import MemoryUsage, estimate_gguf
+    from ramvi_engine.model_location import resolve_gguf_name
+    g = GGUF(resolve_gguf_name(name, find_ollama))
     arch = g.meta["general.architecture"]
     if arch not in ("qwen3", "qwen3moe"):
         raise NotImplementedError(arch)
@@ -88,6 +97,9 @@ def plan_gguf(name, maxt=2048, cpu=True, force_resident=None, log=print):
     place = (["cpu"] * (L - R) + ["gpu"] * R) if arch == "qwen3moe" else (["gpu"] * R + ["cpu" if cpu and i % 2 else "stream" for i in range(L - R)])
     plan = {"place": place, "R": R, "layer_file_bytes": layer_bytes, "kv_per_layer": kv, "vram_free": free,
             "ram_avail": ram_info()[1], "estimate": True}
+    resources = estimate_gguf(g, place, maxt, reserve=MemoryUsage(vram=int(.9 * GiB)))
+    plan["resources"] = resources.to_dict()
+    plan["resource_fit"] = resources.assess(vram_available=int(free), ram_available=int(plan["ram_avail"]))
     log(f"GGUF {arch}: слоёв {L}, GPU {R}, CPU {place.count('cpu')}, подкачка {place.count('stream')}; "
         f"веса слоёв в файле {sum(layer_bytes)} байт, KV на слой {kv} байт; план предварительный, без прогрева")
     if arch == "qwen3moe" and not cpu and R < L:

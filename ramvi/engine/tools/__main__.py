@@ -22,6 +22,8 @@ CHECKS = (
     "gguf",
     "gspec",
     "measured_plan",
+    "reference",
+    "stage2_runtime",
     "pool",
     "prefill",
     "single_token",

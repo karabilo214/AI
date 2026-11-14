@@ -7,6 +7,9 @@ import threading
 import time
 from typing import Any
 
+from ramvi_engine.lifecycle import EngineSession
+from ramvi_engine.protocol import API_VERSION, EVENT_VERSION
+
 TOOL_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.S)
 
 
@@ -156,13 +159,15 @@ class GenerationStream:
         stop: Any = None,
         think: Any = False,
         cons: Any = None,
+        _metrics_stats: Any = None,
+        _request_id: Any = None,
     ) -> Any:
         """Генератор событий: ("reasoning", кусок) | ("text", кусок) | ("end", итог)."""
         if self.force_greedy:
             temperature = 0.0
         stop = [s for s in stop or [] if s]
         markers = ["<tool_call>", "</think>"] + stop
-        st: dict[str, Any] = {}
+        st: dict[str, Any] = _metrics_stats if _metrics_stats is not None else {}
         gen, seen = [], 0
         matched_stop = None
         sent_r, sent_c, finish = (0, 0, "length")
@@ -178,6 +183,7 @@ class GenerationStream:
                 k=self.k,
                 stats=st,
                 cons=cons,
+                **({"_generation_id": _request_id} if isinstance(self.eng, EngineSession) else {}),
             ):
                 seen += 1
                 if t in self.eng.ck.eos:
@@ -244,11 +250,19 @@ class StreamingResponse:
         self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
+    def _version_headers(self: Any) -> None:
+        self.send_header("X-RAMVI-API-Version", API_VERSION)
+        self.send_header("X-RAMVI-Event-Version", str(EVENT_VERSION))
+        request_id = getattr(self, "_request_id", None)
+        if request_id is not None:
+            self.send_header("X-Request-ID", request_id)
+
     def _json(self: Any, obj: Any, code: Any = 200) -> Any:
         if getattr(self, "_stream_started", False):
             return self._stream_error(obj)
         b = json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(code)
+        self._version_headers()
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(b)))
         if getattr(self, "close_connection", False):
@@ -261,6 +275,7 @@ class StreamingResponse:
         self._stream_started = True
         self._stream_protocol = "ollama" if ctype == "application/x-ndjson" else protocol
         self.send_response(200)
+        self._version_headers()
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
