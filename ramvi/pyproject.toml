@@ -42,8 +42,6 @@ exclude = [
     "engine/ramvi_engine/planning/measured_plan.py",
     "engine/ramvi_engine/generation/constrain.py",
     "engine/ramvi_engine/generation/grammar_worker.py",
-    "engine/ramvi_engine/server/app.py",
-    "engine/ramvi_engine/server/validation.py",
     "engine/ramvi_engine/cli.py",
     "engine/ramvi_engine/native/write_manifest.py",
 ]
@@ -72,16 +70,15 @@ exclude = [
 "engine/ramvi_engine/planning/measured_plan.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
 "engine/ramvi_engine/generation/constrain.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
 "engine/ramvi_engine/generation/grammar_worker.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
-"engine/ramvi_engine/server/app.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
-"engine/ramvi_engine/server/validation.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
 "engine/ramvi_engine/cli.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
 "engine/ramvi_engine/native/write_manifest.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
+follow_imports = "silent"
 warn_unused_configs = true
-files = ["tests", "engine/tests", "engine/ramvi_engine/console.py", "engine/tools/bench/report_migration.py"]
+files = ["tests", "engine/tests", "engine/ramvi_engine/console.py", "engine/ramvi_engine/server", "engine/tools/bench/report_migration.py"]
 
 [tool.pytest.ini_options]
 minversion = "9.2"

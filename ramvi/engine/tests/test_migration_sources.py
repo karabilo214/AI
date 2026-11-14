@@ -33,8 +33,6 @@ MODULES: dict[str, str] = {
     "measured_plan": "planning.measured_plan",
     "constrain": "generation.constrain",
     "grammar_worker": "generation.grammar_worker",
-    "server": "server.app",
-    "request_validation": "server.validation",
     "__main__": "cli",
 }
 
