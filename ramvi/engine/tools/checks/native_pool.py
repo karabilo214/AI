@@ -1,13 +1,14 @@
 """Проверка пула потоков из qmm.cpp на управляемом расписании и под случайной нагрузкой (без AVX/CUDA).
 Берётся настоящий код Pool; добавляются только крючки задержки рабочих. Сборка: clang++ (Mac/Linux).
-python llm_app/cpp/pool_test.py   -> ненулевой код выхода при провале."""
+python -m ramvi.engine.tools check native_pool   -> ненулевой код выхода при провале."""
 import re
+import tempfile
 import subprocess
 import sys
 from pathlib import Path
 
-here = Path(__file__).resolve().parent
-src = (here.parents[1] / "ramvi" / "engine" / "ramvi_engine" / "native" / "qmm.cpp").read_text()
+here = Path(__file__).resolve().parents[2] / "ramvi_engine" / "native"
+src = (here / "qmm.cpp").read_text()
 pool = src[src.index("struct Job {"):src.index("static std::atomic<int> nthreads")]
 # крючки: задержка перед ожиданием поколения и после взятия задачи
 pool = pool.replace("unsigned seen = 0;\n                for (;;) {",
@@ -98,10 +99,11 @@ int main() {
     return fails ? 1 : 0;
 }
 '''
-out = here / "pool_test.cpp"
-out.write_text(pre + pool + main)
-exe = here / "pool_test_bin"
-subprocess.run(["clang++", "-std=c++17", "-O2", "-pthread", "-fsanitize=thread", str(out), "-o", str(exe)], check=True, timeout=120)
-r = subprocess.run([str(exe)], capture_output=True, text=True, timeout=600)
-print(r.stdout + r.stderr[-3000:])
-sys.exit(r.returncode)
+with tempfile.TemporaryDirectory(prefix="ramvi-pool-") as folder:
+    out = Path(folder) / "pool_test.cpp"
+    out.write_text(pre + pool + main)
+    exe = Path(folder) / "pool_test_bin"
+    subprocess.run(["clang++", "-std=c++17", "-O2", "-pthread", "-fsanitize=thread", str(out), "-o", str(exe)], check=True, timeout=120)
+    r = subprocess.run([str(exe)], capture_output=True, text=True, timeout=600)
+    print(r.stdout + r.stderr[-3000:])
+    sys.exit(r.returncode)

@@ -44,6 +44,31 @@ exclude = [
     "engine/ramvi_engine/generation/grammar_worker.py",
     "engine/ramvi_engine/cli.py",
     "engine/ramvi_engine/native/write_manifest.py",
+    "engine/tests/legacy/test_*.py",
+    "engine/tests/legacy/audit_support.py",
+    "engine/tools/bench/bench.py",
+    "engine/tools/bench/bench_o02.py",
+    "engine/tools/bench/bench_validation.py",
+    "engine/tools/bench/bench_wide.py",
+    "engine/tools/bench/compare_bench.py",
+    "engine/tools/checks/api_test.py",
+    "engine/tools/checks/check_audit_api.py",
+    "engine/tools/checks/check_audit_gpu.py",
+    "engine/tools/checks/check_audit_metadata.py",
+    "engine/tools/checks/check_audit_moe_recovery.py",
+    "engine/tools/checks/check_audit_recovery.py",
+    "engine/tools/checks/check_audit_sampling.py",
+    "engine/tools/checks/check_gcpu.py",
+    "engine/tools/checks/check_gengine.py",
+    "engine/tools/checks/check_gguf.py",
+    "engine/tools/checks/check_gspec.py",
+    "engine/tools/checks/check_measured_plan.py",
+    "engine/tools/checks/check_pool.py",
+    "engine/tools/checks/check_prefill.py",
+    "engine/tools/checks/check_single_token.py",
+    "engine/tools/checks/check_switch.py",
+    "engine/tools/checks/native_pool.py",
+    "engine/tools/checks/selftest.py",
 ]
 
 # Перенос старого кода без массового изменения стиля и хешей ядер.
@@ -72,16 +97,49 @@ exclude = [
 "engine/ramvi_engine/generation/grammar_worker.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
 "engine/ramvi_engine/cli.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
 "engine/ramvi_engine/native/write_manifest.py" = ["E401", "E701", "E702", "E731", "E741", "F401", "F841", "I001", "UP", "B"]
+"engine/tests/legacy/test_*.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tests/legacy/audit_support.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/bench/bench.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/bench/bench_o02.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/bench/bench_validation.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/bench/bench_wide.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/bench/compare_bench.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/api_test.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_audit_api.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_audit_gpu.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_audit_metadata.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_audit_moe_recovery.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_audit_recovery.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_audit_sampling.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_gcpu.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_gengine.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_gguf.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_gspec.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_measured_plan.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_pool.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_prefill.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_single_token.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/check_switch.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/native_pool.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
+"engine/tools/checks/selftest.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "I001", "UP", "B"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 follow_imports = "silent"
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/..", "$MYPY_CONFIG_FILE_DIR/engine"]
+exclude = ["engine/tests/legacy/"]
 warn_unused_configs = true
-files = ["tests", "engine/tests", "engine/ramvi_engine/console.py", "engine/ramvi_engine/config.py", "engine/ramvi_engine/server", "engine/tools/bench/report_migration.py"]
+files = ["tests", "engine/tests", "engine/ramvi_engine/console.py", "engine/ramvi_engine/config.py", "engine/ramvi_engine/server", "engine/tools/bench/report_migration.py", "engine/tools/__main__.py", "engine/tools/processes.py", "engine/tests/legacy/conftest.py"]
 
 [tool.pytest.ini_options]
 minversion = "9.2"
 testpaths = ["tests", "engine/tests"]
-pythonpath = ["engine"]
+pythonpath = ["engine", ".."]
 addopts = "-ra --strict-config --strict-markers"
+
+# Диспетчер существует только в репозитории; его выбранные исходники проверяются
+# как tools.*, а импортируемый путь ramvi.engine.tools.* не проверяется повторно.
+[[tool.mypy.overrides]]
+module = ["ramvi.engine.tools", "ramvi.engine.tools.*"]
+follow_imports = "skip"

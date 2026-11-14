@@ -1,17 +1,7 @@
-"""Проверка архитектур/плана по реальным файлам без загрузки весов в GPU."""
-import torch
-from .gguf import GGUF,find_ollama,validate_qwen,eos_ids
-from .plan import plan_gguf
-
-def main():
-    for name in ('qwen3:0.6b','qwen3:8b','qwen3:14b','qwen3:30b'):
-        g=GGUF(find_ollama(name))
-        validate_qwen(g);assert eos_ids(g)
-        g.close()
-        before=torch.cuda.memory_allocated()
-        plan=plan_gguf(name,maxt=256,log=lambda *a:None)
-        assert len(plan['place'])==len(plan['layer_file_bytes'])
-        assert torch.cuda.memory_allocated()==before
-        print(name+': architecture, EOS, metadata-only plan OK',flush=True)
-    print('AUDIT_METADATA_OK',flush=True)
-if __name__=='__main__':main()
+"""Переходное имя перенесённого инструмента."""
+from llm_app._compat import alias_module
+if __name__ == "__main__":
+    import runpy
+    runpy.run_module('ramvi.engine.tools.checks.check_audit_metadata', run_name="__main__")
+else:
+    alias_module(__name__, 'ramvi.engine.tools.checks.check_audit_metadata')

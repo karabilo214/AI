@@ -106,6 +106,3 @@ jobs:
         run: python -c "import torch; assert torch.version.cuda is None; assert not torch.cuda.is_available()"
       - name: Package tests with runtime dependencies
         run: python -m pytest
-      - name: Legacy unit tests through compatibility layer
-        working-directory: .
-        run: python -m unittest discover -s llm_app/tests -t .
