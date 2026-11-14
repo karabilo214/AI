@@ -1,5 +1,6 @@
 """Ограничение ответа грамматикой (xgrammar): JSON вообще или по схеме — ответ гарантированно ей соответствует.
 Совместимо с угадыванием: маски считаются по пути черновика, после проверки лишнее откатывается."""
+from ramvi_engine.config import ensure_dir, work_dir
 import json
 import threading
 import subprocess
@@ -60,7 +61,7 @@ def _schema(schema):
 
 
 def _compile_bounded(info, schema, timeout=30):
-    with tempfile.TemporaryDirectory(prefix="llm-grammar-") as folder:
+    with tempfile.TemporaryDirectory(prefix="ramvi-grammar-", dir=ensure_dir(work_dir())) as folder:
         input_path = Path(folder) / "input.json"
         output_path = Path(folder) / "output.json"
         input_path.write_text(json.dumps({"tokenizer": info.serialize_json(), "schema": schema}), encoding="utf-8")

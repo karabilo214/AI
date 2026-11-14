@@ -1,4 +1,5 @@
 """Явная калибровка GGUF; измерения отделены от обслуживания запросов."""
+from ramvi_engine.config import env
 import os
 import platform
 import time
@@ -10,7 +11,7 @@ from ramvi_engine.planning.plan import measured_schedule, ram_info
 def signature(eng):
     return dict(model=os.path.basename(eng.g.path),size=eng.g.size,layers=eng.L,
                 d=eng.D,ff=eng.FF,maxt=eng.maxt,device=torch.cuda.get_device_name(),
-                threads=os.environ.get('LLM_CPP_THREADS','16'),cpu=platform.processor(),
+                threads=env('RAMVI_CPP_THREADS','16'),cpu=platform.processor(),
                 cpu_count=os.cpu_count(),ram_total=ram_info()[0],model_mtime_ns=os.stat(eng.g.path).st_mtime_ns)
 
 

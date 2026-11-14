@@ -104,6 +104,34 @@ def allowed_layout_changes(name: str, source: str) -> str:
             '    ap = argparse.ArgumentParser(prog="ramvi-engine")',
             1,
         )
+    if name in {"engine", "gengine", "moe", "gcpu", "prefill", "measured_plan"}:
+        source = (
+            source.replace('os.environ.get("LLM_', 'env("RAMVI_')
+            .replace("os.environ.get('LLM_", "env('RAMVI_")
+            .replace("LLM_", "RAMVI_")
+        )
+    if name == "tune":
+        source = (
+            source.replace(
+                "Результат сохраняется в ~/.cache/llm_app/tune.json",
+                "Результат сохраняется в каталоге данных RAMVI/cache/tune.json",
+            )
+            .replace(
+                'CACHE = os.path.join(os.path.expanduser("~"), ".cache", "llm_app", "tune.json")',
+                'CACHE = str(cache_dir() / "tune.json")',
+            )
+            .replace(
+                '        if os.path.exists(CACHE):\n            with open(CACHE, encoding="utf-8") as handle:',
+                "        read_cache = tuning_cache_for_read(CACHE)\n"
+                "        if os.path.exists(read_cache):\n"
+                '            with open(read_cache, encoding="utf-8") as handle:',
+            )
+        )
+    if name == "constrain":
+        source = source.replace(
+            'with tempfile.TemporaryDirectory(prefix="llm-grammar-") as folder:',
+            'with tempfile.TemporaryDirectory(prefix="ramvi-grammar-", dir=ensure_dir(work_dir())) as folder:',
+        )
     return source
 
 

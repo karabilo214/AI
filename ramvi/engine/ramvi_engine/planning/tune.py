@@ -1,6 +1,7 @@
 """Автонастройка ядер под видеокарту и формы матриц модели: время в CUDA-графе на нескольких копиях матрицы
-(мимо кэша). Результат сохраняется в ~/.cache/llm_app/tune.json (ключ: видеокарта + форма) и при следующих
+(мимо кэша). Результат сохраняется в каталоге данных RAMVI/cache/tune.json (ключ: видеокарта + форма) и при следующих
 запусках берётся оттуда."""
+from ramvi_engine.config import cache_dir, tuning_cache_for_read
 import json
 import hashlib
 import math
@@ -14,7 +15,7 @@ import torch
 import ramvi_engine.kernels.wcomp as wcomp
 from ramvi_engine.kernels.wcomp import compress, gemvc1, gemvc_tc
 
-CACHE = os.path.join(os.path.expanduser("~"), ".cache", "llm_app", "tune.json")
+CACHE = str(cache_dir() / "tune.json")
 
 
 def _bench(f, n=8):
@@ -43,8 +44,9 @@ def tune(shapes, log=print):
     gpu = torch.cuda.get_device_name()
     version = hashlib.sha256(Path(wcomp.__file__).read_bytes()).hexdigest() + "|" + torch.__version__
     try:
-        if os.path.exists(CACHE):
-            with open(CACHE, encoding="utf-8") as handle:
+        read_cache = tuning_cache_for_read(CACHE)
+        if os.path.exists(read_cache):
+            with open(read_cache, encoding="utf-8") as handle:
                 cached = json.load(handle)
         else:
             cached = {}

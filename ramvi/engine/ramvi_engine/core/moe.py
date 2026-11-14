@@ -1,6 +1,7 @@
 """Qwen3-MoE/GGUF: первые слои целиком CPU (C++/Numba), последние целиком GPU.
 Один переход CPU -> GPU на проход. Общая генерация и JSON — engine/gengine.
 """
+from ramvi_engine.config import env
 import ctypes
 import time
 import types
@@ -105,7 +106,7 @@ class MoEEngine(GGUFEngine):
         import os
         reserve = vram_reserve if vram_reserve is not None else reserve
         if reserve is None:
-            reserve = float(os.environ.get("LLM_VRAM_RESERVE_GIB", "0.9")) * GiB
+            reserve = float(env("RAMVI_VRAM_RESERVE_GIB", "0.9")) * GiB
         free = torch.cuda.mem_get_info()[0] - reserve - extra_vram
         R = 0
         while R < self.L and sum(gpu_bytes(self.L - 1 - j) for j in range(R + 1)) <= free:

@@ -1,6 +1,7 @@
 """Слой GGUF на процессоре (Numba): веса читаются прямо из файла модели (memmap), счёт fp32.
 Блок весов распаковывается один раз и умножается на все слова пачки. Масштабы Q4_K/Q6_K раскладываются при
 загрузке в небольшие массивы float32; сами 4/6-битные числа — из файла без копии."""
+from ramvi_engine.config import env
 import ctypes
 import hashlib
 import json
@@ -120,7 +121,7 @@ def _cpp_cpu_supported(features=None):
 def _dll():
     """AVX-512 только после проверки ISA/ABI; иначе плотный движок использует Numba."""
     global _DLL
-    if os.environ.get("LLM_NO_CPP") == "1" or sys.platform not in ("win32", "linux") or not _cpp_cpu_supported():
+    if env("RAMVI_NO_CPP") == "1" or sys.platform not in ("win32", "linux") or not _cpp_cpu_supported():
         return None
     with _DLL_LOCK:
         if _DLL is None:
@@ -149,9 +150,9 @@ def _dll():
             d.moe_ffn.restype = ctypes.c_int
             d.take_failed.restype = ctypes.c_int
             d.set_threads.argtypes = [ctypes.c_int]
-            threads = int(os.environ.get("LLM_CPP_THREADS", "16"))
+            threads = int(env("RAMVI_CPP_THREADS", "16"))
             if not 1 <= threads <= 256:
-                raise ValueError("LLM_CPP_THREADS должно быть от 1 до 256")
+                raise ValueError("RAMVI_CPP_THREADS должно быть от 1 до 256")
             d.set_threads(threads)
             import atexit
             atexit.register(d.pool_shutdown)

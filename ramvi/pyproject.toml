@@ -78,7 +78,7 @@ python_version = "3.12"
 strict = true
 follow_imports = "silent"
 warn_unused_configs = true
-files = ["tests", "engine/tests", "engine/ramvi_engine/console.py", "engine/ramvi_engine/server", "engine/tools/bench/report_migration.py"]
+files = ["tests", "engine/tests", "engine/ramvi_engine/console.py", "engine/ramvi_engine/config.py", "engine/ramvi_engine/server", "engine/tools/bench/report_migration.py"]
 
 [tool.pytest.ini_options]
 minversion = "9.2"

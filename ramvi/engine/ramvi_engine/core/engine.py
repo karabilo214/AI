@@ -8,6 +8,7 @@
 слои процессора на это время подкачиваются в видеокарту в bf16. Начало, совпавшее с прошлым запросом, не
 пересчитывается. Выбор слова — head.py (int8-словарь в видеокарте + точные строки из файла).
 """
+from ramvi_engine.config import env
 import collections
 import itertools
 import queue
@@ -513,13 +514,13 @@ class Engine:
         пока вероятность «все слова угаданы» (произведение уверенностей угадывателя) выше порога
         thr = 2 * (шаг угадывателя + прирост прохода на слово) / проход, измеряемых на ходу.
         По умолчанию режим выбирается прежней политикой после черновика.
-        LLM_DRAFT_GATE=1 включает экспериментальный выбор до запуска угадывателя
+        RAMVI_DRAFT_GATE=1 включает экспериментальный выбор до запуска угадывателя
         по прошлым принятиям, с периодическими проверенными пробами.
         force(i) -> "step" | "spec" — принудительный режим на шаге i (для проверки, что текст не зависит от
         истории переключений). cons — ограничение грамматикой (constrain.Constraint; только движок GGUF).
         stats (dict): prompt_n, prompt_ms, gen_n, gen_ms, passes, drafted, accepted, steps1, switches."""
         import os
-        gate_enabled = os.environ.get("LLM_DRAFT_GATE", "0") == "1"
+        gate_enabled = env("RAMVI_DRAFT_GATE", "0") == "1"
         if k is not None and (not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= 15):
             raise ValueError("k должно быть целым от 1 до 15 (None — адаптивно)")
         if not isinstance(max_new, int) or isinstance(max_new, bool) or max_new < 0:

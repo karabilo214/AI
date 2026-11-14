@@ -1,9 +1,10 @@
 """Специализированный prefill: ограниченная распаковка, GEMM и блочное внимание.
 
-Включение: LLM_PREFILL=blocked (legacy — прежний путь).
-Короткие запросы остаются на legacy; порог LLM_PREFILL_MIN_TOKENS=256.
+Включение: RAMVI_PREFILL=blocked (legacy — прежний путь).
+Короткие запросы остаются на legacy; порог RAMVI_PREFILL_MIN_TOKENS=256.
 Временные веса: не более ROWS * K чисел fp32, по одной матрице.
 """
+from ramvi_engine.config import env
 import os
 import torch
 
@@ -11,11 +12,11 @@ ROWS = 512
 
 
 def enabled(n=None):
-    mode = os.environ.get('LLM_PREFILL', 'legacy')
+    mode = env('RAMVI_PREFILL', 'legacy')
     if mode not in ('legacy', 'blocked'):
-        raise ValueError('LLM_PREFILL должен быть legacy или blocked')
-    minimum=int(os.environ.get('LLM_PREFILL_MIN_TOKENS','256'))
-    if minimum<0:raise ValueError('LLM_PREFILL_MIN_TOKENS должен быть неотрицательным')
+        raise ValueError('RAMVI_PREFILL должен быть legacy или blocked')
+    minimum=int(env('RAMVI_PREFILL_MIN_TOKENS','256'))
+    if minimum<0:raise ValueError('RAMVI_PREFILL_MIN_TOKENS должен быть неотрицательным')
     return mode == 'blocked' and (n is None or n>=minimum)
 
 

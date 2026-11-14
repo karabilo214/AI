@@ -3,6 +3,7 @@
 План: сколько влезет слоёв в видеокарте, остальные подкачиваются по шине (поток-помощник, как в engine.py).
 Кэш k, v — fp16 (для квантованной модели точность fp32 не нужна, память дороже). Выходной словарь (обычно
 Q6_K) — в видеокарте, выбор слова там же. Чтение запроса — послойно, кусками по 16; угадывание — как в engine."""
+from ramvi_engine.config import env
 import time
 import types
 
@@ -30,7 +31,7 @@ class GGUFEngine(Engine):
         t0 = time.time()
         import os
         if vram_reserve is None:
-            vram_reserve = float(os.environ.get("LLM_VRAM_RESERVE_GIB", "0.9")) * GiB
+            vram_reserve = float(env("RAMVI_VRAM_RESERVE_GIB", "0.9")) * GiB
         g = self.g = GGUF(find_ollama(name) if ":" in name and not name.endswith(".gguf") else name)
         a = g.meta["general.architecture"]
         if a != "qwen3":
@@ -64,7 +65,7 @@ class GGUFEngine(Engine):
         else:
             R = resident
         alt = "hyb" if cpu == "hybrid" else "cpu"
-        self.cpu_frac = float(os.environ.get("LLM_CPU_FRAC", "0.58"))  # доля слоёв вне видеокарты на процессоре
+        self.cpu_frac = float(env("RAMVI_CPU_FRAC", "0.58"))  # доля слоёв вне видеокарты на процессоре
         self.place = ["gpu"] * R + self._spread(self.L - R, alt if cpu else None)
         tot, avail = ram_info()
         log(f"GGUF {name}: {self.L} слоёв, {sum(lb) / GiB:.2f} ГиБ весов слоёв; видеокарта свободно {free / GiB:.1f} ГиБ -> "
@@ -115,10 +116,10 @@ class GGUFEngine(Engine):
         self.gub, self.mb, self.logits = f(2 * self.FF), f(self.FF), f(self.V)
         self.pos = torch.zeros(1, dtype=torch.long, device=dev)
         self.graphs, self.ctx = {}, []
-        profile_path = os.environ.get("LLM_LAYER_PROFILE")
+        profile_path = env("RAMVI_LAYER_PROFILE")
         if profile_path:
             if resident is None:
-                raise ValueError("LLM_LAYER_PROFILE требует явного resident; профиль применяют после autofit через configure_placement")
+                raise ValueError("RAMVI_LAYER_PROFILE требует явного resident; профиль применяют после autofit через configure_placement")
             import json
             with open(profile_path, encoding="utf-8") as handle:
                 self.configure_placement(json.load(handle))
