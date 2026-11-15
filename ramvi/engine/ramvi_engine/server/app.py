@@ -259,7 +259,11 @@ def make_handler(app: Any) -> Any:
             if not app.api_key:
                 return True
             h = self.headers.get("Authorization", "")
-            if h == f"Bearer {app.api_key}" or self.headers.get("x-api-key") == app.api_key:
+            if callable(app.api_key):  # проверка ключей клиентов (API-02) снаружи движка
+                token = h[7:] if h.startswith("Bearer ") else self.headers.get("x-api-key")
+                if app.api_key(token, self.path):
+                    return True
+            elif h == f"Bearer {app.api_key}" or self.headers.get("x-api-key") == app.api_key:
                 return True
             self.close_connection = True
             self._json(

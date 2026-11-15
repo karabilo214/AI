@@ -264,7 +264,8 @@ def test_application_and_transport_preserve_behavior() -> None:
             "H",
             "app.py",
             "H",
-            ["setup", "log_message", "_auth", "do_OPTIONS", "do_GET", "do_POST", "_post"],
+            # _auth намеренно изменён в 7.2 (ключи клиентов); проверка — test_protocol.py.
+            ["setup", "log_message", "do_OPTIONS", "do_GET", "do_POST", "_post"],
         ),
         (
             "LimitedHTTPServer",

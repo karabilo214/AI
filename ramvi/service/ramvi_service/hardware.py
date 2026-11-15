@@ -1,0 +1,357 @@
+"""AUTO-01: локальный профиль железа. Только чтение системы, без сети.
+
+Неизвестное значение — None, а не ошибка: профиль собирается всегда.
+"""
+
+import ctypes
+import os
+import platform
+import shutil
+import subprocess
+import sys
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+MIB = 1024 * 1024
+
+
+@dataclass(frozen=True)
+class GPUInfo:
+    name: str
+    vendor: str
+    vram_total_mb: int | None = None
+    vram_free_mb: int | None = None
+    driver: str | None = None
+
+
+@dataclass(frozen=True)
+class HardwareProfile:
+    os: str
+    arch: str
+    cpu_name: str | None
+    isa: tuple[str, ...]
+    cores_physical: int | None
+    cores_logical: int | None
+    ram_total_mb: int | None
+    ram_available_mb: int | None
+    disk_path: str
+    disk_total_mb: int | None
+    disk_free_mb: int | None
+    gpus: tuple[GPUInfo, ...] = field(default_factory=tuple)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _run(args: list[str], timeout: float = 5.0) -> str | None:
+    try:
+        done = subprocess.run(
+            args, capture_output=True, text=True, timeout=timeout, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def _int(text: Any) -> int | None:
+    try:
+        return int(float(str(text).strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+# Флаги, важные для выбора сборки движка.
+_ISA_FLAGS = ("sse4_2", "avx", "avx2", "fma", "f16c", "avx512f", "neon")
+
+
+def _isa_from_flags(flags: set[str]) -> tuple[str, ...]:
+    return tuple(name for name in _ISA_FLAGS if name in flags)
+
+
+def parse_nvidia_smi(text: str) -> tuple[GPUInfo, ...]:
+    """Строки CSV: name, memory.total, memory.free, driver_version (MiB)."""
+    gpus = []
+    for line in text.splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) != 4 or not parts[0]:
+            continue
+        gpus.append(
+            GPUInfo(
+                name=parts[0],
+                vendor="NVIDIA",
+                vram_total_mb=_int(parts[1]),
+                vram_free_mb=_int(parts[2]),
+                driver=parts[3] or None,
+            )
+        )
+    return tuple(gpus)
+
+
+def _nvidia_gpus() -> tuple[GPUInfo, ...]:
+    exe = shutil.which("nvidia-smi")
+    if exe is None:
+        return ()
+    out = _run(
+        [
+            exe,
+            "--query-gpu=name,memory.total,memory.free,driver_version",
+            "--format=csv,noheader,nounits",
+        ]
+    )
+    return parse_nvidia_smi(out) if out else ()
+
+
+# --- Linux -----------------------------------------------------------------
+
+
+def parse_meminfo(text: str) -> tuple[int | None, int | None]:
+    values = {}
+    for line in text.splitlines():
+        key, _, rest = line.partition(":")
+        number = _int(rest.split()[0]) if rest.split() else None
+        values[key.strip()] = number
+    total = values.get("MemTotal")
+    avail = values.get("MemAvailable")
+    return (
+        total // 1024 if total is not None else None,
+        avail // 1024 if avail is not None else None,
+    )
+
+
+def parse_cpuinfo(text: str) -> tuple[str | None, set[str], int | None]:
+    name = None
+    flags: set[str] = set()
+    cores = set()
+    physical = core = None
+    for line in text.splitlines():
+        key, _, value = line.partition(":")
+        key, value = key.strip(), value.strip()
+        if key == "model name" and name is None:
+            name = value
+        elif key in ("flags", "Features") and not flags:
+            flags = set(value.lower().split())
+            if "asimd" in flags:
+                flags.add("neon")
+        elif key == "physical id":
+            physical = value
+        elif key == "core id":
+            core = value
+        elif not line.strip() and core is not None:
+            cores.add((physical, core))
+            physical = core = None
+    if core is not None:
+        cores.add((physical, core))
+    return name, flags, (len(cores) or None)
+
+
+def _linux(info: dict[str, Any]) -> None:
+    try:
+        info["ram_total_mb"], info["ram_available_mb"] = parse_meminfo(
+            Path("/proc/meminfo").read_text()
+        )
+    except OSError:
+        pass
+    try:
+        name, flags, physical = parse_cpuinfo(Path("/proc/cpuinfo").read_text())
+        info.update(cpu_name=name, isa=_isa_from_flags(flags), cores_physical=physical)
+    except OSError:
+        pass
+    info["other_gpus"] = _linux_gpus()
+
+
+# --- macOS -----------------------------------------------------------------
+
+
+def _sysctl(name: str) -> str | None:
+    out = _run(["sysctl", "-n", name])
+    return out.strip() if out else None
+
+
+def _macos(info: dict[str, Any]) -> None:
+    info["cpu_name"] = _sysctl("machdep.cpu.brand_string")
+    info["cores_physical"] = _int(_sysctl("hw.physicalcpu"))
+    total = _int(_sysctl("hw.memsize"))
+    info["ram_total_mb"] = total // MIB if total else None
+    flags = set((_sysctl("machdep.cpu.features") or "").lower().split())
+    flags |= set((_sysctl("machdep.cpu.leaf7_features") or "").lower().split())
+    flags = {flag.replace(".", "_") for flag in flags}
+    if platform.machine() == "arm64":
+        flags.add("neon")
+    info["isa"] = _isa_from_flags(flags)
+    vm = _run(["vm_stat"])
+    if vm:
+        page = _int(_sysctl("hw.pagesize")) or 4096
+        pages = {}
+        for line in vm.splitlines():
+            key, _, value = line.partition(":")
+            pages[key.strip()] = _int(value.strip().rstrip("."))
+        free = sum(
+            pages.get(k) or 0
+            for k in ("Pages free", "Pages inactive", "Pages speculative")
+        )
+        info["ram_available_mb"] = free * page // MIB
+    info["other_gpus"] = parse_system_profiler(
+        _run(["system_profiler", "-json", "SPDisplaysDataType"], timeout=15) or ""
+    )
+
+
+# --- Windows ---------------------------------------------------------------
+
+
+def _windows(info: dict[str, Any]) -> None:
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", ctypes.c_ulong),
+            ("dwMemoryLoad", ctypes.c_ulong),
+            ("ullTotalPhys", ctypes.c_ulonglong),
+            ("ullAvailPhys", ctypes.c_ulonglong),
+            ("ullTotalPageFile", ctypes.c_ulonglong),
+            ("ullAvailPageFile", ctypes.c_ulonglong),
+            ("ullTotalVirtual", ctypes.c_ulonglong),
+            ("ullAvailVirtual", ctypes.c_ulonglong),
+            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        ]
+
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    status = MemoryStatus()
+    status.dwLength = ctypes.sizeof(MemoryStatus)
+    if kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        info["ram_total_mb"] = status.ullTotalPhys // MIB
+        info["ram_available_mb"] = status.ullAvailPhys // MIB
+    # IsProcessorFeaturePresent: 10=SSE2(база x64), 39=AVX, 40=AVX2, 41=AVX512F.
+    flags = {"sse4_2"} if platform.machine().lower() in ("amd64", "x86_64") else set()
+    for code, name in ((39, "avx"), (40, "avx2"), (41, "avx512f")):
+        if kernel32.IsProcessorFeaturePresent(code):
+            flags.add(name)
+    info["isa"] = _isa_from_flags(flags)
+    try:
+        import winreg
+
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+        )
+        info["cpu_name"] = str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
+    except OSError:
+        pass
+    out = _run(["powershell", "-NoProfile", "-Command", _WMI_PS], timeout=15)
+    if out:
+        info["cores_physical"], info["other_gpus"] = parse_wmi_json(out)
+
+
+_WMI_PS = (
+    "@{cpu=@(Get-CimInstance Win32_Processor | Select-Object NumberOfCores);"
+    "gpu=@(Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion)}"
+    " | ConvertTo-Json -Compress -Depth 3"
+)
+
+
+def _vendor(name: str) -> str:
+    low = name.lower()
+    for key, vendor in (("nvidia", "NVIDIA"), ("geforce", "NVIDIA"), ("radeon", "AMD"),
+                        ("amd", "AMD"), ("intel", "Intel"), ("apple", "Apple")):
+        if key in low:
+            return vendor
+    return "unknown"
+
+
+def parse_wmi_json(text: str) -> tuple[int | None, tuple[GPUInfo, ...]]:
+    """VRAM из WMI не берём: AdapterRAM ограничен 4 ГБ, у встроенных память общая."""
+    import json
+
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None, ()
+    cores = sum(_int(c.get("NumberOfCores")) or 0 for c in data.get("cpu") or [])
+    gpus = tuple(
+        GPUInfo(name=g["Name"].strip(), vendor=_vendor(g["Name"]), driver=g.get("DriverVersion"))
+        for g in data.get("gpu") or []
+        if g.get("Name")
+    )
+    return cores or None, gpus
+
+
+def parse_system_profiler(text: str) -> tuple[GPUInfo, ...]:
+    import json
+
+    try:
+        items = json.loads(text).get("SPDisplaysDataType") or []
+    except (ValueError, AttributeError):
+        return ()
+    gpus = []
+    for item in items:
+        name = item.get("sppci_model") or item.get("_name")
+        if name:
+            vram = item.get("spdisplays_vram") or item.get("spdisplays_vram_shared")
+            mb = _int(str(vram).split()[0]) if vram else None
+            if mb is not None and "GB" in str(vram):
+                mb *= 1024
+            gpus.append(GPUInfo(name=name, vendor=_vendor(name), vram_total_mb=mb))
+    return tuple(gpus)
+
+
+def _linux_gpus() -> tuple[GPUInfo, ...]:
+    out = _run(["lspci", "-mm"]) or ""
+    gpus = []
+    for line in out.splitlines():
+        if any(k in line for k in ('"VGA', '"3D', '"Display')):
+            parts = line.split('"')
+            name = f"{parts[3]} {parts[5]}" if len(parts) > 5 else line
+            gpus.append(GPUInfo(name=name, vendor=_vendor(name)))
+    return tuple(gpus)
+
+
+def collect(disk_path: str | os.PathLike[str] | None = None) -> HardwareProfile:
+    """Собрать профиль. disk_path — папка данных/моделей (по умолчанию текущая)."""
+    path = str(Path(disk_path or os.getcwd()).resolve())
+    info: dict[str, Any] = dict(
+        cpu_name=None,
+        isa=(),
+        cores_physical=None,
+        ram_total_mb=None,
+        ram_available_mb=None,
+        other_gpus=(),
+    )
+    try:
+        if sys.platform.startswith("linux"):
+            _linux(info)
+        elif sys.platform == "darwin":
+            _macos(info)
+        elif sys.platform == "win32":
+            _windows(info)
+    except Exception:  # профиль не должен ронять запуск
+        pass
+    try:
+        usage = shutil.disk_usage(path)
+        disk_total, disk_free = usage.total // MIB, usage.free // MIB
+    except OSError:
+        disk_total = disk_free = None
+    return HardwareProfile(
+        os=f"{platform.system()} {platform.release()}",
+        arch=platform.machine(),
+        cpu_name=info["cpu_name"] or platform.processor() or None,
+        isa=tuple(info["isa"]),
+        cores_physical=info["cores_physical"],
+        cores_logical=os.cpu_count(),
+        ram_total_mb=info["ram_total_mb"],
+        ram_available_mb=info["ram_available_mb"],
+        disk_path=path,
+        disk_total_mb=disk_total,
+        disk_free_mb=disk_free,
+        gpus=_merge_gpus(_nvidia_gpus(), info["other_gpus"]),
+    )
+
+
+def _merge_gpus(nvidia: tuple[GPUInfo, ...], other: tuple[GPUInfo, ...]) -> tuple[GPUInfo, ...]:
+    """Данные nvidia-smi точнее; NVIDIA из общего списка берём, только если nvidia-smi нет."""
+    if not nvidia:
+        return tuple(other)
+    return tuple(nvidia) + tuple(g for g in other if g.vendor != "NVIDIA")
+
+
+if __name__ == "__main__":
+    import json
+
+    print(json.dumps(collect().to_dict(), ensure_ascii=False, indent=2))
