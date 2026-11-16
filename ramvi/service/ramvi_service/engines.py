@@ -98,7 +98,10 @@ def resolve_model(model: Model, root: Path | None) -> Model:
     return replace(model, path=str(((root or Path.cwd()) / path).resolve()))
 
 
-def default_engine(model: Model) -> EngineTarget:
+DRAFT_RATIO = 8  # предсказатель хотя бы в 8 раз меньше основной модели
+
+
+def default_engine(model: Model, draft: Model | None = None) -> EngineTarget:
     """Настоящий движок для записи модели (тяжёлые импорты только при запуске)."""
     from ramvi_engine.engine_process import EngineProcess
     from ramvi_engine.model_loader import ModelConfig
@@ -106,7 +109,14 @@ def default_engine(model: Model) -> EngineTarget:
 
     # 3.9: в комплекте токенизатор лежит рядом (runtime/tokenizers), без кеша Hugging Face.
     tokenizer = os.environ.get(TOKENIZER_ENV) or ModelConfig.tokenizer
-    return EngineProcess(ModelConfig(model.path, tokenizer=tokenizer, planning=PlanningOptions()))
+    return EngineProcess(
+        ModelConfig(
+            model.path,
+            draft=None if draft is None else draft.path,
+            tokenizer=tokenizer,
+            planning=PlanningOptions(),
+        )
+    )
 
 
 class EngineManager:
@@ -115,7 +125,7 @@ class EngineManager:
         models: Models,
         run_dir: Path,
         *,
-        make_engine: Callable[[Model], EngineTarget] = default_engine,
+        make_engine: Callable[[Model, Model | None], EngineTarget] = default_engine,
         policy: Callable[[], RestartPolicy] = RestartPolicy,
         interval: float = 1.0,
         request_timeout: float = 600.0,
@@ -134,6 +144,7 @@ class EngineManager:
         self._problem: tuple[str, str] | None = None
         self._problem_model: str | None = None
         self._served_name: str | None = None
+        self._draft_id: str | None = None
 
     @property
     def model_id(self) -> str | None:
@@ -148,6 +159,7 @@ class EngineManager:
                 "state": "stopped" if sup is None else sup["state"],
                 "last_failure": None if sup is None else sup["last_failure"],
                 "problem": None if self._problem is None else self._problem_json(),
+                "draft_model_id": self._draft_id if self._model_id is not None else None,
             }
 
     def _problem_json(self) -> dict[str, Any]:
@@ -192,7 +204,9 @@ class EngineManager:
             self._loading = model_id
             self._problem, self._problem_model = None, model_id
             self._served_name = served_name(model.path)
-            engine = self._make_engine(model)
+            draft = self.draft_for(model)
+            self._draft_id = None if draft is None else draft.id
+            engine = self._make_engine(model, draft)
             supervisor = Supervisor(
                 engine,
                 self.run_dir,
@@ -224,6 +238,24 @@ class EngineManager:
                 "engine.start_failed" if state["state"] == "failed" else "engine.start_timeout",
                 detail=failure.get("error") or failure.get("reason") or "",
             )
+
+    def draft_for(self, model: Model) -> Model | None:
+        """Предсказатель для угадывания вперёд: самая маленькая другая модель той же
+        плотной архитектуры qwen3 (общий токенизатор), не меньше чем в 8 раз меньше.
+        Включать ли его на самом деле, решает план движка (`--draft-policy auto`)."""
+        if model.architecture != "qwen3" or not model.bytes:
+            return None
+        candidates = [
+            m
+            for m in self.models.all()
+            if m.id != model.id
+            and m.architecture == "qwen3"
+            and m.bytes
+            and m.bytes * DRAFT_RATIO <= model.bytes
+        ]
+        if not candidates:
+            return None
+        return resolve_model(min(candidates, key=lambda m: (m.bytes or 0, m.id)), self.model_root)
 
     def _wait(self, supervisor: Supervisor, timeout: float) -> dict[str, Any]:
         """Ждать готовности; однозначная причина сбоя прерывает ожидание сразу."""

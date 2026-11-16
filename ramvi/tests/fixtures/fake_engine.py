@@ -87,6 +87,9 @@ class Handler(BaseHTTPRequestHandler):
         if body.get("model") not in (None, served):  # как validate_capabilities движка
             self._json({"error": {"message": f"загружена только модель {served}"}}, 400)
             return
+        if body.get("temperature") != 0:  # чат RAMVI обязан просить жадный выбор (3.10)
+            self._json({"error": {"message": "fake engine expects temperature=0"}}, 400)
+            return
         question = body["messages"][-1]["content"]
         words = (
             ["word"] * 400

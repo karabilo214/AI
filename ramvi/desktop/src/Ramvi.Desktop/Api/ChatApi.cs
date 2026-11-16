@@ -121,7 +121,7 @@ public sealed class ChatApiClient : IChatApi, IDisposable
         string chatId, string text, IReadOnlyList<Attachment> attachments, CancellationToken cancel = default)
     {
         var body = new SendRequest(text, [.. attachments.Select(a => new SendAttachment(a.Name, a.Text))]);
-        return StreamAsync($"chats/{Id(chatId)}/send", JsonContent.Create(body, ApiJson.Default.SendRequest), cancel);
+        return StreamAsync($"chats/{Id(chatId)}/send", Body(body, ApiJson.Default.SendRequest), cancel);
     }
 
     public IAsyncEnumerable<ChatEvent> RegenerateAsync(string chatId, CancellationToken cancel = default) =>
@@ -185,7 +185,7 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     private async Task<TResult> PostAsync<TBody, TResult>(
         string path, TBody body, JsonTypeInfo<TBody> bodyType, JsonTypeInfo<TResult> type, CancellationToken cancel)
     {
-        using var response = await PostRawAsync(path, JsonContent.Create(body, bodyType), cancel).ConfigureAwait(false);
+        using var response = await PostRawAsync(path, Body(body, bodyType), cancel).ConfigureAwait(false);
         await EnsureAsync(response, cancel).ConfigureAwait(false);
         return await response.Content.ReadFromJsonAsync(type, cancel).ConfigureAwait(false)
             ?? throw new ApiException("api.internal", null);
@@ -217,4 +217,15 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     }
 
     private static string Id(string chatId) => Uri.EscapeDataString(chatId);
+
+    /// <summary>
+    /// Тело JSON с известной длиной. JsonContent отправляет без Content-Length (chunked),
+    /// а http.server сервиса такое тело не читает и видит пустой запрос.
+    /// </summary>
+    private static ByteArrayContent Body<T>(T value, JsonTypeInfo<T> type)
+    {
+        var content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(value, type));
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+        return content;
+    }
 }

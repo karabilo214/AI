@@ -11,8 +11,11 @@ public sealed class ChatApiClientTests
     {
         public List<(HttpMethod Method, string Path, string? Auth, string Body)> Requests { get; } = [];
 
+        public List<long?> Lengths { get; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancel)
         {
+            Lengths.Add(request.Content?.Headers.ContentLength);
             var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancel);
             Requests.Add((request.Method, request.RequestUri!.AbsolutePath, request.Headers.Authorization?.ToString(), body));
             return reply(request);
@@ -55,6 +58,7 @@ public sealed class ChatApiClientTests
         Assert.Equal("/ui/v1/chats/c%2F1/send", request.Path);
         Assert.Equal("Bearer secret", request.Auth);
         Assert.Equal("{\"text\":\"hi\",\"attachments\":[{\"name\":\"a.txt\",\"text\":\"abc\"}]}", request.Body);
+        Assert.True(handler.Lengths[0] > 0, "у тела потока нет Content-Length");
     }
 
     [Fact]
@@ -103,5 +107,27 @@ public sealed class ChatApiClientTests
         Assert.Equal(new Limits(10, 2, 3, 4, 5), status.Limits);
         Assert.Equal("ready", status.Engine.State);
         Assert.Equal(new ChatInfo("c", "t", "m", 1, 2, true), Assert.Single(chats));
+    }
+
+    [Fact]
+    public async Task Import_and_settings_requests_have_snake_case_bodies()
+    {
+        var handler = new Handler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/ui/v1/models/import" => Json("{\"model\":{\"id\":\"m\",\"architecture\":\"qwen3\",\"quant\":null,\"bytes\":1}}"),
+            _ => Json("{\"done\":true,\"default_model\":\"m\"}"),
+        });
+        using var client = Client(handler);
+
+        var model = await client.ImportModelAsync(@"C:\Users\Владимир\.ollama\models\blobs\sha256-7f40", TestContext.Current.CancellationToken);
+        await client.CompleteOnboardingAsync(null, TestContext.Current.CancellationToken);
+
+        Assert.Equal("m", model.Id);
+        Assert.Equal("/ui/v1/models/import", handler.Requests[0].Path);
+        using var body = System.Text.Json.JsonDocument.Parse(handler.Requests[0].Body);
+        Assert.Equal(@"C:\Users\Владимир\.ollama\models\blobs\sha256-7f40", body.RootElement.GetProperty("path").GetString());
+        Assert.Equal("{}", handler.Requests[1].Body); // пропуск мастера: model_id не отправляется
+        // Python http.server не читает тело без Content-Length (chunked): длина обязана быть известна.
+        Assert.All(handler.Lengths, length => Assert.True(length > 0, "у тела нет Content-Length"));
     }
 }

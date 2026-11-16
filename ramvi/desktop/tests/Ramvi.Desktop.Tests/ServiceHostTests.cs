@@ -104,4 +104,38 @@ public sealed class RealServiceStartTests
             File.Delete(file);
         }
     }
+
+    [Fact]
+    public async Task Real_client_bodies_reach_real_service()
+    {
+        // Стык C#-клиент ↔ http.server: тела POST должны доходить (Content-Length, не chunked).
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../.."));
+        var python = Environment.GetEnvironmentVariable("RAMVI_TEST_PYTHON");
+        Assert.SkipWhen(python is null, "нужен RAMVI_TEST_PYTHON с зависимостями сервиса");
+        var app = Directory.CreateTempSubdirectory("ramvi-e2e-").FullName;
+        try
+        {
+            var options = new ServiceOptions(python!, root, Path.Combine(app, "data"), [], app);
+            var host = await ServiceHost.StartAsync(options, TimeSpan.FromSeconds(60));
+            try
+            {
+                using var client = new Api.ChatApiClient(host.Address, host.Token);
+                var saved = await client.SaveSettingsAsync(new Api.SettingsUpdate(Language: "en", ApiPort: 12345), TestContext.Current.CancellationToken);
+                Assert.Equal(("en", 12345), (saved.Settings.Language, saved.Settings.ApiPort));
+                Assert.Equal(["language"], saved.RestartRequired);
+                var error = await Assert.ThrowsAsync<Api.ApiException>(
+                    () => client.ImportModelAsync(Path.Combine(app, "нет-такого.gguf"), TestContext.Current.CancellationToken));
+                Assert.Equal("import.not_found", error.Code); // путь дошёл, а не «нет поля path»
+                Assert.True((await client.CompleteOnboardingAsync(null, TestContext.Current.CancellationToken)).Done);
+            }
+            finally
+            {
+                await host.DisposeAsync();
+            }
+        }
+        finally
+        {
+            Directory.Delete(app, recursive: true);
+        }
+    }
 }

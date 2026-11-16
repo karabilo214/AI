@@ -131,6 +131,7 @@ def test_send_streams_reasoning_and_text_and_persists(
         "state": "ready",
         "last_failure": None,
         "problem": None,
+        "draft_model_id": None,
     }
     # Второй ответ — без загрузки: модель уже в движке.
     events = client.events(f"/chats/{chat['id']}/send", {"text": "ещё"})

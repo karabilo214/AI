@@ -213,7 +213,8 @@ class ChatService:
     def _run(
         self, chat_id: str, model_id: str, cancel: threading.Event, first: dict[str, Any]
     ) -> Iterator[dict[str, Any]]:
-        request = {"messages": self._prompt(chat_id), MODEL_FIELD: model_id}
+        # Жадный выбор: ответы повторяемы, а угадывание предсказателем точное только при нём.
+        request = {"messages": self._prompt(chat_id), "temperature": 0, MODEL_FIELD: model_id}
         text: list[str] = []
         reasoning: list[str] = []
         finish: str | None = None

@@ -53,13 +53,14 @@ def build(
     if engine_command is not None:
         command = list(engine_command)
 
-        def make_engine(model: Model) -> EngineTarget:
+        def make_engine(model: Model, draft: Model | None = None) -> EngineTarget:
             from ramvi_engine.engine_process import EngineProcess
             from ramvi_engine.model_loader import ModelConfig
 
+            extra = [] if draft is None else ["--draft", draft.path]
             return EngineProcess(
                 ModelConfig(model.path),
-                command=[*command, "--model", model.path],
+                command=[*command, "--model", model.path, *extra],
                 startup_timeout=30,
             )
 
