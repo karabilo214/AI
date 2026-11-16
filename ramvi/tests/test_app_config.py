@@ -36,6 +36,7 @@ def test_defaults_are_inside_app_folder(config: AppConfig) -> None:
         "language": "ru",
         "api_port": 11435,
         "network_access": False,
+        "theme": "system",
     }
     assert got["resolved"]["data_dir"] == str((config.app_dir / "data").resolve())
     assert got["current_data_dir"] == str((config.app_dir / "data").resolve())
@@ -52,6 +53,15 @@ def test_update_saves_and_reports_restart(config: AppConfig) -> None:
         saved["language"] == "en" and saved["api_port"] == 12000 and saved["network_access"] is True
     )
     assert config.update({"api_port": 12001})["restart_required"] == []  # язык уже сохранён
+
+
+def test_theme_applies_without_restart_and_is_checked(config: AppConfig) -> None:
+    got = config.update({"theme": "dark"})
+
+    assert got["restart_required"] == [] and got["settings"]["theme"] == "dark"
+    code, params = code_of(lambda: config.update({"theme": "blue"}))
+    assert code == "settings.invalid" and params["field"] == "theme"
+    assert config.get()["settings"]["theme"] == "dark"  # ошибка ничего не записала
 
 
 def test_folder_inside_app_stored_relative_outside_absolute(
@@ -85,7 +95,7 @@ def test_invalid_values_change_nothing(config: AppConfig) -> None:
         ({"network_access": "yes"}, "network_access"),
         ({"language": "uk"}, "language"),  # нет каталога интерфейса
         ({"data_dir": "  "}, "data_dir"),
-        ({"theme": "dark"}, "theme"),
+        ({"color_scheme": "dark"}, "color_scheme"),  # неизвестное поле
         ({"language": "en", "api_port": 1}, "api_port"),  # одна ошибка — не пишется ничего
     ]
     for body, field in cases:

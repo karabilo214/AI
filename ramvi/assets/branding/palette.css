@@ -39,6 +39,8 @@
   --ramvi-info-bg: #EAF1FD;
   --ramvi-disabled-bg: #E9E4EF;
   --ramvi-disabled-text: #7A6F87;
+  --ramvi-shadow-dark: #D6CCE6;
+  --ramvi-shadow-light: #FFFFFF;
 }
 [data-theme="dark"] {
   color-scheme: dark;
@@ -69,4 +71,6 @@
   --ramvi-info-bg: #1B304C;
   --ramvi-disabled-bg: #31283D;
   --ramvi-disabled-text: #9A8AA9;
+  --ramvi-shadow-dark: #07050B;
+  --ramvi-shadow-light: #251D33;
 }

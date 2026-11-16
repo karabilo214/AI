@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
 using Ramvi.Desktop.Api;
 using Ramvi.Desktop.Localization;
 using Ramvi.Desktop.Services;
@@ -22,8 +23,9 @@ public sealed partial class App : Application, IDisposable
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            Localizer.Current = Localizer.Load(Environment.GetEnvironmentVariable("RAMVI_LANGUAGE")
-                ?? AppSettingsFile.Read(ServiceOptions.AppDirectory).Language);
+            var settings = AppSettingsFile.Read(ServiceOptions.AppDirectory);
+            Localizer.Current = Localizer.Load(Environment.GetEnvironmentVariable("RAMVI_LANGUAGE") ?? settings.Language);
+            ApplyTheme(settings.Theme);
             var window = new MainWindow();
             desktop.MainWindow = window;
             window.Opened += async (_, _) => await ConnectAsync(window).ConfigureAwait(true);
@@ -37,10 +39,20 @@ public sealed partial class App : Application, IDisposable
     {
         var model = new MainViewModel(
             StartServiceAsync, window.CopyAsync, window.OpenFolderAsync, window.PickModelFileAsync,
-            window.PickFolderAsync, RestartAsync, ChooseDataDirAsync);
+            window.PickFolderAsync, RestartAsync, ChooseDataDirAsync, window.PickFilesAsync, ApplyTheme);
         window.DataContext = model;
         await model.InitializeAsync().ConfigureAwait(true);
     }
+
+    /// <summary>Тема окна (3.16): system — как в ОС, light, dark; применяется сразу.</summary>
+    public void ApplyTheme(string theme) => RequestedThemeVariant = ThemeVariantOf(theme);
+
+    public static ThemeVariant ThemeVariantOf(string theme) => theme switch
+    {
+        "light" => ThemeVariant.Light,
+        "dark" => ThemeVariant.Dark,
+        _ => ThemeVariant.Default,
+    };
 
     private static Task ChooseDataDirAsync(string path)
     {

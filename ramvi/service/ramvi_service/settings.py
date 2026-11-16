@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 LANGUAGES = ("ru", "en", "uk")
+THEMES = ("system", "light", "dark")  # 3.16: тема окна оболочки
 FILE_NAME = "settings.json"
 
 
@@ -22,6 +23,7 @@ class Settings:
     language: str = "ru"
     api_port: int = 11435
     network_access: bool = False  # слушать не только 127.0.0.1 — только по явному включению
+    theme: str = "system"
 
     def validate(self) -> "Settings":
         if self.language not in LANGUAGES:
@@ -32,6 +34,8 @@ class Settings:
             or not 1024 <= self.api_port <= 65535
         ):
             raise ValueError("порт API должен быть целым числом 1024–65535")
+        if self.theme not in THEMES:
+            raise ValueError(f"тема должна быть одной из {THEMES}")
         if not isinstance(self.network_access, bool):
             raise ValueError("сетевой доступ должен быть true/false")
         for name in ("data_dir", "models_dir"):

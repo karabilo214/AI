@@ -6,97 +6,131 @@
         x:Class="Ramvi.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="{l:T app.title}"
-        Width="1100" Height="720" MinWidth="720" MinHeight="480"
+        Icon="avares://RAMVI/Assets/ramvi-emblem.png"
+        Width="1180" Height="760" MinWidth="760" MinHeight="500"
         DragDrop.AllowDrop="True">
-  <Grid ColumnDefinitions="Auto,260,*">
+  <!-- Раскладка по иллюстрации ТЗ «Главный экран»: меню слева, чат справа (3.16, неоморфизм) -->
+  <Grid ColumnDefinitions="288,*">
 
-    <!-- Разделы (3.11): видны, только если их больше одного -->
-    <Border x:Name="SectionRail" Grid.Column="0" IsVisible="{Binding Sections.HasMany}"
-            Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
-      <ListBox x:Name="SectionList" Width="120" Background="Transparent"
-               ItemsSource="{Binding Sections.Items}" SelectedItem="{Binding Sections.Selected}">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="vm:SectionItem">
-            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+    <!-- Меню: логотип, разделы, диалоги, настройки -->
+    <Border Grid.Column="0" Classes="sidebar">
+      <DockPanel Margin="14,18,14,14">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="6,0,0,14">
+          <Image Source="avares://RAMVI/Assets/ramvi-emblem.png" Width="36" Height="36" />
+          <TextBlock Classes="brand" VerticalAlignment="Center" Text="{l:T app.title}" />
+        </StackPanel>
+
+        <!-- Разделы (3.11): видны, только если их больше одного -->
+        <Border x:Name="SectionRail" DockPanel.Dock="Top" Margin="0,0,0,10" IsVisible="{Binding Sections.HasMany}">
+          <ListBox x:Name="SectionList" Classes="nav"
+                   ItemsSource="{Binding Sections.Items}" SelectedItem="{Binding Sections.Selected}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:SectionItem">
+                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Border>
+
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+          <Button x:Name="SettingsButton" Grid.Column="1" Classes="icon"
+                  ToolTip.Tip="{l:T settings.open}" Command="{Binding OpenSettingsCommand}">
+            <PathIcon Data="{StaticResource icon-settings}" />
+          </Button>
+        </Grid>
+
+        <DockPanel IsVisible="{Binding Sections.IsChatSelected}">
+          <Button x:Name="NewChatButton" DockPanel.Dock="Top" HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Left" Margin="4,0,4,12" Command="{Binding NewChatCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <PathIcon Data="{StaticResource icon-plus}" />
+              <TextBlock VerticalAlignment="Center" Text="{l:T chat.new}" />
+            </StackPanel>
+          </Button>
+          <TextBlock DockPanel.Dock="Top" Classes="caption" Margin="12,4" Text="{l:T chat.no_chats}"
+                     IsVisible="{Binding !HasChats}" />
+          <ListBox x:Name="ChatList" Classes="nav" ItemsSource="{Binding Chats}" SelectedItem="{Binding SelectedChat}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ChatItemViewModel">
+                <Grid ColumnDefinitions="*,Auto" Background="Transparent">
+                  <Grid.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="{l:T chat.delete_hint}"
+                                Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).DeleteChatCommand}"
+                                CommandParameter="{Binding}" />
+                    </ContextMenu>
+                  </Grid.ContextMenu>
+                  <TextBlock VerticalAlignment="Center" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                  <!-- (6) крестик удаления прямо в списке, с подсказкой -->
+                  <Button Grid.Column="1" Classes="icon flat row-action" Margin="6,0,0,0"
+                          ToolTip.Tip="{l:T chat.delete_hint}"
+                          Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).DeleteChatCommand}"
+                          CommandParameter="{Binding}">
+                    <PathIcon Data="{StaticResource icon-close}" Width="12" Height="12" />
+                  </Button>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </DockPanel>
     </Border>
 
     <!-- Раздел модуля (Agent/Character): вид создаётся при первом открытии и хранится -->
-    <Border x:Name="ModuleSection" Grid.Column="1" Grid.ColumnSpan="2" IsVisible="{Binding !Sections.IsChatSelected}">
-      <StackPanel Margin="24" Spacing="8" DataContext="{Binding Sections.Current}" x:DataType="vm:ModuleSectionViewModel">
-        <TextBlock x:Name="ModuleTitle" FontSize="22" FontWeight="SemiBold" Text="{Binding Title, FallbackValue=''}" />
-        <TextBlock x:Name="ModuleState" Text="{Binding State, FallbackValue=''}" />
+    <Border x:Name="ModuleSection" Grid.Column="1" Classes="card" Margin="8,16,16,16"
+            IsVisible="{Binding !Sections.IsChatSelected}">
+      <StackPanel Margin="28" Spacing="8" DataContext="{Binding Sections.Current}" x:DataType="vm:ModuleSectionViewModel">
+        <TextBlock x:Name="ModuleTitle" Classes="title" Text="{Binding Title, FallbackValue=''}" />
+        <TextBlock x:Name="ModuleState" Classes="muted" Text="{Binding State, FallbackValue=''}" />
         <TextBlock x:Name="ModuleError" Classes="error" TextWrapping="Wrap" Text="{Binding Error, FallbackValue=''}"
                    IsVisible="{Binding HasError, FallbackValue=False}" />
-        <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="{Binding Placeholder, FallbackValue=''}" />
+        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Placeholder, FallbackValue=''}" />
       </StackPanel>
     </Border>
 
-    <!-- Список диалогов -->
-    <DockPanel Grid.Column="1" IsVisible="{Binding Sections.IsChatSelected}"
-               Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
-      <Button x:Name="NewChatButton" DockPanel.Dock="Top" Margin="12" HorizontalAlignment="Stretch"
-              Content="{l:T chat.new}" Command="{Binding NewChatCommand}" />
-      <Button x:Name="SettingsButton" DockPanel.Dock="Bottom" Margin="12" HorizontalAlignment="Stretch"
-              Content="{l:T settings.open}" Command="{Binding OpenSettingsCommand}" />
-      <TextBlock DockPanel.Dock="Top" Margin="16,4" Opacity="0.6" Text="{l:T chat.no_chats}"
-                 IsVisible="{Binding !HasChats}" />
-      <ListBox x:Name="ChatList" ItemsSource="{Binding Chats}" SelectedItem="{Binding SelectedChat}"
-               Background="Transparent">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="vm:ChatItemViewModel">
-            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis">
-              <TextBlock.ContextMenu>
-                <ContextMenu>
-                  <MenuItem Header="{l:T chat.delete}"
-                            Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).DeleteChatCommand}"
-                            CommandParameter="{Binding}" />
-                </ContextMenu>
-              </TextBlock.ContextMenu>
-            </TextBlock>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
-    </DockPanel>
-
     <!-- Диалог -->
-    <DockPanel x:Name="ChatPanel" Grid.Column="2" IsVisible="{Binding Sections.IsChatSelected}">
-      <!-- Верхняя полоса: модель, очистка -->
-      <Grid DockPanel.Dock="Top" Margin="12,8" ColumnDefinitions="Auto,*,Auto,Auto">
-        <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Text="{l:T chat.model}" />
-        <ComboBox x:Name="ModelBox" Grid.Column="1" MinWidth="240" HorizontalAlignment="Left"
-                  ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
-                  IsDropDownOpen="{Binding IsModelPickerOpen}"
-                  IsEnabled="{Binding IsIdle}">
-          <ComboBox.ItemTemplate>
-            <DataTemplate x:DataType="api:ModelInfo">
-              <TextBlock Text="{Binding Id}" />
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
-        <Button x:Name="DeleteButton" Grid.Column="2" Margin="8,0,0,0" Content="{l:T chat.delete}"
-                Command="{Binding DeleteChatCommand}" />
-        <Button x:Name="ClearButton" Grid.Column="3" Margin="8,0,0,0" Content="{l:T chat.clear}"
-                Command="{Binding ClearCommand}" />
+    <DockPanel x:Name="ChatPanel" Grid.Column="1" Margin="8,16,16,16" IsVisible="{Binding Sections.IsChatSelected}">
+      <!-- Верхняя полоса: модель; справа значки «Очистить» и «Удалить» с подсказками -->
+      <Grid DockPanel.Dock="Top" Margin="0,0,0,8" ColumnDefinitions="Auto,*,Auto,Auto">
+        <Border Classes="chip" Margin="4">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock VerticalAlignment="Center" Classes="muted" Text="{l:T chat.model}" />
+            <ComboBox x:Name="ModelBox" MinWidth="220" BorderThickness="0" Background="Transparent"
+                      ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
+                      IsDropDownOpen="{Binding IsModelPickerOpen}"
+                      IsEnabled="{Binding IsIdle}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="api:ModelInfo">
+                  <TextBlock Text="{Binding Id}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+        </Border>
+        <Button x:Name="ClearButton" Grid.Column="2" Classes="icon" ToolTip.Tip="{l:T chat.clear_hint}"
+                Command="{Binding ClearCommand}">
+          <PathIcon Data="{StaticResource icon-clear}" />
+        </Button>
+        <Button x:Name="DeleteButton" Grid.Column="3" Classes="icon" ToolTip.Tip="{l:T chat.delete_hint}"
+                Command="{Binding DeleteChatCommand}">
+          <PathIcon Data="{StaticResource icon-delete}" />
+        </Button>
       </Grid>
 
       <!-- Плашка состояния UI-03: что случилось и кнопки восстановления -->
-      <Border x:Name="StateBanner" DockPanel.Dock="Top" Margin="12,0,12,8" Padding="12,8" CornerRadius="8"
+      <Border x:Name="StateBanner" DockPanel.Dock="Top" Classes="banner" Margin="4,0,4,10" Padding="14,10"
               IsVisible="{Binding HasBanner}"
-              Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
               Classes.problem="{Binding Banner.IsProblem, FallbackValue=False}">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Spacing="2" VerticalAlignment="Center">
-            <TextBlock x:Name="StateTitle" FontWeight="SemiBold" Text="{Binding Banner.Title, FallbackValue=''}" />
+            <TextBlock x:Name="StateTitle" Classes="heading" Text="{Binding Banner.Title, FallbackValue=''}" />
             <TextBlock x:Name="StateText" TextWrapping="Wrap" Text="{Binding Banner.Text, FallbackValue=''}" />
           </StackPanel>
           <ItemsControl x:Name="StateActions" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
                         ItemsSource="{Binding Banner.Actions, FallbackValue={x:Null}}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="6" />
+                <StackPanel Orientation="Horizontal" Spacing="2" />
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
@@ -109,221 +143,253 @@
       </Border>
 
       <!-- Строка состояния -->
-      <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="12,0,12,8" Opacity="0.75"
-                 Text="{Binding Status}" TextWrapping="Wrap"
-                 Classes.error="{Binding IsError}" />
+      <Border DockPanel.Dock="Bottom" Classes="statusbar" Margin="4,10,4,0">
+        <TextBlock x:Name="StatusText" Text="{Binding Status}" TextWrapping="Wrap" Classes.error="{Binding IsError}" />
+      </Border>
 
-      <!-- Поле ввода -->
-      <Grid DockPanel.Dock="Bottom" Margin="12,4" RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
-        <ItemsControl Grid.Row="0" Grid.ColumnSpan="2" ItemsSource="{Binding Attachments}" Margin="0,0,0,4">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <WrapPanel />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:AttachmentViewModel">
-              <Border Margin="0,0,6,4" Padding="8,2" CornerRadius="10"
-                      Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+      <!-- Поле ввода: вложения, текст, «Прикрепить файл», «Отправить»/«Стоп» -->
+      <Border x:Name="Composer" DockPanel.Dock="Bottom" Classes="composer" Margin="4,8,4,0">
+        <Grid RowDefinitions="Auto,Auto,Auto">
+          <ItemsControl Grid.Row="0" ItemsSource="{Binding Attachments}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:AttachmentViewModel">
+                <Border Classes="chip" Margin="4,4,6,6">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="{StaticResource icon-attach}" Width="12" Height="12" />
+                    <TextBlock VerticalAlignment="Center" Text="{Binding Label}" />
+                    <Button Classes="icon flat" ToolTip.Tip="{l:T chat.remove_attachment}"
+                            Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).RemoveAttachmentCommand}"
+                            CommandParameter="{Binding}">
+                      <PathIcon Data="{StaticResource icon-close}" Width="10" Height="10" />
+                    </Button>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBox x:Name="InputBox" Grid.Row="1" Classes="bare" MinHeight="40" MaxHeight="200"
+                   AcceptsReturn="True" TextWrapping="Wrap"
+                   PlaceholderText="{l:T chat.input_placeholder}" Text="{Binding Input}" />
+          <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto">
+            <Button x:Name="AttachButton" Classes="icon" Command="{Binding AttachFilesCommand}"
+                    ToolTip.Tip="{l:T chat.attach_hint}">
+              <PathIcon Data="{StaticResource icon-attach}" />
+            </Button>
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+              <Button x:Name="SendButton" Classes="accent" Command="{Binding SendCommand}" IsVisible="{Binding IsIdle}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock VerticalAlignment="Center" Text="{Binding Label}" />
-                  <Button Padding="4,0" Content="×" ToolTip.Tip="{l:T chat.remove_attachment}"
-                          Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).RemoveAttachmentCommand}"
-                          CommandParameter="{Binding}" />
+                  <PathIcon Data="{StaticResource icon-send}" />
+                  <TextBlock VerticalAlignment="Center" Text="{l:T chat.send}" />
                 </StackPanel>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <TextBox x:Name="InputBox" Grid.Row="1" Grid.Column="0" MinHeight="44" MaxHeight="200"
-                 AcceptsReturn="True" TextWrapping="Wrap"
-                 PlaceholderText="{l:T chat.input_placeholder}" Text="{Binding Input}" />
-        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8,0,0,0"
-                    VerticalAlignment="Bottom">
-          <Button x:Name="RegenerateButton" Content="{l:T chat.regenerate}" Command="{Binding RegenerateCommand}"
-                  IsVisible="{Binding IsIdle}" />
-          <Button x:Name="SendButton" Classes="accent" Content="{l:T chat.send}" Command="{Binding SendCommand}"
-                  IsVisible="{Binding IsIdle}" />
-          <Button x:Name="StopButton" Content="{l:T chat.stop}" Command="{Binding StopCommand}"
-                  IsVisible="{Binding IsGenerating}" />
+              </Button>
+              <Button x:Name="StopButton" Command="{Binding StopCommand}" IsVisible="{Binding IsGenerating}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Data="{StaticResource icon-stop}" />
+                  <TextBlock VerticalAlignment="Center" Text="{l:T chat.stop}" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Grid>
+      </Border>
+
+      <!-- Сообщения; окно следует за печатающимся ответом (MainWindow.axaml.cs) -->
+      <ScrollViewer x:Name="MessagesScroll">
+        <StackPanel Margin="14,4,14,8">
+          <ItemsControl x:Name="MessageList" ItemsSource="{Binding Messages}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:MessageViewModel">
+                <Border Classes="bubble" Classes.user="{Binding IsUser}">
+                  <StackPanel Spacing="6">
+                    <TextBlock Classes="caption" Text="{Binding Author}" />
+                    <StackPanel Spacing="6" IsVisible="{Binding HasReasoning}">
+                      <ToggleButton Classes="disclosure" IsChecked="{Binding IsThinkingOpen}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <PathIcon Data="{StaticResource icon-chevron}" Width="12" Height="12" />
+                          <TextBlock Classes="caption" VerticalAlignment="Center" Text="{l:T chat.thinking}" />
+                        </StackPanel>
+                      </ToggleButton>
+                      <Border Classes="thinking" IsVisible="{Binding IsThinkingOpen}">
+                        <SelectableTextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Reasoning}" />
+                      </Border>
+                    </StackPanel>
+                    <SelectableTextBlock TextWrapping="Wrap" Text="{Binding Content}" />
+                    <ItemsControl ItemsSource="{Binding Attachments}" IsVisible="{Binding HasAttachments}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AttachmentViewModel">
+                          <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
+                            <PathIcon Data="{StaticResource icon-attach}" Width="12" Height="12" />
+                            <TextBlock Classes="caption" Text="{Binding Label}" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Note}" IsVisible="{Binding HasNote}" />
+                    <!-- Под допечатанным ответом: копировать; у последнего — «Ответить заново» -->
+                    <StackPanel Orientation="Horizontal" Margin="-4,0,0,-4" IsVisible="{Binding ShowActions}">
+                      <Button Classes="icon" ToolTip.Tip="{l:T chat.copy}"
+                              Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CopyCommand}"
+                              CommandParameter="{Binding}">
+                        <PathIcon Data="{StaticResource icon-copy}" Width="14" Height="14" />
+                      </Button>
+                      <Button Classes="icon" ToolTip.Tip="{l:T chat.regenerate_hint}" IsVisible="{Binding ShowRegenerate}"
+                              Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).RegenerateCommand}">
+                        <PathIcon Data="{StaticResource icon-regenerate}" Width="14" Height="14" />
+                      </Button>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <!-- (3) признак «печатает…»: пока идёт ответ, текст ещё не окончательный -->
+          <StackPanel x:Name="TypingIndicator" Orientation="Horizontal" Spacing="6" Margin="6,6,0,0"
+                      IsVisible="{Binding IsGenerating}">
+            <Ellipse Classes="dot" VerticalAlignment="Center" />
+            <Ellipse Classes="dot d2" VerticalAlignment="Center" />
+            <Ellipse Classes="dot d3" VerticalAlignment="Center" />
+            <TextBlock Classes="caption" VerticalAlignment="Center" Margin="4,0,0,0" Text="{l:T chat.typing}" />
+          </StackPanel>
         </StackPanel>
-      </Grid>
-
-      <TextBlock DockPanel.Dock="Bottom" Margin="12,0" FontSize="11" Opacity="0.5" Text="{l:T chat.drop_hint}" />
-
-      <!-- Сообщения -->
-      <ScrollViewer x:Name="MessagesScroll" Margin="12,0">
-        <ItemsControl x:Name="MessageList" ItemsSource="{Binding Messages}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:MessageViewModel">
-              <Border Margin="0,6" Padding="12,8" CornerRadius="8"
-                      Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
-                      Classes.user="{Binding IsUser}">
-                <StackPanel Spacing="4">
-                  <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock FontWeight="SemiBold" Text="{Binding Author}" />
-                    <Button Grid.Column="1" Padding="6,0" Content="{l:T chat.copy}"
-                            IsVisible="{Binding IsAssistant}"
-                            Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CopyCommand}"
-                            CommandParameter="{Binding}" />
-                  </Grid>
-                  <Expander Header="{l:T chat.thinking}" IsVisible="{Binding HasReasoning}"
-                            IsExpanded="{Binding IsThinkingOpen}" HorizontalAlignment="Stretch">
-                    <SelectableTextBlock Opacity="0.7" TextWrapping="Wrap" Text="{Binding Reasoning}" />
-                  </Expander>
-                  <SelectableTextBlock TextWrapping="Wrap" Text="{Binding Content}" />
-                  <ItemsControl ItemsSource="{Binding Attachments}" IsVisible="{Binding HasAttachments}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:AttachmentViewModel">
-                        <TextBlock FontSize="12" Opacity="0.7" Text="{Binding Label}" />
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                  <TextBlock FontSize="12" Opacity="0.7" Text="{Binding Note}" IsVisible="{Binding HasNote}" />
-                </StackPanel>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
       </ScrollViewer>
     </DockPanel>
 
     <!-- Настройки (3.7): поверх окна -->
-    <Border x:Name="SettingsPanel" Grid.ColumnSpan="3" ZIndex="9" IsVisible="{Binding Settings.IsOpen}"
-            Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+    <Border x:Name="SettingsPanel" Grid.ColumnSpan="2" ZIndex="9" Classes="overlay" IsVisible="{Binding Settings.IsOpen}">
       <ScrollViewer>
-        <StackPanel MaxWidth="640" Margin="24" Spacing="10" HorizontalAlignment="Center">
-          <TextBlock FontSize="22" FontWeight="SemiBold" Text="{l:T settings.title}" />
+        <Border Classes="card" MaxWidth="680" Margin="24" Padding="28" HorizontalAlignment="Center" VerticalAlignment="Top">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="title" Text="{l:T settings.title}" />
 
-          <TextBlock FontWeight="SemiBold" Text="{l:T settings.data_dir}" />
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBox x:Name="DataDirBox" Text="{Binding Settings.DataDir}" />
-            <Button Grid.Column="1" Margin="8,0,0,0" Content="{l:T settings.browse}"
-                    Command="{Binding Settings.BrowseDataDirCommand}" />
-          </Grid>
-          <TextBlock FontSize="12" Opacity="0.7" TextWrapping="Wrap" Text="{Binding Settings.DataDirNote}" />
+            <TextBlock Classes="heading" Text="{l:T settings.data_dir}" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox x:Name="DataDirBox" Text="{Binding Settings.DataDir}" />
+              <Button Grid.Column="1" Margin="8,0,0,0" Content="{l:T settings.browse}"
+                      Command="{Binding Settings.BrowseDataDirCommand}" />
+            </Grid>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Settings.DataDirNote}" />
 
-          <TextBlock FontWeight="SemiBold" Text="{l:T settings.models_dir}" />
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBox x:Name="ModelsDirBox" Text="{Binding Settings.ModelsDir}" />
-            <Button Grid.Column="1" Margin="8,0,0,0" Content="{l:T settings.browse}"
-                    Command="{Binding Settings.BrowseModelsDirCommand}" />
-          </Grid>
+            <TextBlock Classes="heading" Text="{l:T settings.models_dir}" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox x:Name="ModelsDirBox" Text="{Binding Settings.ModelsDir}" />
+              <Button Grid.Column="1" Margin="8,0,0,0" Content="{l:T settings.browse}"
+                      Command="{Binding Settings.BrowseModelsDirCommand}" />
+            </Grid>
 
-          <TextBlock FontWeight="SemiBold" Text="{l:T settings.language}" />
-          <ComboBox x:Name="LanguageBox" MinWidth="200" ItemsSource="{Binding Settings.Languages}"
-                    SelectedItem="{Binding Settings.Language}">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:LanguageOption">
-                <TextBlock Text="{Binding Label}" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
+            <TextBlock Classes="heading" Text="{l:T settings.language}" />
+            <ComboBox x:Name="LanguageBox" MinWidth="200" ItemsSource="{Binding Settings.Languages}"
+                      SelectedItem="{Binding Settings.Language}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:LanguageOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
 
-          <TextBlock FontWeight="SemiBold" Text="{l:T settings.api_port}" />
-          <TextBox x:Name="ApiPortBox" MaxWidth="160" HorizontalAlignment="Left" Text="{Binding Settings.ApiPort}" />
-          <CheckBox x:Name="NetworkBox" Content="{l:T settings.network_access}" IsChecked="{Binding Settings.NetworkAccess}" />
-          <TextBlock FontSize="12" Classes="warn" TextWrapping="Wrap" Text="{l:T settings.network_warning}"
-                     IsVisible="{Binding Settings.NetworkAccess}" />
-          <TextBlock FontSize="12" Opacity="0.7" TextWrapping="Wrap" Text="{l:T settings.api_note}" />
+            <TextBlock Classes="heading" Text="{l:T settings.theme}" />
+            <ComboBox x:Name="ThemeBox" MinWidth="200" ItemsSource="{Binding Settings.Themes}"
+                      SelectedItem="{Binding Settings.Theme}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:ThemeOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
 
-          <TextBlock x:Name="SettingsError" Classes="error" TextWrapping="Wrap" Text="{Binding Settings.Error}"
-                     IsVisible="{Binding Settings.HasError}" />
-          <TextBlock x:Name="SettingsMessage" TextWrapping="Wrap" Text="{Binding Settings.Message}"
-                     IsVisible="{Binding Settings.HasMessage}" />
-          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-            <Button x:Name="RestartButton" Content="{l:T settings.restart_now}" Command="{Binding Settings.RestartCommand}"
-                    IsVisible="{Binding Settings.RestartNeeded}" />
-            <Button x:Name="SettingsClose" Content="{l:T settings.cancel}" Command="{Binding Settings.CloseCommand}" />
-            <Button x:Name="SettingsSave" Classes="accent" Content="{l:T settings.save}"
-                    Command="{Binding Settings.SaveCommand}" />
+            <TextBlock Classes="heading" Text="{l:T settings.api_port}" />
+            <TextBox x:Name="ApiPortBox" MaxWidth="160" HorizontalAlignment="Left" Text="{Binding Settings.ApiPort}" />
+            <CheckBox x:Name="NetworkBox" Content="{l:T settings.network_access}" IsChecked="{Binding Settings.NetworkAccess}" />
+            <TextBlock FontSize="12" Classes="warn" TextWrapping="Wrap" Text="{l:T settings.network_warning}"
+                       IsVisible="{Binding Settings.NetworkAccess}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.api_note}" />
+
+            <TextBlock x:Name="SettingsError" Classes="error" TextWrapping="Wrap" Text="{Binding Settings.Error}"
+                       IsVisible="{Binding Settings.HasError}" />
+            <TextBlock x:Name="SettingsMessage" TextWrapping="Wrap" Text="{Binding Settings.Message}"
+                       IsVisible="{Binding Settings.HasMessage}" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="RestartButton" Content="{l:T settings.restart_now}" Command="{Binding Settings.RestartCommand}"
+                      IsVisible="{Binding Settings.RestartNeeded}" />
+              <Button x:Name="SettingsClose" Content="{l:T settings.cancel}" Command="{Binding Settings.CloseCommand}" />
+              <Button x:Name="SettingsSave" Classes="accent" Content="{l:T settings.save}"
+                      Command="{Binding Settings.SaveCommand}" />
+            </StackPanel>
           </StackPanel>
-        </StackPanel>
+        </Border>
       </ScrollViewer>
     </Border>
 
     <!-- Мастер первого запуска (UI-01, 3.6): поверх всего окна -->
-    <Border x:Name="Onboarding" Grid.ColumnSpan="3" ZIndex="10" IsVisible="{Binding Onboarding.IsOpen}"
-            Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+    <Border x:Name="Onboarding" Grid.ColumnSpan="2" ZIndex="10" Classes="overlay" IsVisible="{Binding Onboarding.IsOpen}">
       <ScrollViewer>
-        <StackPanel MaxWidth="640" Margin="24" Spacing="12" HorizontalAlignment="Center">
-          <TextBlock FontSize="22" FontWeight="SemiBold" Text="{l:T onboarding.title}" />
-
-          <!-- Шаг 1: проверка компьютера -->
-          <StackPanel x:Name="CheckStep" Spacing="8" IsVisible="{Binding Onboarding.IsCheckStep}">
-            <TextBlock FontWeight="SemiBold" Text="{l:T onboarding.check_title}" />
-            <TextBlock Opacity="0.7" Text="{l:T onboarding.checking}" IsVisible="{Binding Onboarding.IsChecking}" />
-            <ItemsControl x:Name="CheckList" ItemsSource="{Binding Onboarding.Checks}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:CheckItem">
-                  <Grid ColumnDefinitions="28,*" Margin="0,3">
-                    <TextBlock FontWeight="Bold" Text="{Binding Mark}"
-                               Classes.ok="{Binding IsOk}" Classes.warn="{Binding IsWarn}" Classes.fail="{Binding IsFail}" />
-                    <TextBlock Grid.Column="1" TextWrapping="Wrap" Text="{Binding Text}" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-              <Button x:Name="SkipButton1" Content="{l:T onboarding.skip}" Command="{Binding Onboarding.SkipCommand}" />
-              <Button x:Name="NextButton" Classes="accent" Content="{l:T onboarding.next}"
-                      Command="{Binding Onboarding.NextCommand}" />
+        <Border Classes="card" MaxWidth="680" Margin="24" Padding="28" HorizontalAlignment="Center" VerticalAlignment="Top">
+          <StackPanel Spacing="12">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Image Source="avares://RAMVI/Assets/ramvi-emblem.png" Width="48" Height="48" />
+              <TextBlock Classes="title" VerticalAlignment="Center" Text="{l:T onboarding.title}" />
             </StackPanel>
-          </StackPanel>
 
-          <!-- Шаг 2: модель -->
-          <StackPanel x:Name="ModelStep" Spacing="8" IsVisible="{Binding Onboarding.IsModelStep}">
-            <TextBlock FontWeight="SemiBold" Text="{l:T onboarding.model_title}" />
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="{l:T onboarding.no_models}"
-                       IsVisible="{Binding !Onboarding.HasModels}" />
-            <ListBox x:Name="WizardModels" ItemsSource="{Binding Onboarding.Models}" MaxHeight="240"
-                     SelectedItem="{Binding Onboarding.Selected}" IsVisible="{Binding Onboarding.HasModels}">
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="api:ModelInfo">
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="{Binding Id}" />
-                    <TextBlock Opacity="0.6" Text="{Binding Quant}" />
-                  </StackPanel>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-            <Button x:Name="ImportButton" Content="{l:T onboarding.import}" Command="{Binding Onboarding.ImportCommand}" />
-            <TextBlock FontSize="12" Opacity="0.7" TextWrapping="Wrap" Text="{l:T onboarding.import_note}" />
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-              <Button x:Name="BackButton" Content="{l:T onboarding.back}" Command="{Binding Onboarding.BackCommand}" />
-              <Button x:Name="SkipButton2" Content="{l:T onboarding.skip}" Command="{Binding Onboarding.SkipCommand}" />
-              <Button x:Name="StartButton" Classes="accent" Content="{l:T onboarding.start}"
-                      Command="{Binding Onboarding.StartCommand}" />
+            <!-- Шаг 1: проверка компьютера -->
+            <StackPanel x:Name="CheckStep" Spacing="8" IsVisible="{Binding Onboarding.IsCheckStep}">
+              <TextBlock Classes="heading" Text="{l:T onboarding.check_title}" />
+              <TextBlock Classes="muted" Text="{l:T onboarding.checking}" IsVisible="{Binding Onboarding.IsChecking}" />
+              <Border Classes="inset" Padding="14,10">
+                <ItemsControl x:Name="CheckList" ItemsSource="{Binding Onboarding.Checks}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CheckItem">
+                      <Grid ColumnDefinitions="28,*" Margin="0,3">
+                        <TextBlock FontWeight="Bold" Text="{Binding Mark}"
+                                   Classes.ok="{Binding IsOk}" Classes.warn="{Binding IsWarn}" Classes.fail="{Binding IsFail}" />
+                        <TextBlock Grid.Column="1" TextWrapping="Wrap" Text="{Binding Text}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Border>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="SkipButton1" Content="{l:T onboarding.skip}" Command="{Binding Onboarding.SkipCommand}" />
+                <Button x:Name="NextButton" Classes="accent" Content="{l:T onboarding.next}"
+                        Command="{Binding Onboarding.NextCommand}" />
+              </StackPanel>
             </StackPanel>
-          </StackPanel>
 
-          <TextBlock x:Name="OnboardingError" Classes="error" TextWrapping="Wrap"
-                     Text="{Binding Onboarding.Error}" IsVisible="{Binding Onboarding.HasError}" />
-        </StackPanel>
+            <!-- Шаг 2: модель -->
+            <StackPanel x:Name="ModelStep" Spacing="8" IsVisible="{Binding Onboarding.IsModelStep}">
+              <TextBlock Classes="heading" Text="{l:T onboarding.model_title}" />
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="{l:T onboarding.no_models}"
+                         IsVisible="{Binding !Onboarding.HasModels}" />
+              <ListBox x:Name="WizardModels" Classes="nav" ItemsSource="{Binding Onboarding.Models}" MaxHeight="260"
+                       SelectedItem="{Binding Onboarding.Selected}" IsVisible="{Binding Onboarding.HasModels}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="api:ModelInfo">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Id}" />
+                      <TextBlock Classes="muted" Text="{Binding Quant}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <Button x:Name="ImportButton" HorizontalAlignment="Left" Content="{l:T onboarding.import}"
+                      Command="{Binding Onboarding.ImportCommand}" />
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T onboarding.import_note}" />
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BackButton" Content="{l:T onboarding.back}" Command="{Binding Onboarding.BackCommand}" />
+                <Button x:Name="SkipButton2" Content="{l:T onboarding.skip}" Command="{Binding Onboarding.SkipCommand}" />
+                <Button x:Name="StartButton" Classes="accent" Content="{l:T onboarding.start}"
+                        Command="{Binding Onboarding.StartCommand}" />
+              </StackPanel>
+            </StackPanel>
+
+            <TextBlock x:Name="OnboardingError" Classes="error" TextWrapping="Wrap"
+                       Text="{Binding Onboarding.Error}" IsVisible="{Binding Onboarding.HasError}" />
+          </StackPanel>
+        </Border>
       </ScrollViewer>
     </Border>
   </Grid>
-
-  <Window.Styles>
-    <Style Selector="TextBlock.ok">
-      <Setter Property="Foreground" Value="#2E7D32" />
-    </Style>
-    <Style Selector="TextBlock.warn">
-      <Setter Property="Foreground" Value="#B26A00" />
-    </Style>
-    <Style Selector="TextBlock.fail">
-      <Setter Property="Foreground" Value="#C62828" />
-    </Style>
-    <Style Selector="TextBlock.error">
-      <Setter Property="Foreground" Value="#C62828" />
-      <Setter Property="Opacity" Value="1" />
-    </Style>
-    <Style Selector="Border.problem">
-      <Setter Property="BorderBrush" Value="#C62828" />
-      <Setter Property="BorderThickness" Value="1" />
-    </Style>
-    <Style Selector="Border.user">
-      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}" />
-    </Style>
-  </Window.Styles>
 </Window>

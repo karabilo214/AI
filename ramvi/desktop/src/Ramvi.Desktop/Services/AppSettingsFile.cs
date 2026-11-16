@@ -4,10 +4,10 @@ namespace Ramvi.Desktop.Services;
 
 /// <summary>
 /// То, что оболочке нужно из `settings.json` папки приложения до запуска сервиса (3.7):
-/// папка данных и язык. Пишет файл только сервис (`ramvi_service.app_config`, одна проверка).
+/// папка данных, язык и тема окна. Пишет файл только сервис (`ramvi_service.app_config`, одна проверка).
 /// Нет файла или он испорчен — значения по умолчанию: окно должно открыться в любом случае.
 /// </summary>
-public sealed record AppSettingsFile(string DataDir, string Language)
+public sealed record AppSettingsFile(string DataDir, string Language, string Theme = "system")
 {
     public const string FileName = "settings.json";
 
@@ -22,7 +22,8 @@ public sealed record AppSettingsFile(string DataDir, string Language)
             var root = document.RootElement;
             return new AppSettingsFile(
                 Text(root, "data_dir") ?? Default.DataDir,
-                Text(root, "language") ?? Default.Language);
+                Text(root, "language") ?? Default.Language,
+                Text(root, "theme") ?? Default.Theme);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException
                                           or InvalidOperationException)

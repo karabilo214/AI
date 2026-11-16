@@ -59,7 +59,8 @@ public sealed record SystemReport(IReadOnlyList<SystemCheck> Checks);
 public sealed record OnboardingState(bool Done, string? DefaultModel);
 
 /// <summary>3.7: настройки приложения (как в `ramvi_service.settings.Settings`).</summary>
-public sealed record AppSettings(string DataDir, string ModelsDir, string Language, int ApiPort, bool NetworkAccess);
+public sealed record AppSettings(
+    string DataDir, string ModelsDir, string Language, int ApiPort, bool NetworkAccess, string Theme = "system");
 
 public sealed record SettingsFolders(string DataDir, string ModelsDir);
 
@@ -73,7 +74,7 @@ public sealed record SettingsInfo(
 /// <summary>Только изменённые поля; null не отправляется.</summary>
 public sealed record SettingsUpdate(
     string? DataDir = null, string? ModelsDir = null, string? Language = null, int? ApiPort = null,
-    bool? NetworkAccess = null);
+    bool? NetworkAccess = null, string? Theme = null);
 
 /// <summary>3.11: раздел интерфейса (встроенный или модуля) и его состояние.</summary>
 public sealed record SectionInfo(

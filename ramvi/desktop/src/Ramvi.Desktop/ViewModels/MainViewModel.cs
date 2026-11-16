@@ -43,13 +43,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Func<Task<string?>>? pickModelFile = null,
         Func<string?, Task<string?>>? pickFolder = null,
         Func<Task>? restartApp = null,
-        Func<string, Task>? chooseDataDir = null)
-        : this(() => Task.FromResult(api), copy, openFolder, pickModelFile, pickFolder, restartApp, chooseDataDir)
+        Func<string, Task>? chooseDataDir = null,
+        Func<Task<IReadOnlyList<DroppedFile>>>? pickFiles = null,
+        Action<string>? applyTheme = null)
+        : this(() => Task.FromResult(api), copy, openFolder, pickModelFile, pickFolder, restartApp, chooseDataDir,
+            pickFiles, applyTheme)
     {
     }
 
     /// <param name="connect">Запустить сервис и вернуть клиент; повторяется по «Повторить».</param>
     /// <param name="pickModelFile">Выбор файла GGUF в мастере; null — отмена.</param>
+    /// <param name="pickFiles">Кнопка «Прикрепить файл»: выбранные файлы (пусто — отмена).</param>
+    /// <param name="applyTheme">Применить тему окна сразу после сохранения настроек (system/light/dark).</param>
     public MainViewModel(
         Func<Task<IChatApi>> connect,
         Func<string, Task>? copy = null,
@@ -57,7 +62,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Func<Task<string?>>? pickModelFile = null,
         Func<string?, Task<string?>>? pickFolder = null,
         Func<Task>? restartApp = null,
-        Func<string, Task>? chooseDataDir = null)
+        Func<string, Task>? chooseDataDir = null,
+        Func<Task<IReadOnlyList<DroppedFile>>>? pickFiles = null,
+        Action<string>? applyTheme = null)
     {
         _connect = connect;
         Sections = new SectionsViewModel(() => _api);
@@ -66,7 +73,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Settings = new SettingsViewModel(
             () => _api,
             pickFolder ?? (_ => Task.FromResult<string?>(null)),
-            restartApp ?? (() => Task.CompletedTask));
+            restartApp ?? (() => Task.CompletedTask),
+            applyTheme);
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -94,6 +102,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             return Task.CompletedTask;
         });
+        AttachFilesCommand = new Command(
+            async () =>
+            {
+                if (pickFiles is not null && await pickFiles().ConfigureAwait(true) is { Count: > 0 } picked)
+                {
+                    await AddFilesAsync(picked).ConfigureAwait(true);
+                }
+            },
+            () => pickFiles is not null && IsConnected);
+        Messages.CollectionChanged += (_, _) => MarkLastAnswer();
         RetryCommand = new Command(RetryAsync, () => !IsGenerating);
         OpenSettingsCommand = new Command(() => Settings.OpenAsync(), () => IsConnected);
         ChooseDataDirCommand = new Command(ChooseDataDirAsync);
@@ -141,6 +159,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public Command CopyCommand { get; }
 
     public Command RemoveAttachmentCommand { get; }
+
+    /// <summary>«Прикрепить файл» (то же, что перетаскивание, с теми же лимитами).</summary>
+    public Command AttachFilesCommand { get; }
 
     public Command RetryCommand { get; }
 
@@ -383,13 +404,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var text = Input;
         var files = Attachments.Select(a => a.Attachment).ToList();
         var chatId = SelectedChat.Id;
-        var started = await RunStreamAsync(chatId, cancel => _api.SendAsync(chatId, text, files, cancel))
-            .ConfigureAwait(true);
-        if (started)
+        // Поле очищается, как только сервис принял запрос (первое событие потока), а не после
+        // всего ответа: иначе вопрос висел в поле, пока модель печатает, и стирал то, что
+        // пользователь успел набрать к концу ответа. Отказ сервиса оставляет текст и файлы.
+        await RunStreamAsync(chatId, cancel => _api.SendAsync(chatId, text, files, cancel), onAccepted: () =>
         {
-            Input = "";
-            Attachments.Clear();
-        }
+            if (Input == text)
+            {
+                Input = "";
+            }
+
+            foreach (var sent in Attachments.Where(a => files.Contains(a.Attachment)).ToList())
+            {
+                Attachments.Remove(sent);
+            }
+        }).ConfigureAwait(true);
     }
 
     private async Task RegenerateAsync()
@@ -401,7 +430,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Читает поток событий; true — сервис принял запрос.</summary>
-    private async Task<bool> RunStreamAsync(string chatId, Func<CancellationToken, IAsyncEnumerable<ChatEvent>> start)
+    private async Task<bool> RunStreamAsync(
+        string chatId, Func<CancellationToken, IAsyncEnumerable<ChatEvent>> start, Action? onAccepted = null)
     {
         SetProblem(null);
         IsGenerating = true;
@@ -414,7 +444,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             await foreach (var item in start(_streamCancel.Token).ConfigureAwait(true))
             {
-                accepted = true;
+                if (!accepted)
+                {
+                    accepted = true;
+                    onAccepted?.Invoke();
+                }
+
                 var visible = SelectedChat?.Id == chatId;
                 switch (item.Type)
                 {
@@ -484,6 +519,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             _generatingChatId = null;
             SetLoading(null);
             IsGenerating = false;
+            MarkLastAnswer();
         }
 
         return accepted;
@@ -673,6 +709,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Chats.Move(index, 0);
             }
+        }
+    }
+
+    /// <summary>«Ответить заново» показывается только у последнего ответа модели.</summary>
+    private void MarkLastAnswer()
+    {
+        var last = Messages.Count > 0 && Messages[^1].IsAssistant ? Messages[^1] : null;
+        foreach (var message in Messages)
+        {
+            message.IsLastAnswer = message == last;
         }
     }
 
@@ -900,7 +946,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         foreach (var command in new[]
                  {
                      NewChatCommand, SendCommand, StopCommand, RegenerateCommand, ClearCommand, DeleteChatCommand,
-                     RetryCommand, RefreshModelsCommand, OpenSettingsCommand,
+                     RetryCommand, RefreshModelsCommand, OpenSettingsCommand, AttachFilesCommand,
                  })
         {
             command.Refresh();

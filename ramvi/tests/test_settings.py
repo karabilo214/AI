@@ -19,7 +19,7 @@ def test_save_load_roundtrip_and_no_temp_left(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "bad", [{"language": "de"}, {"api_port": 80}, {"api_port": True}, {"network_access": "yes"}, {"models_dir": " "}]
+    "bad", [{"language": "de"}, {"api_port": 80}, {"api_port": True}, {"network_access": "yes"}, {"models_dir": " "}, {"theme": "blue"}]
 )
 def test_invalid_rejected(tmp_path, bad):
     with pytest.raises(ValueError):

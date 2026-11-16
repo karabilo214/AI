@@ -18,7 +18,10 @@ namespace Ramvi.Desktop.Tests;
 public static class TestApp
 {
     public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<App>().UseHeadless(new AvaloniaHeadlessPlatformOptions());
+        AppBuilder.Configure<App>()
+            .UseSkia()
+            .WithInterFont()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }); // снимки окна (3.16)
 }
 
 /// <summary>Окно без экрана: разметка грузится, привязки работают, Enter отправляет.</summary>

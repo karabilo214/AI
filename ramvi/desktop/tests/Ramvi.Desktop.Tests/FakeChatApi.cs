@@ -205,7 +205,8 @@ internal sealed class FakeChatApi : IChatApi
         var before = AppSettings;
         AppSettings = new AppSettings(
             update.DataDir ?? before.DataDir, update.ModelsDir ?? before.ModelsDir, update.Language ?? before.Language,
-            update.ApiPort ?? before.ApiPort, update.NetworkAccess ?? before.NetworkAccess);
+            update.ApiPort ?? before.ApiPort, update.NetworkAccess ?? before.NetworkAccess,
+            update.Theme ?? before.Theme);
         var restart = new List<string>();
         if (AppSettings.DataDir != before.DataDir)
         {

@@ -1,0 +1,141 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Сгенерировано desktop/tools/palette_to_axaml.py из assets/branding/palette.json. Не править вручную. -->
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Light">
+      <Color x:Key="ramvi-background-color">#F7F5FB</Color>
+      <SolidColorBrush x:Key="ramvi-background" Color="#F7F5FB" />
+      <Color x:Key="ramvi-surface-color">#FFFFFF</Color>
+      <SolidColorBrush x:Key="ramvi-surface" Color="#FFFFFF" />
+      <Color x:Key="ramvi-surface-raised-color">#FFFFFF</Color>
+      <SolidColorBrush x:Key="ramvi-surface-raised" Color="#FFFFFF" />
+      <Color x:Key="ramvi-surface-muted-color">#EFEAF6</Color>
+      <SolidColorBrush x:Key="ramvi-surface-muted" Color="#EFEAF6" />
+      <Color x:Key="ramvi-text-color">#241735</Color>
+      <SolidColorBrush x:Key="ramvi-text" Color="#241735" />
+      <Color x:Key="ramvi-text-muted-color">#685B78</Color>
+      <SolidColorBrush x:Key="ramvi-text-muted" Color="#685B78" />
+      <Color x:Key="ramvi-border-color">#DDD4E8</Color>
+      <SolidColorBrush x:Key="ramvi-border" Color="#DDD4E8" />
+      <Color x:Key="ramvi-control-border-color">#887997</Color>
+      <SolidColorBrush x:Key="ramvi-control-border" Color="#887997" />
+      <Color x:Key="ramvi-primary-color">#6928BD</Color>
+      <SolidColorBrush x:Key="ramvi-primary" Color="#6928BD" />
+      <Color x:Key="ramvi-primary-hover-color">#57209F</Color>
+      <SolidColorBrush x:Key="ramvi-primary-hover" Color="#57209F" />
+      <Color x:Key="ramvi-primary-pressed-color">#481883</Color>
+      <SolidColorBrush x:Key="ramvi-primary-pressed" Color="#481883" />
+      <Color x:Key="ramvi-on-primary-color">#FFFFFF</Color>
+      <SolidColorBrush x:Key="ramvi-on-primary" Color="#FFFFFF" />
+      <Color x:Key="ramvi-accent-color">#FF8868</Color>
+      <SolidColorBrush x:Key="ramvi-accent" Color="#FF8868" />
+      <Color x:Key="ramvi-on-accent-color">#35162C</Color>
+      <SolidColorBrush x:Key="ramvi-on-accent" Color="#35162C" />
+      <Color x:Key="ramvi-focus-color">#793BE0</Color>
+      <SolidColorBrush x:Key="ramvi-focus" Color="#793BE0" />
+      <Color x:Key="ramvi-selection-color">#E9DAFC</Color>
+      <SolidColorBrush x:Key="ramvi-selection" Color="#E9DAFC" />
+      <Color x:Key="ramvi-on-selection-color">#481883</Color>
+      <SolidColorBrush x:Key="ramvi-on-selection" Color="#481883" />
+      <Color x:Key="ramvi-success-color">#20734D</Color>
+      <SolidColorBrush x:Key="ramvi-success" Color="#20734D" />
+      <Color x:Key="ramvi-success-bg-color">#E6F5EC</Color>
+      <SolidColorBrush x:Key="ramvi-success-bg" Color="#E6F5EC" />
+      <Color x:Key="ramvi-warning-color">#815400</Color>
+      <SolidColorBrush x:Key="ramvi-warning" Color="#815400" />
+      <Color x:Key="ramvi-warning-bg-color">#FFF3D8</Color>
+      <SolidColorBrush x:Key="ramvi-warning-bg" Color="#FFF3D8" />
+      <Color x:Key="ramvi-error-color">#B12C49</Color>
+      <SolidColorBrush x:Key="ramvi-error" Color="#B12C49" />
+      <Color x:Key="ramvi-error-bg-color">#FDEBF0</Color>
+      <SolidColorBrush x:Key="ramvi-error-bg" Color="#FDEBF0" />
+      <Color x:Key="ramvi-info-color">#2C5FA4</Color>
+      <SolidColorBrush x:Key="ramvi-info" Color="#2C5FA4" />
+      <Color x:Key="ramvi-info-bg-color">#EAF1FD</Color>
+      <SolidColorBrush x:Key="ramvi-info-bg" Color="#EAF1FD" />
+      <Color x:Key="ramvi-disabled-bg-color">#E9E4EF</Color>
+      <SolidColorBrush x:Key="ramvi-disabled-bg" Color="#E9E4EF" />
+      <Color x:Key="ramvi-disabled-text-color">#7A6F87</Color>
+      <SolidColorBrush x:Key="ramvi-disabled-text" Color="#7A6F87" />
+      <Color x:Key="ramvi-shadow-dark-color">#D6CCE6</Color>
+      <SolidColorBrush x:Key="ramvi-shadow-dark" Color="#D6CCE6" />
+      <Color x:Key="ramvi-shadow-light-color">#FFFFFF</Color>
+      <SolidColorBrush x:Key="ramvi-shadow-light" Color="#FFFFFF" />
+      <BoxShadows x:Key="ramvi-shadow-raised">6 6 14 0 #D6CCE6, -6 -6 14 0 #FFFFFF</BoxShadows>
+      <BoxShadows x:Key="ramvi-shadow-raised-sm">3 3 7 0 #D6CCE6, -3 -3 7 0 #FFFFFF</BoxShadows>
+      <BoxShadows x:Key="ramvi-shadow-inset">inset 3 3 6 0 #D6CCE6, inset -3 -3 6 0 #FFFFFF</BoxShadows>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Dark">
+      <Color x:Key="ramvi-background-color">#14101C</Color>
+      <SolidColorBrush x:Key="ramvi-background" Color="#14101C" />
+      <Color x:Key="ramvi-surface-color">#1E172A</Color>
+      <SolidColorBrush x:Key="ramvi-surface" Color="#1E172A" />
+      <Color x:Key="ramvi-surface-raised-color">#291F38</Color>
+      <SolidColorBrush x:Key="ramvi-surface-raised" Color="#291F38" />
+      <Color x:Key="ramvi-surface-muted-color">#322640</Color>
+      <SolidColorBrush x:Key="ramvi-surface-muted" Color="#322640" />
+      <Color x:Key="ramvi-text-color">#F4EFFB</Color>
+      <SolidColorBrush x:Key="ramvi-text" Color="#F4EFFB" />
+      <Color x:Key="ramvi-text-muted-color">#C0B2D0</Color>
+      <SolidColorBrush x:Key="ramvi-text-muted" Color="#C0B2D0" />
+      <Color x:Key="ramvi-border-color">#493959</Color>
+      <SolidColorBrush x:Key="ramvi-border" Color="#493959" />
+      <Color x:Key="ramvi-control-border-color">#8A769F</Color>
+      <SolidColorBrush x:Key="ramvi-control-border" Color="#8A769F" />
+      <Color x:Key="ramvi-primary-color">#B58AFF</Color>
+      <SolidColorBrush x:Key="ramvi-primary" Color="#B58AFF" />
+      <Color x:Key="ramvi-primary-hover-color">#C7A6FF</Color>
+      <SolidColorBrush x:Key="ramvi-primary-hover" Color="#C7A6FF" />
+      <Color x:Key="ramvi-primary-pressed-color">#A476F0</Color>
+      <SolidColorBrush x:Key="ramvi-primary-pressed" Color="#A476F0" />
+      <Color x:Key="ramvi-on-primary-color">#241035</Color>
+      <SolidColorBrush x:Key="ramvi-on-primary" Color="#241035" />
+      <Color x:Key="ramvi-accent-color">#FFAA8F</Color>
+      <SolidColorBrush x:Key="ramvi-accent" Color="#FFAA8F" />
+      <Color x:Key="ramvi-on-accent-color">#35162C</Color>
+      <SolidColorBrush x:Key="ramvi-on-accent" Color="#35162C" />
+      <Color x:Key="ramvi-focus-color">#C7A6FF</Color>
+      <SolidColorBrush x:Key="ramvi-focus" Color="#C7A6FF" />
+      <Color x:Key="ramvi-selection-color">#493066</Color>
+      <SolidColorBrush x:Key="ramvi-selection" Color="#493066" />
+      <Color x:Key="ramvi-on-selection-color">#F0E4FF</Color>
+      <SolidColorBrush x:Key="ramvi-on-selection" Color="#F0E4FF" />
+      <Color x:Key="ramvi-success-color">#83D7AA</Color>
+      <SolidColorBrush x:Key="ramvi-success" Color="#83D7AA" />
+      <Color x:Key="ramvi-success-bg-color">#16382B</Color>
+      <SolidColorBrush x:Key="ramvi-success-bg" Color="#16382B" />
+      <Color x:Key="ramvi-warning-color">#EBC477</Color>
+      <SolidColorBrush x:Key="ramvi-warning" Color="#EBC477" />
+      <Color x:Key="ramvi-warning-bg-color">#3C3018</Color>
+      <SolidColorBrush x:Key="ramvi-warning-bg" Color="#3C3018" />
+      <Color x:Key="ramvi-error-color">#FF9FB1</Color>
+      <SolidColorBrush x:Key="ramvi-error" Color="#FF9FB1" />
+      <Color x:Key="ramvi-error-bg-color">#421F30</Color>
+      <SolidColorBrush x:Key="ramvi-error-bg" Color="#421F30" />
+      <Color x:Key="ramvi-info-color">#9FC7FF</Color>
+      <SolidColorBrush x:Key="ramvi-info" Color="#9FC7FF" />
+      <Color x:Key="ramvi-info-bg-color">#1B304C</Color>
+      <SolidColorBrush x:Key="ramvi-info-bg" Color="#1B304C" />
+      <Color x:Key="ramvi-disabled-bg-color">#31283D</Color>
+      <SolidColorBrush x:Key="ramvi-disabled-bg" Color="#31283D" />
+      <Color x:Key="ramvi-disabled-text-color">#9A8AA9</Color>
+      <SolidColorBrush x:Key="ramvi-disabled-text" Color="#9A8AA9" />
+      <Color x:Key="ramvi-shadow-dark-color">#07050B</Color>
+      <SolidColorBrush x:Key="ramvi-shadow-dark" Color="#07050B" />
+      <Color x:Key="ramvi-shadow-light-color">#251D33</Color>
+      <SolidColorBrush x:Key="ramvi-shadow-light" Color="#251D33" />
+      <BoxShadows x:Key="ramvi-shadow-raised">6 6 14 0 #07050B, -6 -6 14 0 #251D33</BoxShadows>
+      <BoxShadows x:Key="ramvi-shadow-raised-sm">3 3 7 0 #07050B, -3 -3 7 0 #251D33</BoxShadows>
+      <BoxShadows x:Key="ramvi-shadow-inset">inset 3 3 6 0 #07050B, inset -3 -3 6 0 #251D33</BoxShadows>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+  <Color x:Key="ramvi-brand-violet-950">#240B46</Color>
+  <Color x:Key="ramvi-brand-violet-800">#4C1885</Color>
+  <Color x:Key="ramvi-brand-violet-700">#6928BD</Color>
+  <Color x:Key="ramvi-brand-violet-600">#793BE0</Color>
+  <Color x:Key="ramvi-brand-violet-400">#B58AFF</Color>
+  <Color x:Key="ramvi-brand-violet-200">#DECDFB</Color>
+  <Color x:Key="ramvi-brand-violet-100">#EFE6FC</Color>
+  <Color x:Key="ramvi-brand-coral-500">#FF8868</Color>
+  <Color x:Key="ramvi-brand-coral-300">#FFB59E</Color>
+</ResourceDictionary>

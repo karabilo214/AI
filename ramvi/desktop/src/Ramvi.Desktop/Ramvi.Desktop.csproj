@@ -5,6 +5,7 @@
     <AssemblyName>RAMVI</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <IsTrimmable>true</IsTrimmable>
+    <ApplicationIcon>Assets/ramvi.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +13,11 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Значок и эмблема из логотипа assets/branding/ramvi-logo-v1.png (3.16) -->
+    <AvaloniaResource Include="Assets/ramvi-emblem.png" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "RAMVI shared desktop/web color tokens; manually selected from logo palette, not pixel-extracted",
+  "description": "RAMVI shared desktop/web color tokens; manually selected from logo palette, not pixel-extracted; shadow-* — neumorphism shadows (3.16), decorative, not for text",
   "brand": {
     "violet-950": "#240B46",
     "violet-800": "#4C1885",
@@ -40,7 +40,9 @@
       "info": "#2C5FA4",
       "info-bg": "#EAF1FD",
       "disabled-bg": "#E9E4EF",
-      "disabled-text": "#7A6F87"
+      "disabled-text": "#7A6F87",
+      "shadow-dark": "#D6CCE6",
+      "shadow-light": "#FFFFFF"
     },
     "dark": {
       "background": "#14101C",
@@ -69,7 +71,9 @@
       "info": "#9FC7FF",
       "info-bg": "#1B304C",
       "disabled-bg": "#31283D",
-      "disabled-text": "#9A8AA9"
+      "disabled-text": "#9A8AA9",
+      "shadow-dark": "#07050B",
+      "shadow-light": "#251D33"
     }
   }
 }

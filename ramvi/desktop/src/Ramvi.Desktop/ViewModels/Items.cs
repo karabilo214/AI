@@ -39,6 +39,7 @@ public sealed class MessageViewModel : ObservableObject
     private string? _error;
     private bool _isThinkingOpen;
     private bool _isStreaming;
+    private bool _isLastAnswer;
 
     public MessageViewModel(MessageInfo message)
     {
@@ -100,8 +101,33 @@ public sealed class MessageViewModel : ObservableObject
     public bool IsStreaming
     {
         get => _isStreaming;
-        set => Set(ref _isStreaming, value);
+        set
+        {
+            if (Set(ref _isStreaming, value))
+            {
+                Raise(nameof(ShowActions));
+                Raise(nameof(ShowRegenerate));
+            }
+        }
     }
+
+    /// <summary>Последний ответ модели в диалоге: у него есть «Ответить заново».</summary>
+    public bool IsLastAnswer
+    {
+        get => _isLastAnswer;
+        set
+        {
+            if (Set(ref _isLastAnswer, value))
+            {
+                Raise(nameof(ShowRegenerate));
+            }
+        }
+    }
+
+    /// <summary>Кнопки под ответом (копировать) — когда ответ допечатан.</summary>
+    public bool ShowActions => IsAssistant && !_isStreaming;
+
+    public bool ShowRegenerate => ShowActions && _isLastAnswer;
 
     public string? Finish
     {

@@ -7,6 +7,9 @@ namespace Ramvi.Desktop.ViewModels;
 /// <summary>Вариант языка в списке: код и подпись.</summary>
 public sealed record LanguageOption(string Code, string Label);
 
+/// <summary>Вариант темы: system (как в ОС), light, dark (3.16).</summary>
+public sealed record ThemeOption(string Code, string Label);
+
 /// <summary>
 /// Экран настроек (3.7): папка данных, папка моделей, язык, порт внешнего API, доступ из сети.
 /// Проверяет и сохраняет сервис; отправляются только изменённые поля. Смена папки данных
@@ -17,6 +20,8 @@ public sealed class SettingsViewModel : ObservableObject
     private readonly Func<IChatApi> _api;
     private readonly Func<string?, Task<string?>> _pickFolder;
     private readonly Func<Task> _restart;
+    private readonly Action<string>? _applyTheme;
+    private ThemeOption? _theme;
     private AppSettings? _saved;
     private bool _isOpen;
     private string _dataDir = "";
@@ -29,9 +34,12 @@ public sealed class SettingsViewModel : ObservableObject
     private string? _message;
     private bool _restartNeeded;
 
-    public SettingsViewModel(Func<IChatApi> api, Func<string?, Task<string?>> pickFolder, Func<Task> restart)
+    public SettingsViewModel(
+        Func<IChatApi> api, Func<string?, Task<string?>> pickFolder, Func<Task> restart, Action<string>? applyTheme = null)
     {
         _api = api;
+        _applyTheme = applyTheme;
+        Themes = [.. ThemeCodes.Select(code => new ThemeOption(code, L[$"settings.theme.{code}"]))];
         _pickFolder = pickFolder;
         _restart = restart;
         SaveCommand = new Command(SaveAsync, () => _saved is not null);
@@ -59,6 +67,17 @@ public sealed class SettingsViewModel : ObservableObject
     public Command RestartCommand { get; }
 
     public List<LanguageOption> Languages { get; } = [];
+
+    public static IReadOnlyList<string> ThemeCodes { get; } = ["system", "light", "dark"];
+
+    public List<ThemeOption> Themes { get; }
+
+    /// <summary>Тема применяется сразу после сохранения, без перезапуска.</summary>
+    public ThemeOption? Theme
+    {
+        get => _theme;
+        set => Set(ref _theme, value);
+    }
 
     public bool IsOpen
     {
@@ -166,6 +185,7 @@ public sealed class SettingsViewModel : ObservableObject
         Language = Languages.FirstOrDefault(l => l.Code == info.Settings.Language);
         ApiPort = info.Settings.ApiPort.ToString(CultureInfo.InvariantCulture);
         NetworkAccess = info.Settings.NetworkAccess;
+        Theme = Themes.FirstOrDefault(t => t.Code == info.Settings.Theme) ?? Themes[0];
         Raise(nameof(DataDirNote));
         SaveCommand.Refresh();
     }
@@ -190,7 +210,8 @@ public sealed class SettingsViewModel : ObservableObject
             ModelsDir: ModelsDir != saved.ModelsDir ? ModelsDir : null,
             Language: Language is { } language && language.Code != saved.Language ? language.Code : null,
             ApiPort: port != saved.ApiPort ? port : null,
-            NetworkAccess: NetworkAccess != saved.NetworkAccess ? NetworkAccess : null);
+            NetworkAccess: NetworkAccess != saved.NetworkAccess ? NetworkAccess : null,
+            Theme: Theme is { } theme && theme.Code != saved.Theme ? theme.Code : null);
         if (update == new SettingsUpdate())
         {
             Message = L["settings.saved"];
@@ -201,6 +222,11 @@ public sealed class SettingsViewModel : ObservableObject
         {
             var info = await _api().SaveSettingsAsync(update).ConfigureAwait(true);
             Show(info);
+            if (update.Theme is not null)
+            {
+                _applyTheme?.Invoke(info.Settings.Theme);
+            }
+
             if (info.RestartRequired is { Count: > 0 })
             {
                 RestartNeeded = true;

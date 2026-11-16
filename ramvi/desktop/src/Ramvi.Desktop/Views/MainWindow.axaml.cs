@@ -11,9 +11,16 @@ namespace Ramvi.Desktop.Views;
 
 public sealed partial class MainWindow : Window
 {
+    /// <summary>Расстояние до низа, при котором окно считается «внизу» и следует за ответом.</summary>
+    private const double FollowSlack = 48;
+
+    /// <summary>Следовать за новым текстом; false — пользователь прокрутил вверх и читает.</summary>
+    private bool _follow = true;
+
     public MainWindow()
     {
         InitializeComponent();
+        MessagesScroll.ScrollChanged += OnMessagesScrolled;
         InputBox.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
@@ -46,6 +53,17 @@ public sealed partial class MainWindow : Window
             FileTypeFilter = [new FilePickerFileType("GGUF") { Patterns = ["*.gguf"] }],
         }).ConfigureAwait(true);
         return files.Count == 1 ? files[0].TryGetLocalPath() : null;
+    }
+
+    /// <summary>«Прикрепить файл»: выбранные файлы (пустой список — отмена).</summary>
+    public async Task<IReadOnlyList<DroppedFile>> PickFilesAsync()
+    {
+        var picked = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = Localization.Localizer.Current["chat.attach"],
+            AllowMultiple = true,
+        }).ConfigureAwait(true);
+        return await ToDroppedAsync(picked).ConfigureAwait(true);
     }
 
     /// <summary>Выбрать папку (настройки); путь на диске или null.</summary>
@@ -95,6 +113,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        await model.AddFilesAsync(await ToDroppedAsync(items.OfType<IStorageFile>()).ConfigureAwait(true))
+            .ConfigureAwait(true);
+    }
+
+    private static async Task<IReadOnlyList<DroppedFile>> ToDroppedAsync(IEnumerable<IStorageItem> items)
+    {
         var files = new List<DroppedFile>();
         foreach (var file in items.OfType<IStorageFile>())
         {
@@ -102,14 +126,36 @@ public sealed partial class MainWindow : Window
             files.Add(new DroppedFile(file.Name, (long)(properties.Size ?? 0), file.OpenReadAsync));
         }
 
-        await model.AddFilesAsync(files).ConfigureAwait(true);
+        return files;
     }
 
+    /// <summary>Новое сообщение или другой диалог — снова следовать за низом.</summary>
     private void OnMessagesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (e.Action == NotifyCollectionChangedAction.Add)
+        if (e.Action is NotifyCollectionChangedAction.Add or NotifyCollectionChangedAction.Reset)
         {
+            _follow = true;
             MessagesScroll.ScrollToEnd();
         }
     }
+
+    /// <summary>
+    /// (1) Ответ растёт внутри уже добавленного сообщения — раньше окно прокручивалось только при
+    /// добавлении сообщения, и печатающийся текст уходил за нижнюю границу. Теперь при росте
+    /// содержимого окно держится у низа, если пользователь сам не прокрутил вверх.
+    /// </summary>
+    private void OnMessagesScrolled(object? sender, ScrollChangedEventArgs e)
+    {
+        if ((e.ExtentDelta.Y != 0 || e.ViewportDelta.Y != 0) && _follow)
+        {
+            MessagesScroll.ScrollToEnd();
+        }
+        else if (e.OffsetDelta.Y != 0)
+        {
+            _follow = IsAtBottom;
+        }
+    }
+
+    private bool IsAtBottom =>
+        MessagesScroll.Offset.Y + MessagesScroll.Viewport.Height >= MessagesScroll.Extent.Height - FollowSlack;
 }

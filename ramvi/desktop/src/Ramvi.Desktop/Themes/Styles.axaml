@@ -1,0 +1,346 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Стиль оболочки RAMVI (3.16): неоморфизм (решение владельца). Панели, карточки и кнопки
+    одного цвета с фоном, объём — двумя мягкими тенями (ramvi-shadow-raised); нажатое,
+    выбранное и поле ввода — «вдавлены» (ramvi-shadow-inset). Основное действие залито
+    primary, иначе его не найти. Текст — только парами палитры с контрастом ≥ 4.5:1;
+    поле ввода сохраняет рамку control-border и видимый фокус (PALETTE.md, правило 3).
+    Только семантические токены (ramvi-*): тема меняется без правки компонентов.
+    Раскладка — по иллюстрациям ТЗ: меню слева, пузыри сообщений, поле ввода-карточка.
+  -->
+
+  <!-- Основа -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text}" />
+    <Setter Property="FontSize" Value="14" />
+  </Style>
+  <Style Selector="TextBlock.title">
+    <Setter Property="FontSize" Value="22" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.heading">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.muted, SelectableTextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text-muted}" />
+  </Style>
+  <Style Selector="TextBlock.caption">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text-muted}" />
+  </Style>
+  <Style Selector="TextBlock.ok">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-success}" />
+  </Style>
+  <Style Selector="TextBlock.warn">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-warning}" />
+  </Style>
+  <Style Selector="TextBlock.fail, TextBlock.error">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-error}" />
+  </Style>
+  <Style Selector="TextBlock.brand">
+    <Setter Property="FontSize" Value="20" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-primary}" />
+  </Style>
+
+  <!-- Поверхности -->
+  <Style Selector="Border.sidebar">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-raised}" />
+    <Setter Property="CornerRadius" Value="20" />
+    <Setter Property="Margin" Value="16" />
+  </Style>
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-raised}" />
+    <Setter Property="CornerRadius" Value="18" />
+  </Style>
+  <Style Selector="Border.inset">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+    <Setter Property="CornerRadius" Value="12" />
+  </Style>
+  <Style Selector="Border.overlay">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+  </Style>
+  <Style Selector="Border.statusbar">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="12,6" />
+  </Style>
+  <Style Selector="Border.statusbar TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text-muted}" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+  <Style Selector="Border.statusbar TextBlock.error">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-error}" />
+  </Style>
+
+  <!-- Плашка состояния: обычная — info, проблема — error; смысл всегда и текстом -->
+  <Style Selector="Border.banner">
+    <Setter Property="Background" Value="{DynamicResource ramvi-info-bg}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ramvi-info}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-raised-sm}" />
+  </Style>
+  <Style Selector="Border.banner.problem">
+    <Setter Property="Background" Value="{DynamicResource ramvi-error-bg}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ramvi-error}" />
+  </Style>
+
+  <!-- Сообщения -->
+  <!-- Ответ модели выпуклый, ваше сообщение вдавлено и прижато вправо -->
+  <Style Selector="Border.bubble">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-raised-sm}" />
+    <Setter Property="CornerRadius" Value="18" />
+    <Setter Property="Padding" Value="18,12" />
+    <Setter Property="Margin" Value="0,10" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="Border.bubble.user">
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="MaxWidth" Value="620" />
+    <Setter Property="Margin" Value="80,10,0,10" />
+  </Style>
+  <Style Selector="Border.thinking">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+  <Style Selector="Border.chip">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-raised-sm}" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="10,4" />
+  </Style>
+
+  <!-- «Печатает…»: три точки по очереди -->
+  <Style Selector="Ellipse.dot">
+    <Setter Property="Width" Value="6" />
+    <Setter Property="Height" Value="6" />
+    <Setter Property="Fill" Value="{DynamicResource ramvi-primary}" />
+    <Style.Animations>
+      <Animation Duration="0:0:1.2" IterationCount="Infinite">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+        <KeyFrame Cue="40%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        <KeyFrame Cue="80%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Ellipse.dot.d2">
+    <Style.Animations>
+      <Animation Duration="0:0:1.2" IterationCount="Infinite" Delay="0:0:0.2">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+        <KeyFrame Cue="40%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        <KeyFrame Cue="80%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Ellipse.dot.d3">
+    <Style.Animations>
+      <Animation Duration="0:0:1.2" IterationCount="Infinite" Delay="0:0:0.4">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+        <KeyFrame Cue="40%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        <KeyFrame Cue="80%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Кнопки: обычная (вторичная), accent (основное действие), icon (значок с подсказкой) -->
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="14,7" />
+    <Setter Property="Margin" Value="4" />
+    <Setter Property="ClipToBounds" Value="False" />
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-raised-sm}" />
+  </Style>
+  <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-primary}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-primary}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+  </Style>
+  <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-disabled-text}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+  </Style>
+
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="{DynamicResource ramvi-primary}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-on-primary}" />
+  </Style>
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-primary-hover}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-on-primary}" />
+  </Style>
+  <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-primary-pressed}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-on-primary}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+  </Style>
+  <Style Selector="Button.accent:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-disabled-bg}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-disabled-text}" />
+  </Style>
+
+  <!-- Значок: круглая выпуклая кнопка; при нажатии вдавливается -->
+  <Style Selector="Button.icon">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text-muted}" />
+    <Setter Property="Padding" Value="8" />
+    <Setter Property="CornerRadius" Value="18" />
+  </Style>
+  <Style Selector="Button.icon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-primary}" />
+  </Style>
+  <Style Selector="Button.icon:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-disabled-text}" />
+  </Style>
+  <!-- Мелкие значки в строках (крестик у диалога, у файла) — без объёма, чтобы не шуметь -->
+  <Style Selector="Button.flat /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.flat">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Padding" Value="4" />
+  </Style>
+  <Style Selector="Button PathIcon">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+  </Style>
+
+  <!-- Раскрывашка «Размышления»: просто подпись, без объёма -->
+  <Style Selector="ToggleButton.disclosure">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ToggleButton.disclosure /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.disclosure:pointerover /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.disclosure:checked /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.disclosure:pressed /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.disclosure:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ToggleButton.disclosure PathIcon">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text-muted}" />
+    <Setter Property="RenderTransform" Value="rotate(0deg)" />
+  </Style>
+  <Style Selector="ToggleButton.disclosure:checked PathIcon">
+    <Setter Property="RenderTransform" Value="rotate(90deg)" />
+  </Style>
+  <Style Selector="ToggleButton.disclosure:pointerover TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-primary}" />
+  </Style>
+
+  <!-- Списки меню и диалогов -->
+  <Style Selector="ListBox.nav">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.nav ListBoxItem">
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Margin" Value="4,3" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text}" />
+  </Style>
+  <!-- Наведение — выпуклость, выбранный пункт — вдавлен и подписан primary -->
+  <Style Selector="ListBox.nav ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-raised-sm}" />
+  </Style>
+  <Style Selector="ListBox.nav ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ListBox.nav ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-primary}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+  </Style>
+  <!-- Крестик удаления диалога: виден при наведении и у выбранного диалога -->
+  <Style Selector="ListBox.nav ListBoxItem Button.row-action">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="ListBox.nav ListBoxItem:pointerover Button.row-action, ListBox.nav ListBoxItem:selected Button.row-action">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <!-- Поля и списки настроек/мастера: поле вдавлено (рамка остаётся — по ней узнаётся поле), список выпуклый -->
+  <Style Selector="TextBox">
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="10,7" />
+  </Style>
+  <Style Selector="TextBox /template/ Border#PART_BorderElement, TextBox:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ramvi-control-border}" />
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ramvi-focus}" />
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="ComboBox /template/ Border#Background, ComboBox:pointerover /template/ Border#Background">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-raised-sm}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="ComboBox:disabled /template/ Border#Background">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+  </Style>
+  <!-- Выбор модели уже лежит в выпуклой «плашке»: сам список плоский -->
+  <Style Selector="Border.chip ComboBox /template/ Border#Background, Border.chip ComboBox:pointerover /template/ Border#Background">
+    <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!-- Поле ввода внутри карточки: рамку и фокус показывает карточка -->
+  <Style Selector="Border.composer">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ramvi-control-border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="18" />
+    <Setter Property="Padding" Value="10,8" />
+  </Style>
+  <Style Selector="Border.composer:focus-within">
+    <Setter Property="BorderBrush" Value="{DynamicResource ramvi-focus}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="Padding" Value="9,7" />
+  </Style>
+  <Style Selector="TextBox.bare">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text}" />
+  </Style>
+  <Style Selector="TextBox.bare /template/ Border#PART_BorderElement, TextBox.bare:pointerover /template/ Border#PART_BorderElement, TextBox.bare:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+  </Style>
+  <Style Selector="TextBox.bare:focus">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-text}" />
+  </Style>
+</Styles>
