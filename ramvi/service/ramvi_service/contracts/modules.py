@@ -3,8 +3,9 @@
 import re
 import secrets
 import threading
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 MODULE_API_VERSION = "1.0"
 ID = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
@@ -126,3 +127,17 @@ class LLMProvider(Protocol):
     def complete(self, request: dict[str, Any], cancel: threading.Event) -> dict[str, Any]: ...
     def cancel(self) -> None: ...
     def unload(self) -> None: ...
+
+
+@runtime_checkable
+class StreamingLLMProvider(LLMProvider, Protocol):
+    """Провайдер с потоком; объявляет ProviderCapabilities.streaming=True.
+
+    Куски не зависят от протокола провайдера:
+    {"type": "text" | "reasoning", "text": str}, {"type": "tool_calls", "tool_calls": [...]},
+    последний — {"type": "end", "finish_reason": str | None, "usage": dict | None}.
+    После cancel провайдер прекращает выдачу и бросает InterruptedError."""
+
+    def stream(
+        self, request: dict[str, Any], cancel: threading.Event
+    ) -> Iterator[dict[str, Any]]: ...

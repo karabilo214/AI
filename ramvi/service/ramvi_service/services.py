@@ -6,7 +6,10 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from dataclasses import asdict
+import uuid
+from collections import deque
+from collections.abc import Callable, Generator, Iterator
+from dataclasses import asdict, dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -16,6 +19,75 @@ from ramvi_service.events import EventBus
 from ramvi_service.resources import ResourceBroker, SharedLLM
 from ramvi_service.scoped import ScopedData, ScopedSecrets
 from ramvi_service.transport import local_opener, loopback_url
+
+Payload = dict[str, Any]
+Handler = Callable[["ScopedServices", Payload], Payload]
+Permission = Callable[[Payload], tuple[str, str]]
+
+
+@dataclass(frozen=True)
+class Route:
+    """Обработчик метода Scoped Services и право, которое проверяется до него."""
+
+    run: Handler
+    permission: Permission
+    active: bool
+
+
+ROUTES: dict[str, Route] = {}
+
+
+def handler(
+    method: str, *, permission: str | Permission, active: bool = False
+) -> Callable[[Handler], Handler]:
+    """Регистрирует метод. Право — имя гранта (для любого приложения) или функция от payload.
+
+    active=True — метод доступен только активному модулю."""
+    if not permission:
+        raise ValueError("у метода должно быть право: " + method)
+    check: Permission = (lambda _: (permission, "*")) if isinstance(permission, str) else permission
+
+    def register(run: Handler) -> Handler:
+        if method in ROUTES:
+            raise ValueError("метод уже зарегистрирован: " + method)
+        ROUTES[method] = Route(run, check, active)
+        return run
+
+    return register
+
+
+def _context_permission(payload: Payload) -> tuple[str, str]:
+    kind = payload.get("kind", "ui")
+    if kind not in ("ui", "screen"):
+        raise ValueError("нужны kind, application и window")
+    return "context." + kind, payload["application"]
+
+
+STREAM_BUFFER = 256  # кусков в буфере на поток; дальше генерация ждёт чтения
+STREAM_IDLE = 30.0  # секунд без чтения — поток отменяется и освобождает модель
+MAX_STREAMS = 2
+PASSED_ERRORS = (
+    PermissionError,
+    TimeoutError,
+    InterruptedError,
+    NotImplementedError,
+    ValueError,
+    RuntimeError,
+    KeyError,
+)
+
+
+class LLMStream:
+    """Ограниченный буфер кусков одного потокового ответа."""
+
+    def __init__(self, cancel: threading.Event) -> None:
+        self.cancel = cancel
+        self.chunks: deque[dict[str, Any]] = deque()
+        self.condition = threading.Condition()
+        self.finished = False
+        self.error: Exception | None = None
+        self.last_read = time.monotonic()
+        self.thread: threading.Thread | None = None
 
 
 class ScopedServices:
@@ -46,10 +118,11 @@ class ScopedServices:
         self._calls = 0
         self._stopping = False
         self._cancel = threading.Event()
+        self._streams: dict[str, LLMStream] = {}
 
-    def _permission(self, name: str) -> None:
+    def _permission(self, name: str, application: str = "*") -> None:
         self.authority.require(self.owner)
-        self.grants.require(self.owner, name)
+        self.grants.require(self.owner, name, application)
 
     def call(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
         self.authority.require(self.owner)
@@ -69,142 +142,306 @@ class ScopedServices:
         # Владелец — scope, не входное поле JSON/вывод модели.
         if set(payload) & {"module_id", "owner", "principal_id", "session_id", "token"}:
             raise PermissionError("подмена владельца в payload запрещена")
-        if method.startswith("settings."):
-            self._permission("settings")
-            if method == "settings.get":
-                return {"value": self.data.read_json("settings.json", {})}
-            if method == "settings.set":
-                self.data.write_json("settings.json", payload["value"])
-                return {"ok": True}
-        if method.startswith("data."):
-            self._permission("data")
-            if method == "data.get":
-                return {"value": self.data.read_json(payload["path"])}
-            if method == "data.set":
-                self.data.write_json(payload["path"], payload["value"])
-                return {"ok": True}
-        if method.startswith("secrets."):
-            self._permission("secrets")
-            if method == "secrets.get":
-                return {"value": self.secrets.get(payload["key"])}
-            if method == "secrets.set":
-                self.secrets.set(payload["key"], payload["value"])
-                return {"ok": True}
-            if method == "secrets.delete":
-                self.secrets.delete(payload["key"])
-                return {"ok": True}
-        if method.startswith("events."):
-            self._permission("events")
-            if method == "events.begin":
-                return {"response_id": self.events.begin(self.owner)}
-            if method == "events.emit":
-                return {
-                    "delivered": self.events.emit(
-                        self.owner, payload["response_id"], payload["name"], payload["payload"]
-                    )
-                }
-            if method == "events.cancel":
-                self.events.cancel(self.owner, payload.get("response_id"))
-                return {"ok": True}
-            if method == "events.subscribe":
-                return {
-                    "subscription_id": self.events.subscribe(
-                        self.owner, size=min(128, payload.get("size", 32))
-                    )
-                }
-            if method == "events.poll":
-                return {
-                    "event": self.events.poll(
-                        self.owner, payload["subscription_id"], min(1, payload.get("timeout", 0))
-                    )
-                }
-            if method == "events.unsubscribe":
-                self.events.unsubscribe(self.owner, payload["subscription_id"])
-                return {"ok": True}
-        if not self.active:
+        route = ROUTES.get(method)
+        if route is None:
+            raise ValueError("неизвестный метод Scoped Services")
+        if route.active and not self.active:
             raise PermissionError("модуль не активен")
-        if method.startswith("resources."):
-            self._permission("resources")
-            if method == "resources.acquire":
-                return {
-                    "lease_id": self.resources.acquire(
-                        self.owner,
-                        payload["amounts"],
-                        timeout=min(30, payload.get("timeout", 30)),
-                        cancel=self._cancel,
-                    )
-                }
-            if method == "resources.release":
-                self.resources.release(self.owner, payload["lease_id"])
-                return {"ok": True}
-        if method == "llm.complete":
-            self._permission("llm")
-            if self.llm is None:
-                raise NotImplementedError("LLM Provider не подключён")
-            request = payload["request"]
-            if not isinstance(request, dict):
-                raise ValueError("LLM request должен быть объектом")
-            capabilities = self.llm.provider.capabilities
-            if request.get("tools") and not capabilities.tools:
-                raise NotImplementedError("Provider не объявил tools")
-            if request.get("response_format") and not capabilities.json_schema:
-                raise NotImplementedError("Provider не объявил constrained JSON")
-            if request.get("stream"):
-                raise NotImplementedError(
-                    "Scoped complete возвращает один ответ; streaming adapter отдельный"
-                )
-            rights: list[tuple[str, str]] = []
-            if self.llm.provider.capabilities.external:
-                rights.append(("egress.text", "*"))
-                self.grants.require(self.owner, "egress.text")
-            for message in request.get("messages", []):
-                content = message.get("content") if isinstance(message, dict) else None
-                for part in content if isinstance(content, list) else []:
-                    if isinstance(part, dict) and part.get("type") in ("image_url", "input_image"):
-                        if not self.llm.provider.capabilities.image_input:
-                            raise NotImplementedError("провайдер не поддерживает изображения")
-                        if self.llm.provider.capabilities.external:
-                            rights.append(("egress.image", "*"))
-                            self.grants.require(self.owner, "egress.image")
-            with self._condition:
-                if self._stopping:
-                    raise PermissionError("scope остановлен")
-                self.llm.retain(self.owner)
-            cancel = self.grants.watch(self.owner, rights) if rights else threading.Event()
-            try:
-                result = self.llm.complete(
-                    self.owner,
-                    payload["request"],
-                    timeout=min(30, payload.get("timeout", 30)),
-                    cancel=cancel,
-                )
-                for permission, application in rights:
-                    self.grants.require(self.owner, permission, application)
-                return result
-            finally:
+        self._permission(*route.permission(payload))
+        return route.run(self, payload)
+
+    @handler("settings.get", permission="settings")
+    def _settings_get(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"value": self.data.read_json("settings.json", {})}
+
+    @handler("settings.set", permission="settings")
+    def _settings_set(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.data.write_json("settings.json", payload["value"])
+        return {"ok": True}
+
+    @handler("data.get", permission="data")
+    def _data_get(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"value": self.data.read_json(payload["path"])}
+
+    @handler("data.set", permission="data")
+    def _data_set(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.data.write_json(payload["path"], payload["value"])
+        return {"ok": True}
+
+    @handler("secrets.get", permission="secrets")
+    def _secrets_get(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"value": self.secrets.get(payload["key"])}
+
+    @handler("secrets.set", permission="secrets")
+    def _secrets_set(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.secrets.set(payload["key"], payload["value"])
+        return {"ok": True}
+
+    @handler("secrets.delete", permission="secrets")
+    def _secrets_delete(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.secrets.delete(payload["key"])
+        return {"ok": True}
+
+    @handler("events.begin", permission="events")
+    def _events_begin(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"response_id": self.events.begin(self.owner)}
+
+    @handler("events.emit", permission="events")
+    def _events_emit(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "delivered": self.events.emit(
+                self.owner, payload["response_id"], payload["name"], payload["payload"]
+            )
+        }
+
+    @handler("events.cancel", permission="events")
+    def _events_cancel(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.events.cancel(self.owner, payload.get("response_id"))
+        return {"ok": True}
+
+    @handler("events.subscribe", permission="events")
+    def _events_subscribe(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "subscription_id": self.events.subscribe(
+                self.owner, size=min(128, payload.get("size", 32))
+            )
+        }
+
+    @handler("events.poll", permission="events")
+    def _events_poll(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "event": self.events.poll(
+                self.owner, payload["subscription_id"], min(1, payload.get("timeout", 0))
+            )
+        }
+
+    @handler("events.unsubscribe", permission="events")
+    def _events_unsubscribe(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.events.unsubscribe(self.owner, payload["subscription_id"])
+        return {"ok": True}
+
+    @handler("resources.acquire", permission="resources", active=True)
+    def _resources_acquire(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "lease_id": self.resources.acquire(
+                self.owner,
+                payload["amounts"],
+                timeout=min(30, payload.get("timeout", 30)),
+                cancel=self._cancel,
+            )
+        }
+
+    @handler("resources.release", permission="resources", active=True)
+    def _resources_release(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.resources.release(self.owner, payload["lease_id"])
+        return {"ok": True}
+
+    def _llm_request(
+        self, payload: dict[str, Any]
+    ) -> tuple[SharedLLM, dict[str, Any], list[tuple[str, str]]]:
+        """Общие проверки запроса к модели и дополнительные права, зависящие от содержимого."""
+        if self.llm is None:
+            raise NotImplementedError("LLM Provider не подключён")
+        request = payload["request"]
+        if not isinstance(request, dict):
+            raise ValueError("LLM request должен быть объектом")
+        capabilities = self.llm.provider.capabilities
+        if request.get("tools") and not capabilities.tools:
+            raise NotImplementedError("Provider не объявил tools")
+        if request.get("response_format") and not capabilities.json_schema:
+            raise NotImplementedError("Provider не объявил constrained JSON")
+        rights: list[tuple[str, str]] = []
+        if capabilities.external:
+            rights.append(("egress.text", "*"))
+            self.grants.require(self.owner, "egress.text")
+        for message in request.get("messages", []):
+            content = message.get("content") if isinstance(message, dict) else None
+            for part in content if isinstance(content, list) else []:
+                if isinstance(part, dict) and part.get("type") in ("image_url", "input_image"):
+                    if not capabilities.image_input:
+                        raise NotImplementedError("провайдер не поддерживает изображения")
+                    if capabilities.external:
+                        rights.append(("egress.image", "*"))
+                        self.grants.require(self.owner, "egress.image")
+        with self._condition:
+            if self._stopping:
+                raise PermissionError("scope остановлен")
+            self.llm.retain(self.owner)
+        return self.llm, request, rights
+
+    @handler("llm.complete", permission="llm", active=True)
+    def _llm_complete(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(payload.get("request"), dict) and payload["request"].get("stream"):
+            raise NotImplementedError("llm.complete возвращает один ответ; поток — llm.stream")
+        llm, request, rights = self._llm_request(payload)
+        cancel = self.grants.watch(self.owner, rights) if rights else threading.Event()
+        try:
+            result = llm.complete(
+                self.owner,
+                request,
+                timeout=min(30, payload.get("timeout", 30)),
+                cancel=cancel,
+            )
+            for permission, application in rights:
+                self.grants.require(self.owner, permission, application)
+            return result
+        finally:
+            if rights:
+                self.grants.unwatch(cancel)
+
+    @handler("llm.stream", permission="llm", active=True)
+    def _llm_stream(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Начать потоковый ответ; куски забираются llm.read, отмена — llm.cancel."""
+        if self.llm is None:
+            raise NotImplementedError("LLM Provider не подключён")
+        if not self.llm.provider.capabilities.streaming:
+            raise NotImplementedError("Provider не объявил streaming")
+        with self._condition:
+            now = time.monotonic()
+            for identifier, old in list(self._streams.items()):
+                if old.finished and now - old.last_read > STREAM_IDLE:
+                    del self._streams[identifier]
+            if len(self._streams) >= MAX_STREAMS:
+                raise RuntimeError("слишком много одновременных потоков модуля")
+        llm, request, rights = self._llm_request(payload)
+        cancel = self.grants.watch(self.owner, rights) if rights else threading.Event()
+        stream = LLMStream(cancel)
+        identifier = uuid.uuid4().hex
+        with self._condition:
+            if self._stopping:
                 if rights:
                     self.grants.unwatch(cancel)
-        if method == "context.capture":
-            if self.context is None:
-                raise NotImplementedError("Context Provider не подключён")
-            return {
-                "snapshot": asdict(
-                    self.context.capture(
-                        self.owner,
-                        payload["application"],
-                        payload["window_id"],
-                        kind=payload.get("kind", "ui"),
-                        capabilities=self.llm.provider.capabilities if self.llm else None,
-                    )
+                raise PermissionError("scope остановлен")
+            self._streams[identifier] = stream
+        stream.thread = threading.Thread(
+            target=self._produce,
+            args=(stream, llm, request, min(30, payload.get("timeout", 30)), rights),
+            name="ramvi-llm-stream",
+            daemon=True,
+        )
+        stream.thread.start()
+        return {"stream_id": identifier}
+
+    def _produce(
+        self,
+        stream: "LLMStream",
+        llm: SharedLLM,
+        request: dict[str, Any],
+        timeout: float,
+        rights: list[tuple[str, str]],
+    ) -> None:
+        # Генератор закрывается явно: сохранённое исключение держит его кадр,
+        # и без close() слот модели освободился бы только при сборке мусора.
+        chunks: Generator[dict[str, Any]] = llm.stream(
+            self.owner, request, timeout=timeout, cancel=stream.cancel
+        )
+        try:
+            for chunk in chunks:
+                with stream.condition:
+                    # Backpressure: модуль не читает — генерация ждёт, но не дольше STREAM_IDLE.
+                    while len(stream.chunks) >= STREAM_BUFFER and not stream.cancel.is_set():
+                        if time.monotonic() - stream.last_read > STREAM_IDLE:
+                            # Причина записывается до отмены, чтобы чтение не увидело «отменён».
+                            stream.error = TimeoutError("модуль не читает поток")
+                            stream.cancel.set()
+                            raise stream.error
+                        stream.condition.wait(0.05)
+                    if stream.cancel.is_set():
+                        raise InterruptedError("поток отменён")
+                    stream.chunks.append(chunk)
+                    stream.condition.notify_all()
+            for permission, application in rights:
+                self.grants.require(self.owner, permission, application)
+        except Exception as error:
+            if stream.error is None:
+                stream.error = error
+        finally:
+            try:
+                chunks.close()
+            except Exception as error:
+                if stream.error is None:
+                    stream.error = error
+            if rights:
+                self.grants.unwatch(stream.cancel)
+            with stream.condition:
+                stream.finished = True
+                stream.condition.notify_all()
+
+    def _stream(self, payload: dict[str, Any]) -> "LLMStream":
+        with self._condition:
+            stream = self._streams.get(payload["stream_id"])
+        if stream is None:
+            raise ValueError("неизвестный поток")
+        return stream
+
+    @handler("llm.read", permission="llm", active=True)
+    def _llm_read(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Ждёт до timeout (не больше 0,5 с) и отдаёт все накопленные куски."""
+        stream = self._stream(payload)
+        deadline = time.monotonic() + max(0.0, min(0.5, payload.get("timeout", 0.5)))
+        with stream.condition:
+            # Конец потока — только когда производитель завершился и освободил модель.
+            while not stream.finished and (not stream.chunks or stream.cancel.is_set()):
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    break
+                stream.condition.wait(left)
+            if stream.cancel.is_set():
+                stream.chunks.clear()  # после отмены старые куски не доставляются
+            chunks = [stream.chunks.popleft() for _ in range(min(len(stream.chunks), 64))]
+            stream.last_read = time.monotonic()
+            stream.condition.notify_all()
+            done = stream.finished and not stream.chunks
+            error = stream.error
+        if done and not chunks:
+            with self._condition:
+                if self._streams.get(payload["stream_id"]) is stream:
+                    del self._streams[payload["stream_id"]]
+            if error is not None:
+                if isinstance(error, PASSED_ERRORS):
+                    raise error
+                raise RuntimeError(f"{type(error).__name__}: {error}")
+        return {"chunks": chunks, "done": done and not chunks and error is None}
+
+    @handler("llm.cancel", permission="llm")
+    def _llm_cancel(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Отмена не ждёт остановки генерации; поток сразу перестаёт выдавать куски."""
+        with self._condition:
+            stream = self._streams.pop(payload["stream_id"], None)
+        if stream is not None:
+            stream.cancel.set()
+            with stream.condition:
+                stream.chunks.clear()
+                stream.condition.notify_all()
+        return {"ok": True}
+
+    @handler("context.capture", permission=_context_permission, active=True)
+    def _context_capture(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.context is None:
+            raise NotImplementedError("Context Provider не подключён")
+        return {
+            "snapshot": asdict(
+                self.context.capture(
+                    self.owner,
+                    payload["application"],
+                    payload["window_id"],
+                    kind=payload.get("kind", "ui"),
+                    capabilities=self.llm.provider.capabilities if self.llm else None,
                 )
-            }
-        raise ValueError("неизвестный метод Scoped Services")
+            )
+        }
 
     def stop(self) -> None:
         with self._condition:
             self.active = False
             self._stopping = True
             self._cancel.set()
+            streams = list(self._streams.values())
+            self._streams.clear()
+        for stream in streams:
+            stream.cancel.set()
+            with stream.condition:
+                stream.condition.notify_all()
         if self.llm is not None:
             self.llm.release_owner(self.owner)
         self.events.release_owner(self.owner)
@@ -218,6 +455,11 @@ class ScopedServices:
                 if left <= 0:
                     raise TimeoutError("Scoped Services операции не завершились")
                 self._condition.wait(left)
+        for stream in streams:
+            if stream.thread is not None:
+                stream.thread.join(max(0.0, deadline - time.monotonic()))
+                if stream.thread.is_alive():
+                    raise TimeoutError("поток модели не остановлен")
         # Запрос мог получить аренду непосредственно перед установкой cancel.
         self.resources.release_owner(self.owner)
 
@@ -406,3 +648,19 @@ class ServiceClient:
             }
             exception = classes.get(detail.get("error_type"), RuntimeError)
             raise exception(detail.get("error", "Scoped Services failure")) from error
+
+    def stream(self, request: dict[str, Any], *, timeout: float = 30) -> Iterator[dict[str, Any]]:
+        """Куски ответа модели по мере генерации. Прерванный цикл отменяет генерацию."""
+        stream_id = self.call("llm.stream", {"request": request, "timeout": timeout})["stream_id"]
+        done = False
+        try:
+            while not done:
+                result = self.call("llm.read", {"stream_id": stream_id, "timeout": 0.5})
+                yield from result["chunks"]
+                done = bool(result["done"])
+        finally:
+            if not done:
+                try:
+                    self.call("llm.cancel", {"stream_id": stream_id})
+                except (OSError, PermissionError, ValueError, RuntimeError):
+                    pass

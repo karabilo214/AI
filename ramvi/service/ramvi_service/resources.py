@@ -1,14 +1,20 @@
 """Общий FIFO-арбитр ресурсов и аренды одной модели, без второго планировщика."""
 
+import contextlib
 import math
 import threading
 import time
 import uuid
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Generator, Iterator
 from typing import Any
 
-from ramvi_service.contracts.modules import Authority, LLMProvider, Owner
+from ramvi_service.contracts.modules import (
+    Authority,
+    LLMProvider,
+    Owner,
+    StreamingLLMProvider,
+)
 
 
 def amounts(values: dict[str, int]) -> dict[str, int]:
@@ -149,6 +155,7 @@ class SharedLLM:
         self._broker = ResourceBroker(authority, {"llm": 1})
         self._owners: set[str] = set()
         self._lock = threading.RLock()
+        self._finished = threading.Condition(self._lock)
         self._active: tuple[Owner, threading.Event] | None = None
         self._requests: dict[str, set[threading.Event]] = {}
         self._released = False
@@ -166,20 +173,27 @@ class SharedLLM:
             if self._on_last_release:
                 self._on_last_release()
 
-    def complete(
-        self,
-        owner: Owner,
-        request: dict[str, Any],
-        *,
-        timeout: float = 30,
-        cancel: threading.Event | None = None,
-    ) -> dict[str, Any]:
+    @contextlib.contextmanager
+    def _slot(self, owner: Owner, timeout: float, cancel: threading.Event) -> Iterator[None]:
+        """Очередь и аренда единственного слота модели на время одного запроса."""
         self.authority.require(owner)
         with self._lock:
             if owner.token not in self._owners:
                 raise PermissionError("нет аренды модели")
-        cancel = cancel if cancel is not None else threading.Event()
-        with self._lock:
+        with self._finished:
+            # Перебивание: прошлый запрос владельца уже отменён и сейчас останавливается.
+            # Новый ждёт его конца, а не получает отказ по квоте.
+            end = time.monotonic() + timeout
+            while (
+                self._active is not None
+                and self._active[0] == owner
+                and self._active[1].is_set()
+                and not cancel.is_set()
+            ):
+                left = end - time.monotonic()
+                if left <= 0:
+                    raise TimeoutError("прошлый запрос не остановился")
+                self._finished.wait(min(0.05, left))
             if owner.token not in self._owners:
                 raise InterruptedError("владелец остановлен")
             self._requests.setdefault(owner.token, set()).add(cancel)
@@ -193,15 +207,12 @@ class SharedLLM:
                 if cancel.is_set():
                     raise InterruptedError("запрос отменён")
                 self._active = (owner, cancel)
-            result = self.provider.complete(request, cancel)
-            self.authority.require(owner)
-            if cancel.is_set():
-                raise InterruptedError("поздний ответ отменён")
-            return result
+            yield
         finally:
             with self._lock:
                 if self._active is not None and self._active[1] is cancel:
                     self._active = None
+                    self._finished.notify_all()
                 requests = self._requests.get(owner.token)
                 if requests is not None:
                     requests.discard(cancel)
@@ -210,6 +221,42 @@ class SharedLLM:
                 self._release_last()
             if lease is not None:
                 self._broker.release(owner, lease)
+
+    def complete(
+        self,
+        owner: Owner,
+        request: dict[str, Any],
+        *,
+        timeout: float = 30,
+        cancel: threading.Event | None = None,
+    ) -> dict[str, Any]:
+        cancel = cancel if cancel is not None else threading.Event()
+        with self._slot(owner, timeout, cancel):
+            result = self.provider.complete(request, cancel)
+            self.authority.require(owner)
+            if cancel.is_set():
+                raise InterruptedError("поздний ответ отменён")
+            return result
+
+    def stream(
+        self,
+        owner: Owner,
+        request: dict[str, Any],
+        *,
+        timeout: float = 30,
+        cancel: threading.Event | None = None,
+    ) -> Generator[dict[str, Any]]:
+        """Как complete, но куски идут по мере генерации; слот занят до конца потока."""
+        provider = self.provider
+        if not provider.capabilities.streaming or not isinstance(provider, StreamingLLMProvider):
+            raise NotImplementedError("Provider не объявил streaming")
+        cancel = cancel if cancel is not None else threading.Event()
+        with self._slot(owner, timeout, cancel):
+            for chunk in provider.stream(request, cancel):
+                self.authority.require(owner)
+                if cancel.is_set():
+                    raise InterruptedError("запрос отменён")
+                yield chunk
 
     def release_owner(self, owner: Owner) -> None:
         with self._lock:
