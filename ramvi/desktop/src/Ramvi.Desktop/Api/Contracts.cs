@@ -1,0 +1,85 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Ramvi.Desktop.Api;
+
+// Контракт HTTP API сервиса `ramvi_service.ui_api` (3.4). Имена полей — snake_case.
+
+public sealed record ChatInfo(
+    string Id,
+    string Title,
+    string? ModelId,
+    double CreatedAt,
+    double UpdatedAt,
+    bool Generating = false);
+
+public sealed record Attachment(string Name, string Text, int Bytes = 0);
+
+public sealed record MessageInfo(
+    string Id,
+    string ChatId,
+    string Role,
+    string Content,
+    double CreatedAt,
+    string Reasoning = "",
+    string? Finish = null,
+    IReadOnlyList<Attachment>? Attachments = null);
+
+public sealed record ModelInfo(string Id, string Architecture, string? Quant, long? Bytes);
+
+public sealed record Limits(
+    int MaxTextChars,
+    int MaxFiles,
+    int MaxFileBytes,
+    int MaxTotalBytes,
+    int MaxNameChars);
+
+public sealed record EngineStatus(string? ModelId, string? Loading, string State);
+
+public sealed record ServiceStatus(EngineStatus Engine, Limits Limits);
+
+public sealed record ApiError(string Code, Dictionary<string, JsonElement>? Params);
+
+/// <summary>Событие потока ответа: user, regenerate, status, reasoning, text, done.</summary>
+public sealed record ChatEvent(
+    string Type,
+    string? Text = null,
+    MessageInfo? Message = null,
+    string? State = null,
+    string? ModelId = null,
+    string? Finish = null,
+    ApiError? Error = null,
+    IReadOnlyList<string>? Removed = null);
+
+internal sealed record ChatsResponse(IReadOnlyList<ChatInfo> Chats);
+
+internal sealed record ChatResponse(ChatInfo Chat);
+
+internal sealed record MessagesResponse(IReadOnlyList<MessageInfo> Messages);
+
+internal sealed record ModelsResponse(IReadOnlyList<ModelInfo> Models);
+
+internal sealed record ErrorResponse(ApiError Error);
+
+internal sealed record SendRequest(string Text, IReadOnlyList<SendAttachment> Attachments);
+
+internal sealed record SendAttachment(string Name, string Text);
+
+internal sealed record ModelRequest(string? ModelId);
+
+internal sealed record StopResponse(bool Stopped);
+
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(ChatsResponse))]
+[JsonSerializable(typeof(ChatResponse))]
+[JsonSerializable(typeof(MessagesResponse))]
+[JsonSerializable(typeof(ModelsResponse))]
+[JsonSerializable(typeof(ServiceStatus))]
+[JsonSerializable(typeof(ErrorResponse))]
+[JsonSerializable(typeof(ChatEvent))]
+[JsonSerializable(typeof(SendRequest))]
+[JsonSerializable(typeof(ModelRequest))]
+[JsonSerializable(typeof(StopResponse))]
+internal sealed partial class ApiJson : JsonSerializerContext;

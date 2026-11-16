@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/Ramvi.Desktop/Ramvi.Desktop.csproj" />
+  <Project Path="tests/Ramvi.Desktop.Tests/Ramvi.Desktop.Tests.csproj" />
+</Solution>

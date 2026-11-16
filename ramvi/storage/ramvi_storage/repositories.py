@@ -16,6 +16,7 @@ from ramvi_storage.database import Database, StorageError
 from ramvi_storage.schema import (
     AGENT_STATUSES,
     DOWNLOAD_STATES,
+    MESSAGE_FINISH,
     MESSAGE_ROLES,
     TOOL_PERMISSIONS,
 )
@@ -198,6 +199,9 @@ class Message:
     content: str
     created_at: float
     token_usage: dict[str, Any] | None = None
+    reasoning: str = ""
+    finish: str | None = None
+    attachments: list[dict[str, Any]] | None = None
 
 
 def _chat(row: sqlite3.Row) -> Chat:
@@ -212,6 +216,9 @@ def _message(row: sqlite3.Row) -> Message:
         content=row["content"],
         created_at=row["created_at"],
         token_usage=_load(row["token_usage"]),
+        reasoning=row["reasoning"],
+        finish=row["finish"],
+        attachments=_load(row["attachments"]),
     )
 
 
@@ -282,17 +289,32 @@ class Chats:
         content: str,
         *,
         token_usage: dict[str, Any] | None = None,
+        reasoning: str = "",
+        finish: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         message_id: str | None = None,
         now: float | None = None,
     ) -> Message:
         _choice(role, MESSAGE_ROLES, "роль")
+        if finish is not None:
+            _choice(finish, MESSAGE_FINISH, "причина завершения")
         stamp = _now(now)
         mid = message_id or new_id()
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO messages (id, chat_id, role, content, token_usage, created_at)"
-                " VALUES (?,?,?,?,?,?)",
-                (mid, chat_id, role, content, _json(token_usage), stamp),
+                "INSERT INTO messages (id, chat_id, role, content, token_usage, created_at,"
+                " reasoning, finish, attachments) VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    mid,
+                    chat_id,
+                    role,
+                    content,
+                    _json(token_usage),
+                    stamp,
+                    reasoning,
+                    finish,
+                    _json(attachments),
+                ),
             )
             self.db.execute("UPDATE chats SET updated_at = ? WHERE id = ?", (stamp, chat_id))
         row = self.db.one("SELECT * FROM messages WHERE id = ?", (mid,))

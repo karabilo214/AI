@@ -1,0 +1,147 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:l="using:Ramvi.Desktop.Localization"
+        xmlns:vm="using:Ramvi.Desktop.ViewModels"
+        xmlns:api="using:Ramvi.Desktop.Api"
+        x:Class="Ramvi.Desktop.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{l:T app.title}"
+        Width="1100" Height="720" MinWidth="720" MinHeight="480"
+        DragDrop.AllowDrop="True">
+  <Grid ColumnDefinitions="260,*">
+
+    <!-- Список диалогов -->
+    <DockPanel Grid.Column="0" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+      <Button x:Name="NewChatButton" DockPanel.Dock="Top" Margin="12" HorizontalAlignment="Stretch"
+              Content="{l:T chat.new}" Command="{Binding NewChatCommand}" />
+      <TextBlock DockPanel.Dock="Top" Margin="16,4" Opacity="0.6" Text="{l:T chat.no_chats}"
+                 IsVisible="{Binding !HasChats}" />
+      <ListBox x:Name="ChatList" ItemsSource="{Binding Chats}" SelectedItem="{Binding SelectedChat}"
+               Background="Transparent">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:ChatItemViewModel">
+            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis">
+              <TextBlock.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="{l:T chat.delete}"
+                            Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).DeleteChatCommand}"
+                            CommandParameter="{Binding}" />
+                </ContextMenu>
+              </TextBlock.ContextMenu>
+            </TextBlock>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+
+    <!-- Диалог -->
+    <DockPanel Grid.Column="1">
+      <!-- Верхняя полоса: модель, очистка -->
+      <Grid DockPanel.Dock="Top" Margin="12,8" ColumnDefinitions="Auto,*,Auto,Auto">
+        <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Text="{l:T chat.model}" />
+        <ComboBox x:Name="ModelBox" Grid.Column="1" MinWidth="240" HorizontalAlignment="Left"
+                  ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
+                  IsEnabled="{Binding IsIdle}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="api:ModelInfo">
+              <TextBlock Text="{Binding Id}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <Button x:Name="DeleteButton" Grid.Column="2" Margin="8,0,0,0" Content="{l:T chat.delete}"
+                Command="{Binding DeleteChatCommand}" />
+        <Button x:Name="ClearButton" Grid.Column="3" Margin="8,0,0,0" Content="{l:T chat.clear}"
+                Command="{Binding ClearCommand}" />
+      </Grid>
+
+      <!-- Строка состояния -->
+      <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="12,0,12,8" Opacity="0.75"
+                 Text="{Binding Status}" TextWrapping="Wrap"
+                 Classes.error="{Binding IsError}" />
+
+      <!-- Поле ввода -->
+      <Grid DockPanel.Dock="Bottom" Margin="12,4" RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+        <ItemsControl Grid.Row="0" Grid.ColumnSpan="2" ItemsSource="{Binding Attachments}" Margin="0,0,0,4">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:AttachmentViewModel">
+              <Border Margin="0,0,6,4" Padding="8,2" CornerRadius="10"
+                      Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock VerticalAlignment="Center" Text="{Binding Label}" />
+                  <Button Padding="4,0" Content="×" ToolTip.Tip="{l:T chat.remove_attachment}"
+                          Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).RemoveAttachmentCommand}"
+                          CommandParameter="{Binding}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBox x:Name="InputBox" Grid.Row="1" Grid.Column="0" MinHeight="44" MaxHeight="200"
+                 AcceptsReturn="True" TextWrapping="Wrap"
+                 PlaceholderText="{l:T chat.input_placeholder}" Text="{Binding Input}" />
+        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8,0,0,0"
+                    VerticalAlignment="Bottom">
+          <Button x:Name="RegenerateButton" Content="{l:T chat.regenerate}" Command="{Binding RegenerateCommand}"
+                  IsVisible="{Binding IsIdle}" />
+          <Button x:Name="SendButton" Classes="accent" Content="{l:T chat.send}" Command="{Binding SendCommand}"
+                  IsVisible="{Binding IsIdle}" />
+          <Button x:Name="StopButton" Content="{l:T chat.stop}" Command="{Binding StopCommand}"
+                  IsVisible="{Binding IsGenerating}" />
+        </StackPanel>
+      </Grid>
+
+      <TextBlock DockPanel.Dock="Bottom" Margin="12,0" FontSize="11" Opacity="0.5" Text="{l:T chat.drop_hint}" />
+
+      <!-- Сообщения -->
+      <ScrollViewer x:Name="MessagesScroll" Margin="12,0">
+        <ItemsControl x:Name="MessageList" ItemsSource="{Binding Messages}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:MessageViewModel">
+              <Border Margin="0,6" Padding="12,8" CornerRadius="8"
+                      Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                      Classes.user="{Binding IsUser}">
+                <StackPanel Spacing="4">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding Author}" />
+                    <Button Grid.Column="1" Padding="6,0" Content="{l:T chat.copy}"
+                            IsVisible="{Binding IsAssistant}"
+                            Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CopyCommand}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+                  <Expander Header="{l:T chat.thinking}" IsVisible="{Binding HasReasoning}"
+                            IsExpanded="{Binding IsThinkingOpen}" HorizontalAlignment="Stretch">
+                    <SelectableTextBlock Opacity="0.7" TextWrapping="Wrap" Text="{Binding Reasoning}" />
+                  </Expander>
+                  <SelectableTextBlock TextWrapping="Wrap" Text="{Binding Content}" />
+                  <ItemsControl ItemsSource="{Binding Attachments}" IsVisible="{Binding HasAttachments}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:AttachmentViewModel">
+                        <TextBlock FontSize="12" Opacity="0.7" Text="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock FontSize="12" Opacity="0.7" Text="{Binding Note}" IsVisible="{Binding HasNote}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </DockPanel>
+  </Grid>
+
+  <Window.Styles>
+    <Style Selector="TextBlock.error">
+      <Setter Property="Foreground" Value="#C62828" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Border.user">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}" />
+    </Style>
+  </Window.Styles>
+</Window>

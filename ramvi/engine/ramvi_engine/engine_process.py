@@ -41,6 +41,11 @@ class EngineProcess:
         self._start_gate = threading.Lock()
 
     @property
+    def api_key(self) -> str:
+        """Ключ этого экземпляра — только для локального клиента сервиса, не в файлы."""
+        return self._key
+
+    @property
     def base_url(self) -> str:
         if self._port is None:
             raise RuntimeError("engine process not started")

@@ -38,3 +38,7 @@ dist/
 engine/ramvi_engine/native/*.build.json
 node_modules/
 target/
+
+# Оболочка .NET (3.4): результаты сборки
+desktop/**/bin/
+desktop/**/obj/

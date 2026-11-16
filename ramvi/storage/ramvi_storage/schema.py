@@ -17,6 +17,7 @@ DOWNLOAD_STATES = ("queued", "running", "paused", "verifying", "done", "failed",
 AGENT_STATUSES = ("planned", "running", "waiting_approval", "done", "failed", "cancelled")
 MESSAGE_ROLES = ("system", "user", "assistant", "tool")
 TOOL_PERMISSIONS = ("auto", "approved", "denied")
+MESSAGE_FINISH = ("stop", "length", "cancelled", "error")
 
 
 def _in(values: tuple[str, ...]) -> str:
@@ -119,7 +120,20 @@ CREATE TABLE downloads (
 CREATE INDEX downloads_by_state ON downloads (state);
 """
 
-CORE_MIGRATIONS: tuple[Migration, ...] = (Migration(1, "core entities (TZ section 10)", _V1),)
+# v2 (3.4, чат): thinking отдельно от ответа, причина завершения (остановлен
+# пользователем — cancelled) и вложенные текстовые файлы сообщения.
+_V2 = f"""
+ALTER TABLE messages ADD COLUMN reasoning TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN finish TEXT
+    CHECK (finish IS NULL OR finish IN ({_in(MESSAGE_FINISH)}));
+ALTER TABLE messages ADD COLUMN attachments TEXT
+    CHECK (attachments IS NULL OR json_valid(attachments));
+"""
+
+CORE_MIGRATIONS: tuple[Migration, ...] = (
+    Migration(1, "core entities (TZ section 10)", _V1),
+    Migration(2, "chat: reasoning, finish, attachments", _V2),
+)
 
 
 def open_core(data_dir: str | Path, *, file_name: str = FILE_NAME) -> Database:

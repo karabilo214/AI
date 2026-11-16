@@ -78,9 +78,9 @@ def test_reopen_is_idempotent_and_keeps_data(tmp_path: Path) -> None:
         chat = Chats(db).create("первый", now=1.0)
         Chats(db).add_message(chat.id, "user", "привет", now=2.0)
     with open_core(tmp_path) as db:
-        assert applied_version(db, "core") == 1
+        assert applied_version(db, "core") == len(CORE_MIGRATIONS)
         assert [m.content for m in Chats(db).messages(chat.id)] == ["привет"]
-        assert len(db.all("SELECT * FROM schema_migrations")) == 1
+        assert len(db.all("SELECT * FROM schema_migrations")) == len(CORE_MIGRATIONS)
 
 
 def test_moved_database_file_still_opens(tmp_path: Path) -> None:
@@ -163,9 +163,9 @@ V2 = Migration(2, "notes tag", "ALTER TABLE m_notes ADD COLUMN tag TEXT;")
 def test_owners_have_independent_chains(db: Database) -> None:
     assert migrate(db, "test.module", [V1]) == 1
     assert applied_version(db, "test.module") == 1
-    assert applied_version(db, "core") == 1
+    assert applied_version(db, "core") == len(CORE_MIGRATIONS)
     assert migrate(db, "test.module", [V1, V2]) == 2
-    assert applied_version(db, "core") == 1
+    assert applied_version(db, "core") == len(CORE_MIGRATIONS)
     assert applied_version(db, "other.module") == 0
 
 
@@ -252,6 +252,40 @@ def test_chats_order_messages_and_regenerate(db: Database) -> None:
     assert one(db, "SELECT COUNT(*) FROM messages WHERE chat_id = ?", (new.id,))[0] == 0
     with pytest.raises(NotFound):
         chats.get(new.id)
+
+
+def test_message_reasoning_finish_attachments_roundtrip(db: Database) -> None:
+    chats = Chats(db)
+    chat = chats.create("")
+    files = [{"name": "a.txt", "bytes": 3, "text": "abc"}]
+    chats.add_message(chat.id, "user", "вопрос", attachments=files)
+    chats.add_message(chat.id, "assistant", "полуответ", reasoning="думаю", finish="cancelled")
+    user, answer = chats.messages(chat.id)
+    assert user.attachments == files and user.reasoning == "" and user.finish is None
+    assert (answer.reasoning, answer.finish, answer.attachments) == ("думаю", "cancelled", None)
+    with pytest.raises(ValueError):
+        chats.add_message(chat.id, "assistant", "x", finish="exploded")
+    with pytest.raises(ConstraintError):  # CHECK в базе, мимо проверки репозитория
+        db.execute(
+            "INSERT INTO messages (id, chat_id, role, content, created_at, finish)"
+            " VALUES ('m', ?, 'assistant', '', 0, 'exploded')",
+            (chat.id,),
+        )
+
+
+def test_v1_database_upgrades_to_v2_keeping_messages(tmp_path: Path) -> None:
+    with Database(tmp_path / "ramvi.sqlite3") as old:
+        migrate(old, "core", CORE_MIGRATIONS[:1])
+        old.execute("INSERT INTO chats VALUES ('c', 'старый', NULL, 1, 1)")
+        old.execute(
+            "INSERT INTO messages (id, chat_id, role, content, created_at)"
+            " VALUES ('m', 'c', 'user', 'до обновления', 1)"
+        )
+    with open_core(tmp_path) as db:
+        assert applied_version(db, "core") == 2
+        (message,) = Chats(db).messages("c")
+        assert (message.content, message.reasoning, message.finish) == ("до обновления", "", None)
+    assert len(list((tmp_path / "backups").glob("*.core.v1.*.bak"))) == 1
 
 
 # --- модели ---------------------------------------------------------------------------

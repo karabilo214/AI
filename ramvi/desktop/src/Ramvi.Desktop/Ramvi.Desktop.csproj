@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Ramvi.Desktop</RootNamespace>
+    <AssemblyName>RAMVI</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Общий каталог переводов (3.14): тот же файл читает сервис. -->
+    <EmbeddedResource Include="../../../i18n/*.json" LogicalName="i18n.%(Filename).json" />
+    <InternalsVisibleTo Include="Ramvi.Desktop.Tests" />
+  </ItemGroup>
+</Project>
