@@ -9,6 +9,7 @@ import os
 import tempfile
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
+from typing import Any
 
 LANGUAGES = ("ru", "en", "uk")
 FILE_NAME = "settings.json"
@@ -21,14 +22,26 @@ class Settings:
     language: str = "ru"
     api_port: int = 11435
     network_access: bool = False  # слушать не только 127.0.0.1 — только по явному включению
+    default_model: str | None = None  # 3.6: модель новых чатов (последний явный выбор)
+    onboarding_done: bool = False  # 3.6: мастер первого запуска пройден
 
     def validate(self) -> "Settings":
         if self.language not in LANGUAGES:
             raise ValueError(f"язык должен быть одним из {LANGUAGES}")
-        if isinstance(self.api_port, bool) or not isinstance(self.api_port, int) or not 1024 <= self.api_port <= 65535:
+        if (
+            isinstance(self.api_port, bool)
+            or not isinstance(self.api_port, int)
+            or not 1024 <= self.api_port <= 65535
+        ):
             raise ValueError("порт API должен быть целым числом 1024–65535")
         if not isinstance(self.network_access, bool):
             raise ValueError("сетевой доступ должен быть true/false")
+        if self.default_model is not None and (
+            not isinstance(self.default_model, str) or not self.default_model.strip()
+        ):
+            raise ValueError("default_model должен быть непустой строкой или null")
+        if not isinstance(self.onboarding_done, bool):
+            raise ValueError("onboarding_done должен быть true/false")
         for name in ("data_dir", "models_dir"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
@@ -40,14 +53,17 @@ class Settings:
         path = Path(getattr(self, name))
         return path if path.is_absolute() else Path(app_dir) / path
 
-    def with_path(self, app_dir: str | os.PathLike[str], name: str, path: str | os.PathLike[str]) -> "Settings":
+    def with_path(
+        self, app_dir: str | os.PathLike[str], name: str, path: str | os.PathLike[str]
+    ) -> "Settings":
         """Задать папку; внутри папки приложения сохраняется относительный путь."""
         absolute = Path(path).resolve()
         try:
             value = absolute.relative_to(Path(app_dir).resolve()).as_posix() or "."
         except ValueError:
             value = str(absolute)
-        return replace(self, **{name: value}).validate()
+        changes: dict[str, Any] = {name: value}
+        return replace(self, **changes).validate()
 
 
 def load(data_dir: str | os.PathLike[str]) -> Settings:

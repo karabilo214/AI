@@ -34,15 +34,29 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _streamCancel;
     private string? _generatingChatId;
 
-    public MainViewModel(IChatApi api, Func<string, Task>? copy = null, Func<string, Task>? openFolder = null)
-        : this(() => Task.FromResult(api), copy, openFolder)
+    public MainViewModel(
+        IChatApi api,
+        Func<string, Task>? copy = null,
+        Func<string, Task>? openFolder = null,
+        Func<Task<string?>>? pickModelFile = null)
+        : this(() => Task.FromResult(api), copy, openFolder, pickModelFile)
     {
     }
 
     /// <param name="connect">Запустить сервис и вернуть клиент; повторяется по «Повторить».</param>
-    public MainViewModel(Func<Task<IChatApi>> connect, Func<string, Task>? copy = null, Func<string, Task>? openFolder = null)
+    /// <param name="pickModelFile">Выбор файла GGUF в мастере; null — отмена.</param>
+    public MainViewModel(
+        Func<Task<IChatApi>> connect,
+        Func<string, Task>? copy = null,
+        Func<string, Task>? openFolder = null,
+        Func<Task<string?>>? pickModelFile = null)
     {
         _connect = connect;
+        Onboarding = new OnboardingViewModel(
+            () => _api,
+            Models,
+            pickModelFile ?? (() => Task.FromResult<string?>(null)),
+            OnboardingCompletedAsync);
         _copy = copy ?? (_ => Task.CompletedTask);
         _openFolder = openFolder ?? (_ => Task.CompletedTask);
         _status = L["status.connecting"];
@@ -120,6 +134,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public Command OpenFolderCommand { get; }
 
     public Command DismissCommand { get; }
+
+    /// <summary>Мастер первого запуска (3.6).</summary>
+    public OnboardingViewModel Onboarding { get; }
 
     public bool IsConnected => _connected is not null;
 
@@ -246,13 +263,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             }
 
             await ReloadChatsAsync().ConfigureAwait(true);
+            var onboarding = await _api.OnboardingAsync().ConfigureAwait(true);
             SelectedChat = Chats.FirstOrDefault();
             if (SelectedChat is null)
             {
-                ShowModel(status.Engine.ModelId ?? Models.FirstOrDefault()?.Id);
+                ShowModel(status.Engine.ModelId ?? onboarding.DefaultModel ?? Models.FirstOrDefault()?.Id);
             }
 
             SetStatus(L["status.ready"]);
+            UpdateState();
+            if (!onboarding.Done)
+            {
+                await Onboarding.OpenAsync(onboarding.DefaultModel).ConfigureAwait(true);
+            }
         }
         catch (ServiceStartException error)
         {
@@ -678,6 +701,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             await RefreshModelsAsync().ConfigureAwait(true);
         }
+    }
+
+    /// <summary>Мастер закрыт: выбранная модель — для нового диалога.</summary>
+    private Task OnboardingCompletedAsync(OnboardingState state)
+    {
+        if (SelectedChat is null && state.DefaultModel is { } model)
+        {
+            ShowModel(model);
+        }
+
+        UpdateState();
+        return Task.CompletedTask;
     }
 
     /// <summary>Перечитать список моделей (модель могли добавить, пока окно открыто).</summary>

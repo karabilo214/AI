@@ -122,6 +122,56 @@ internal sealed class FakeChatApi : IChatApi
         }
     }
 
+    public List<SystemCheck> SystemChecks { get; } =
+    [
+        new("os", "ok", "system.os", Json(("name", "Windows 11"), ("arch", "AMD64"))),
+        new("gpu", "fail", "system.gpu_none", null),
+    ];
+
+    public OnboardingState Onboarding { get; set; } = new(true, null);
+
+    /// <summary>Что вернёт импорт по пути: модель или ошибку.</summary>
+    public Dictionary<string, object> Imports { get; } = [];
+
+    public Task<SystemReport> SystemAsync(CancellationToken cancel = default)
+    {
+        Calls.Add("system");
+        return Task.FromResult(new SystemReport(SystemChecks));
+    }
+
+    public Task<OnboardingState> OnboardingAsync(CancellationToken cancel = default) => Task.FromResult(Onboarding);
+
+    public Task<OnboardingState> CompleteOnboardingAsync(string? modelId, CancellationToken cancel = default)
+    {
+        Calls.Add($"complete {modelId ?? "-"}");
+        Onboarding = new OnboardingState(true, modelId ?? Onboarding.DefaultModel);
+        return Task.FromResult(Onboarding);
+    }
+
+    public Task<ModelInfo> ImportModelAsync(string path, CancellationToken cancel = default)
+    {
+        Calls.Add($"import {path}");
+        return Imports[path] switch
+        {
+            ModelInfo model => AddModel(model),
+            ApiException error => Task.FromException<ModelInfo>(error),
+            _ => throw new InvalidOperationException(),
+        };
+    }
+
+    private Task<ModelInfo> AddModel(ModelInfo model)
+    {
+        if (!Models.Contains(model))
+        {
+            Models.Add(model);
+        }
+
+        return Task.FromResult(model);
+    }
+
+    public static Dictionary<string, System.Text.Json.JsonElement> Json(params (string Name, object Value)[] values) =>
+        values.ToDictionary(v => v.Name, v => JsonSerializer.SerializeToElement(v.Value, TestJson.Default.Object));
+
     public static ApiException Error(string code, params (string Name, object Value)[] parameters) =>
         new(code, parameters.ToDictionary(p => p.Name, p => JsonSerializer.SerializeToElement(p.Value, TestJson.Default.Object)));
 }

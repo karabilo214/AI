@@ -51,6 +51,17 @@ public sealed record ChatEvent(
     ApiError? Error = null,
     IReadOnlyList<string>? Removed = null);
 
+/// <summary>Одна проверка мастера: статус ok / warn / fail / unknown и текст по ключу.</summary>
+public sealed record SystemCheck(string Id, string Status, string Code, Dictionary<string, JsonElement>? Params);
+
+public sealed record SystemReport(IReadOnlyList<SystemCheck> Checks);
+
+public sealed record OnboardingState(bool Done, string? DefaultModel);
+
+internal sealed record ImportRequest(string Path);
+
+internal sealed record ImportResponse(ModelInfo Model);
+
 internal sealed record ChatsResponse(IReadOnlyList<ChatInfo> Chats);
 
 internal sealed record ChatResponse(ChatInfo Chat);
@@ -82,4 +93,8 @@ internal sealed record StopResponse(bool Stopped);
 [JsonSerializable(typeof(SendRequest))]
 [JsonSerializable(typeof(ModelRequest))]
 [JsonSerializable(typeof(StopResponse))]
+[JsonSerializable(typeof(SystemReport))]
+[JsonSerializable(typeof(OnboardingState))]
+[JsonSerializable(typeof(ImportRequest))]
+[JsonSerializable(typeof(ImportResponse))]
 internal sealed partial class ApiJson : JsonSerializerContext;

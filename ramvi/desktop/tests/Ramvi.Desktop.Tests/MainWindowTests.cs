@@ -95,4 +95,35 @@ public sealed class MainWindowTests
         Assert.True(window.FindControl<ComboBox>("ModelBox")!.IsDropDownOpen);
         window.Close();
     }
+
+    [AvaloniaFact]
+    public async Task Onboarding_overlay_shows_checks_then_hides_after_start()
+    {
+        Localizer.Current = Localizer.Load("ru");
+        var api = new FakeChatApi { Onboarding = new Api.OnboardingState(false, null) };
+        var model = new MainViewModel(api);
+        var window = new MainWindow { DataContext = model };
+        window.Show();
+        await model.InitializeAsync();
+        Dispatcher.UIThread.RunJobs();
+
+        var overlay = window.FindControl<Border>("Onboarding")!;
+        Assert.True(overlay.IsVisible);
+        Assert.True(window.FindControl<StackPanel>("CheckStep")!.IsVisible);
+        Assert.False(window.FindControl<StackPanel>("ModelStep")!.IsVisible);
+        var texts = overlay.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.Contains("Добро пожаловать в RAMVI", texts);
+        Assert.Contains("Система: Windows 11 (AMD64)", texts);
+
+        window.FindControl<Button>("NextButton")!.Command!.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(window.FindControl<StackPanel>("ModelStep")!.IsVisible);
+        Assert.Equal(2, window.FindControl<ListBox>("WizardModels")!.ItemCount);
+
+        await model.Onboarding.StartCommand.RunAsync();
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(overlay.IsVisible);
+        Assert.Empty(Localizer.Current.Missing);
+        window.Close();
+    }
 }

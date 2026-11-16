@@ -160,9 +160,79 @@
         </ItemsControl>
       </ScrollViewer>
     </DockPanel>
+
+    <!-- Мастер первого запуска (UI-01, 3.6): поверх всего окна -->
+    <Border x:Name="Onboarding" Grid.ColumnSpan="2" ZIndex="10" IsVisible="{Binding Onboarding.IsOpen}"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+      <ScrollViewer>
+        <StackPanel MaxWidth="640" Margin="24" Spacing="12" HorizontalAlignment="Center">
+          <TextBlock FontSize="22" FontWeight="SemiBold" Text="{l:T onboarding.title}" />
+
+          <!-- Шаг 1: проверка компьютера -->
+          <StackPanel x:Name="CheckStep" Spacing="8" IsVisible="{Binding Onboarding.IsCheckStep}">
+            <TextBlock FontWeight="SemiBold" Text="{l:T onboarding.check_title}" />
+            <TextBlock Opacity="0.7" Text="{l:T onboarding.checking}" IsVisible="{Binding Onboarding.IsChecking}" />
+            <ItemsControl x:Name="CheckList" ItemsSource="{Binding Onboarding.Checks}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CheckItem">
+                  <Grid ColumnDefinitions="28,*" Margin="0,3">
+                    <TextBlock FontWeight="Bold" Text="{Binding Mark}"
+                               Classes.ok="{Binding IsOk}" Classes.warn="{Binding IsWarn}" Classes.fail="{Binding IsFail}" />
+                    <TextBlock Grid.Column="1" TextWrapping="Wrap" Text="{Binding Text}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button x:Name="SkipButton1" Content="{l:T onboarding.skip}" Command="{Binding Onboarding.SkipCommand}" />
+              <Button x:Name="NextButton" Classes="accent" Content="{l:T onboarding.next}"
+                      Command="{Binding Onboarding.NextCommand}" />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Шаг 2: модель -->
+          <StackPanel x:Name="ModelStep" Spacing="8" IsVisible="{Binding Onboarding.IsModelStep}">
+            <TextBlock FontWeight="SemiBold" Text="{l:T onboarding.model_title}" />
+            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="{l:T onboarding.no_models}"
+                       IsVisible="{Binding !Onboarding.HasModels}" />
+            <ListBox x:Name="WizardModels" ItemsSource="{Binding Onboarding.Models}" MaxHeight="240"
+                     SelectedItem="{Binding Onboarding.Selected}" IsVisible="{Binding Onboarding.HasModels}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="api:ModelInfo">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Id}" />
+                    <TextBlock Opacity="0.6" Text="{Binding Quant}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <Button x:Name="ImportButton" Content="{l:T onboarding.import}" Command="{Binding Onboarding.ImportCommand}" />
+            <TextBlock FontSize="12" Opacity="0.7" TextWrapping="Wrap" Text="{l:T onboarding.import_note}" />
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button x:Name="BackButton" Content="{l:T onboarding.back}" Command="{Binding Onboarding.BackCommand}" />
+              <Button x:Name="SkipButton2" Content="{l:T onboarding.skip}" Command="{Binding Onboarding.SkipCommand}" />
+              <Button x:Name="StartButton" Classes="accent" Content="{l:T onboarding.start}"
+                      Command="{Binding Onboarding.StartCommand}" />
+            </StackPanel>
+          </StackPanel>
+
+          <TextBlock x:Name="OnboardingError" Classes="error" TextWrapping="Wrap"
+                     Text="{Binding Onboarding.Error}" IsVisible="{Binding Onboarding.HasError}" />
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
   </Grid>
 
   <Window.Styles>
+    <Style Selector="TextBlock.ok">
+      <Setter Property="Foreground" Value="#2E7D32" />
+    </Style>
+    <Style Selector="TextBlock.warn">
+      <Setter Property="Foreground" Value="#B26A00" />
+    </Style>
+    <Style Selector="TextBlock.fail">
+      <Setter Property="Foreground" Value="#C62828" />
+    </Style>
     <Style Selector="TextBlock.error">
       <Setter Property="Foreground" Value="#C62828" />
       <Setter Property="Opacity" Value="1" />

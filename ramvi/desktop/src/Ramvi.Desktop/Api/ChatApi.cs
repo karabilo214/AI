@@ -40,6 +40,17 @@ public interface IChatApi
         string chatId, string text, IReadOnlyList<Attachment> attachments, CancellationToken cancel = default);
 
     IAsyncEnumerable<ChatEvent> RegenerateAsync(string chatId, CancellationToken cancel = default);
+
+    /// <summary>3.6: проверка компьютера для мастера первого запуска.</summary>
+    Task<SystemReport> SystemAsync(CancellationToken cancel = default);
+
+    Task<OnboardingState> OnboardingAsync(CancellationToken cancel = default);
+
+    /// <summary>Мастер пройден: с моделью или пропуском (null).</summary>
+    Task<OnboardingState> CompleteOnboardingAsync(string? modelId, CancellationToken cancel = default);
+
+    /// <summary>Подключить файл GGUF без копирования.</summary>
+    Task<ModelInfo> ImportModelAsync(string path, CancellationToken cancel = default);
 }
 
 /// <summary>HTTP-клиент `ramvi_service.ui_api`: только loopback, ключ в заголовке.</summary>
@@ -110,6 +121,20 @@ public sealed class ChatApiClient : IChatApi, IDisposable
 
     public IAsyncEnumerable<ChatEvent> RegenerateAsync(string chatId, CancellationToken cancel = default) =>
         StreamAsync($"chats/{Id(chatId)}/regenerate", null, cancel);
+
+    public Task<SystemReport> SystemAsync(CancellationToken cancel = default) =>
+        GetAsync("system", ApiJson.Default.SystemReport, cancel);
+
+    public Task<OnboardingState> OnboardingAsync(CancellationToken cancel = default) =>
+        GetAsync("onboarding", ApiJson.Default.OnboardingState, cancel);
+
+    public Task<OnboardingState> CompleteOnboardingAsync(string? modelId, CancellationToken cancel = default) =>
+        PostAsync("onboarding", new ModelRequest(modelId), ApiJson.Default.ModelRequest,
+            ApiJson.Default.OnboardingState, cancel);
+
+    public async Task<ModelInfo> ImportModelAsync(string path, CancellationToken cancel = default) =>
+        (await PostAsync("models/import", new ImportRequest(path), ApiJson.Default.ImportRequest,
+            ApiJson.Default.ImportResponse, cancel).ConfigureAwait(false)).Model;
 
     private async IAsyncEnumerable<ChatEvent> StreamAsync(
         string path, HttpContent? content, [EnumeratorCancellation] CancellationToken cancel)

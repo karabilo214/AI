@@ -34,7 +34,7 @@ public sealed partial class App : Application, IDisposable
 
     private async Task ConnectAsync(MainWindow window)
     {
-        var model = new MainViewModel(StartServiceAsync, window.CopyAsync, window.OpenFolderAsync);
+        var model = new MainViewModel(StartServiceAsync, window.CopyAsync, window.OpenFolderAsync, window.PickModelFileAsync);
         window.DataContext = model;
         await model.InitializeAsync().ConfigureAwait(true);
     }

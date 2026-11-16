@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from ramvi_service.chat import ChatError, ChatService, Generation
+from ramvi_service.onboarding import Onboarding
 
 MAX_BODY = 2 * 2**20
 PREFIX = "/ui/v1"
@@ -31,11 +32,13 @@ class UIServer:
         *,
         port: int = 0,
         engine_status: Callable[[], dict[str, Any]] | None = None,
+        onboarding: Onboarding | None = None,
     ) -> None:
         if len(token) < 16:
             raise ValueError("слишком короткий ключ интерфейса")
         self.chat, self._token = chat, token
         self._engine_status = engine_status or (lambda: {"state": "stopped"})
+        self.onboarding = onboarding
         self._server = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
         self._server.daemon_threads = True
         self._thread: threading.Thread | None = None
@@ -72,7 +75,12 @@ class UIServer:
         if method == "GET" and path == "/chats":
             return {"chats": chat.list_chats()}
         if method == "POST" and path == "/chats":
-            return {"chat": chat.create(_optional_str(body, "model_id"))}
+            model_id = _optional_str(body, "model_id")
+            created = chat.create(model_id)
+            self._remember(model_id)
+            return {"chat": created}
+        if path in ("/system", "/onboarding", "/models/import"):
+            return self._onboarding_route(method, path, body)
         match = re.fullmatch(f"/chats/{_ID}(/[a-z]+)?", path)
         if match is None:
             raise ChatError("api.not_found")
@@ -93,10 +101,32 @@ class UIServer:
             if action == "/clear":
                 return {"removed": chat.clear(chat_id)}
             if action == "/model":
-                return {"chat": chat.set_model(chat_id, _required_str(body, "model_id"))}
+                model_id = _required_str(body, "model_id")
+                changed = chat.set_model(chat_id, model_id)
+                self._remember(model_id)
+                return {"chat": changed}
             if action == "/title":
                 return {"chat": chat.rename(chat_id, _required_str(body, "title"))}
         raise ChatError("api.not_found")
+
+    def _onboarding_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
+        """3.6: мастер первого запуска."""
+        onboarding = self.onboarding
+        if onboarding is None:
+            raise ChatError("api.not_found")
+        if method == "GET" and path == "/system":
+            return onboarding.system()
+        if method == "GET" and path == "/onboarding":
+            return onboarding.state()
+        if method == "POST" and path == "/onboarding":
+            return onboarding.complete(_optional_str(body, "model_id"))
+        if method == "POST" and path == "/models/import":
+            return {"model": onboarding.import_model(_required_str(body, "path"))}
+        raise ChatError("api.not_found")
+
+    def _remember(self, model_id: str | None) -> None:
+        if model_id is not None and self.onboarding is not None:
+            self.onboarding.remember(model_id)
 
 
 def _required_str(body: dict[str, Any], name: str) -> str:

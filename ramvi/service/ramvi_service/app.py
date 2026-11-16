@@ -29,6 +29,7 @@ from ramvi_service.engines import (
     SwitchableProvider,
     default_engine,
 )
+from ramvi_service.onboarding import Onboarding
 from ramvi_service.resources import SharedLLM
 from ramvi_service.supervisor import RestartPolicy
 from ramvi_service.ui_api import UIServer
@@ -65,8 +66,12 @@ def build(
     )
     authority = Authority()
     llm = SharedLLM(authority, SwitchableProvider(engines))
-    chat = ChatService(db, llm, default_model=lambda: engines.model_id)
-    return UIServer(chat, token, port=port, engine_status=engines.status), engines
+    onboarding = Onboarding(data_dir, Models(db))
+    chat = ChatService(
+        db, llm, default_model=lambda: engines.model_id or onboarding.default_model()
+    )
+    server = UIServer(chat, token, port=port, engine_status=engines.status, onboarding=onboarding)
+    return server, engines
 
 
 def check_data_dir(data_dir: Path) -> None:
