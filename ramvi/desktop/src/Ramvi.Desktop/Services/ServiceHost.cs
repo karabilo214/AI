@@ -99,6 +99,11 @@ public sealed class ServiceHost : IAsyncDisposable
         {
             var line = await process.StandardOutput.ReadLineAsync(wait.Token).ConfigureAwait(false);
             using var ready = JsonDocument.Parse(line ?? "{}");
+            if (ready.RootElement.TryGetProperty("event", out var kind) && kind.GetString() == "error")
+            {
+                throw ServiceStartException.From(ready.RootElement);
+            }
+
             if (!ready.RootElement.TryGetProperty("port", out var port))
             {
                 throw new InvalidOperationException(errors.ToString().Trim());
@@ -145,6 +150,30 @@ public sealed class ServiceHost : IAsyncDisposable
         catch (InvalidOperationException)
         {
         }
+    }
+}
+
+/// <summary>Сервис не запустился по известной причине (например, нет доступа к папке данных).</summary>
+public sealed class ServiceStartException(string code, IReadOnlyDictionary<string, object?> parameters)
+    : Exception(code)
+{
+    public string Code { get; } = code;
+
+    public IReadOnlyDictionary<string, object?> Parameters { get; } = parameters;
+
+    internal static ServiceStartException From(JsonElement root)
+    {
+        var code = root.TryGetProperty("code", out var c) ? c.GetString() ?? "api.internal" : "api.internal";
+        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
+        if (root.TryGetProperty("params", out var p) && p.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var item in p.EnumerateObject())
+            {
+                values[item.Name] = item.Value.Clone();
+            }
+        }
+
+        return new ServiceStartException(code, values);
     }
 }
 

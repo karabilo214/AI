@@ -36,10 +36,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    public void ShowFatal(string message)
+    /// <summary>Открыть папку в файловом менеджере (действие «Открыть папку»).</summary>
+    public async Task OpenFolderAsync(string path)
     {
-        StatusText.Text = message;
-        StatusText.Classes.Add("error");
+        if (Launcher is { } launcher)
+        {
+            await launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(path)).ConfigureAwait(true);
+        }
     }
 
     /// <summary>Enter — отправить, Shift+Enter — новая строка.</summary>

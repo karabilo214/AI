@@ -41,6 +41,7 @@
         <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Text="{l:T chat.model}" />
         <ComboBox x:Name="ModelBox" Grid.Column="1" MinWidth="240" HorizontalAlignment="Left"
                   ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
+                  IsDropDownOpen="{Binding IsModelPickerOpen}"
                   IsEnabled="{Binding IsIdle}">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="api:ModelInfo">
@@ -53,6 +54,32 @@
         <Button x:Name="ClearButton" Grid.Column="3" Margin="8,0,0,0" Content="{l:T chat.clear}"
                 Command="{Binding ClearCommand}" />
       </Grid>
+
+      <!-- Плашка состояния UI-03: что случилось и кнопки восстановления -->
+      <Border x:Name="StateBanner" DockPanel.Dock="Top" Margin="12,0,12,8" Padding="12,8" CornerRadius="8"
+              IsVisible="{Binding HasBanner}"
+              Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+              Classes.problem="{Binding Banner.IsProblem, FallbackValue=False}">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2" VerticalAlignment="Center">
+            <TextBlock x:Name="StateTitle" FontWeight="SemiBold" Text="{Binding Banner.Title, FallbackValue=''}" />
+            <TextBlock x:Name="StateText" TextWrapping="Wrap" Text="{Binding Banner.Text, FallbackValue=''}" />
+          </StackPanel>
+          <ItemsControl x:Name="StateActions" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                        ItemsSource="{Binding Banner.Actions, FallbackValue={x:Null}}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="6" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:StateAction">
+                <Button Content="{Binding Label}" Command="{Binding Command}" CommandParameter="{Binding Parameter}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
+      </Border>
 
       <!-- Строка состояния -->
       <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="12,0,12,8" Opacity="0.75"
@@ -139,6 +166,10 @@
     <Style Selector="TextBlock.error">
       <Setter Property="Foreground" Value="#C62828" />
       <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Border.problem">
+      <Setter Property="BorderBrush" Value="#C62828" />
+      <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style Selector="Border.user">
       <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}" />

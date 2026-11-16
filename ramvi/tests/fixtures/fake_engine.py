@@ -3,10 +3,15 @@
 Ответ: thinking из двух кусков, затем слова `[<модель>] echo: <начало вопроса>`,
 `files=<число вложений>`. Слово LONG в вопросе — 400 слов (для Stop).
 Задержка между кусками — FAKE_ENGINE_DELAY секунд (по умолчанию 0.01).
+
+3.5: модель `model-<сбой>` (по имени файла из `--model`) падает при «загрузке»
+настоящей трассировкой Python, как движок: oom, cuda-oom, incompatible, denied,
+missing, crash (неизвестная причина).
 """
 
 import json
 import os
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,6 +21,34 @@ from ramvi_engine.processes import ParentWatch
 from ramvi_engine.protocol import API_VERSION
 
 watch = ParentWatch.from_env()
+MODEL = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else ""
+
+
+class NoMemoryPlan(RuntimeError):
+    """Как ramvi_engine.planning.automatic.NoMemoryPlan."""
+
+
+def load() -> None:
+    kind = os.path.splitext(os.path.basename(MODEL))[0].partition("model-")[2]
+    print(f"loading {MODEL}", flush=True)
+    if kind == "oom":
+        try:
+            raise RuntimeError("CUDA error: out of memory")
+        except RuntimeError as error:
+            raise NoMemoryPlan("no estimated GPU/owned-RAM fit after 4 candidates") from error
+    if kind == "cuda-oom":
+        raise RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB")
+    if kind == "incompatible":
+        raise NotImplementedError("архитектура qwen9 пока не поддержана")
+    if kind == "denied":
+        raise PermissionError(13, "Permission denied", MODEL)
+    if kind == "missing":
+        raise FileNotFoundError(2, "No such file or directory", MODEL)
+    if kind == "crash":
+        raise RuntimeError("weights corrupted at tensor 17")
+
+
+load()
 DELAY = float(os.environ.get("FAKE_ENGINE_DELAY", "0.01"))
 cancelled: set[str] = set()
 lock = threading.Lock()

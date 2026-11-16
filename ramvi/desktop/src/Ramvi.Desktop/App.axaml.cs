@@ -34,26 +34,25 @@ public sealed partial class App : Application, IDisposable
 
     private async Task ConnectAsync(MainWindow window)
     {
-        try
-        {
-            _service = await ServiceHost.StartAsync(ServiceOptions.FromEnvironment(), TimeSpan.FromSeconds(60))
-                .ConfigureAwait(true);
-        }
-        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            window.ShowFatal(Localizer.Current.Format("status.service_failed", ("detail", error.Message)));
-            return;
-        }
-
-        _api = new ChatApiClient(_service.Address, _service.Token);
-        var model = new MainViewModel(_api, window.CopyAsync);
+        var model = new MainViewModel(StartServiceAsync, window.CopyAsync, window.OpenFolderAsync);
         window.DataContext = model;
         await model.InitializeAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Запустить (или перезапустить) сервис; вызывается и действием «Повторить».</summary>
+    private async Task<IChatApi> StartServiceAsync()
+    {
+        await StopServiceAsync().ConfigureAwait(true);
+        _service = await ServiceHost.StartAsync(ServiceOptions.FromEnvironment(), TimeSpan.FromSeconds(60))
+            .ConfigureAwait(true);
+        _api = new ChatApiClient(_service.Address, _service.Token);
+        return _api;
     }
 
     private async Task StopServiceAsync()
     {
         _api?.Dispose();
+        _api = null;
         if (_service is not null)
         {
             await _service.DisposeAsync().ConfigureAwait(true);

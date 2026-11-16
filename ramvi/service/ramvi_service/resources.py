@@ -30,6 +30,10 @@ def amounts(values: dict[str, int]) -> dict[str, int]:
     return dict(values)
 
 
+class ResourceBusy(RuntimeError):
+    """Очередь ресурса переполнена: повторить позже (UI-03 «API занят»)."""
+
+
 class ResourceBroker:
     def __init__(self, authority: Authority, capacity: dict[str, int]) -> None:
         self.authority, self.capacity = authority, amounts(capacity)
@@ -86,7 +90,7 @@ class ResourceBroker:
         end = time.monotonic() + timeout
         with self._condition:
             if len(self._queue) >= 256:
-                raise RuntimeError("очередь ресурсов заполнена")
+                raise ResourceBusy("очередь ресурсов заполнена")
             if sum(existing == owner for existing, _ in self._leases.values()) >= 64:
                 raise PermissionError("превышен лимит числа аренд")
             self._queue.append((ticket, owner))

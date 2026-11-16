@@ -9,12 +9,20 @@ namespace Ramvi.Desktop.ViewModels;
 /// <summary>
 /// Экран чата (UI-02): список диалогов, поток ответа, Stop/Regenerate, копирование,
 /// очистка, выбор модели, thinking и перетаскивание текстовых файлов.
+/// Состояния UI-03 (3.5): <see cref="State"/> и плашка <see cref="Banner"/> с действиями.
 /// Не зависит от окна: проверяется тестами без Avalonia.
 /// </summary>
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
-    private readonly IChatApi _api;
+    private readonly Func<Task<IChatApi>> _connect;
     private readonly Func<string, Task> _copy;
+    private readonly Func<string, Task> _openFolder;
+    private IChatApi? _connected;
+    private Problem? _problem;
+    private string? _loadingModel;
+    private UiState _state = UiState.Connecting;
+    private StateBanner? _banner;
+    private bool _isModelPickerOpen;
     private ChatItemViewModel? _selectedChat;
     private ModelInfo? _selectedModel;
     private string _input = "";
@@ -26,12 +34,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _streamCancel;
     private string? _generatingChatId;
 
-    public MainViewModel(IChatApi api, Func<string, Task>? copy = null)
+    public MainViewModel(IChatApi api, Func<string, Task>? copy = null, Func<string, Task>? openFolder = null)
+        : this(() => Task.FromResult(api), copy, openFolder)
     {
-        _api = api;
+    }
+
+    /// <param name="connect">Запустить сервис и вернуть клиент; повторяется по «Повторить».</param>
+    public MainViewModel(Func<Task<IChatApi>> connect, Func<string, Task>? copy = null, Func<string, Task>? openFolder = null)
+    {
+        _connect = connect;
         _copy = copy ?? (_ => Task.CompletedTask);
+        _openFolder = openFolder ?? (_ => Task.CompletedTask);
         _status = L["status.connecting"];
-        NewChatCommand = new Command(NewChatAsync, () => !IsGenerating);
+        NewChatCommand = new Command(NewChatAsync, () => !IsGenerating && IsConnected);
         SendCommand = new Command(SendAsync, CanSend);
         StopCommand = new Command(StopAsync, () => IsGenerating);
         RegenerateCommand = new Command(RegenerateAsync, CanRegenerate);
@@ -50,9 +65,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             return Task.CompletedTask;
         });
+        RetryCommand = new Command(RetryAsync, () => !IsGenerating);
+        ChooseModelCommand = new Command(() =>
+        {
+            IsModelPickerOpen = true;
+            return Task.CompletedTask;
+        });
+        RefreshModelsCommand = new Command(RefreshModelsAsync, () => IsConnected && !IsGenerating);
+        OpenFolderCommand = new Command(p => p is string path ? _openFolder(path) : Task.CompletedTask);
+        DismissCommand = new Command(() =>
+        {
+            SetProblem(null);
+            return Task.CompletedTask;
+        });
+        UpdateState();
     }
 
     private static Localizer L => Localizer.Current;
+
+    private IChatApi _api => _connected ?? throw new InvalidOperationException("сервис не подключён");
 
     public void Dispose() => _streamCancel?.Cancel();
 
@@ -79,6 +110,49 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public Command CopyCommand { get; }
 
     public Command RemoveAttachmentCommand { get; }
+
+    public Command RetryCommand { get; }
+
+    public Command ChooseModelCommand { get; }
+
+    public Command RefreshModelsCommand { get; }
+
+    public Command OpenFolderCommand { get; }
+
+    public Command DismissCommand { get; }
+
+    public bool IsConnected => _connected is not null;
+
+    /// <summary>Текущее состояние UI-03.</summary>
+    public UiState State
+    {
+        get => _state;
+        private set => Set(ref _state, value);
+    }
+
+    /// <summary>Плашка состояния или null, когда всё готово.</summary>
+    public StateBanner? Banner
+    {
+        get => _banner;
+        private set
+        {
+            if (Set(ref _banner, value))
+            {
+                Raise(nameof(HasBanner));
+            }
+        }
+    }
+
+    public bool HasBanner => _banner is not null;
+
+    public Problem? Problem => _problem;
+
+    /// <summary>Открыть список моделей (действие «Выбрать другую модель»).</summary>
+    public bool IsModelPickerOpen
+    {
+        get => _isModelPickerOpen;
+        set => Set(ref _isModelPickerOpen, value);
+    }
 
     public Limits Limits => _limits;
 
@@ -141,6 +215,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Raise(nameof(IsIdle));
                 RefreshCommands();
+                UpdateState();
             }
         }
     }
@@ -150,8 +225,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Загрузить лимиты, модели и диалоги; открыть последний диалог.</summary>
     public async Task InitializeAsync()
     {
+        _connected = null;
+        Models.Clear();
+        Chats.Clear();
+        Messages.Clear();
+        Raise(nameof(HasChats));
+        Raise(nameof(IsConnected));
+        SetProblem(null);
+        SetStatus(L["status.connecting"]);
         try
         {
+            _connected = await _connect().ConfigureAwait(true);
+            Raise(nameof(IsConnected));
             var status = await _api.StatusAsync().ConfigureAwait(true);
             _limits = status.Limits;
             Raise(nameof(Limits));
@@ -169,9 +254,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             SetStatus(L["status.ready"]);
         }
+        catch (ServiceStartException error)
+        {
+            SetProblem(new Problem(error.Code, error.Parameters));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            SetProblem(new Problem("status.service_failed", new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["detail"] = error.Message,
+            }));
+        }
         catch (Exception error) when (error is ApiException or HttpRequestException)
         {
             ShowError(error);
+        }
+        finally
+        {
+            RefreshCommands();
+            UpdateState();
         }
     }
 
@@ -195,7 +296,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     private bool CanSend() =>
-        !IsGenerating && (!string.IsNullOrWhiteSpace(Input) || Attachments.Count > 0);
+        IsConnected && !IsGenerating && (!string.IsNullOrWhiteSpace(Input) || Attachments.Count > 0);
 
     private bool CanRegenerate() =>
         !IsGenerating && SelectedChat is not null && Messages.Any(m => m.IsUser);
@@ -250,6 +351,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Читает поток событий; true — сервис принял запрос.</summary>
     private async Task<bool> RunStreamAsync(string chatId, Func<CancellationToken, IAsyncEnumerable<ChatEvent>> start)
     {
+        SetProblem(null);
         IsGenerating = true;
         _generatingChatId = chatId;
         _streamCancel = new CancellationTokenSource();
@@ -275,9 +377,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
                         break;
                     case "status" when item.State == "loading":
+                        SetLoading(item.ModelId ?? "");
                         SetStatus(L.Format("status.loading_model", ("model_id", item.ModelId)));
                         break;
                     case "reasoning" or "text":
+                        SetLoading(null);
                         if (answer is null)
                         {
                             answer = new MessageViewModel("assistant");
@@ -300,6 +404,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
                         break;
                     case "done":
+                        SetLoading(null);
                         Finish(item, ref answer, visible);
                         break;
                 }
@@ -325,6 +430,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             _streamCancel.Dispose();
             _streamCancel = null;
             _generatingChatId = null;
+            SetLoading(null);
             IsGenerating = false;
         }
 
@@ -357,13 +463,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (item.Error is { } error)
         {
-            var text = L.Format(error.Code, Params(error.Params));
+            var problem = new Problem(error.Code, Params(error.Params));
             if (answer is not null)
             {
-                answer.Error = text;
+                answer.Error = L.Format(problem.Code, problem.Params);
             }
 
-            SetStatus(text, error: true);
+            SetProblem(problem);
         }
         else
         {
@@ -448,6 +554,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             chat.Update(await _api.SetModelAsync(chat.Id, model.Id).ConfigureAwait(true));
+            if (_problem?.State is UiState.LowMemory or UiState.Incompatible or UiState.NoAccess or UiState.NoModel)
+            {
+                SetProblem(null); // другая модель — прежняя причина к ней не относится
+            }
         }
         catch (Exception error) when (error is ApiException or HttpRequestException)
         {
@@ -521,13 +631,177 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _ignoreModelChange = false;
     }
 
-    private void ShowError(Exception error)
+    private void ShowError(Exception error) =>
+        SetProblem(error is ApiException api
+            ? new Problem(api.Code, Params(api.Parameters))
+            : new Problem("ui.connection_lost", new Dictionary<string, object?>(StringComparer.Ordinal)));
+
+    private void SetProblem(Problem? problem)
     {
-        var text = error is ApiException api
-            ? L.Format(api.Code, Params(api.Parameters))
-            : L["ui.connection_lost"];
-        SetStatus(text, error: true);
+        _problem = problem;
+        Raise(nameof(Problem));
+        if (problem is not null)
+        {
+            SetStatus(L.Format(problem.Code, problem.Params), error: true);
+        }
+        else if (IsError)
+        {
+            SetStatus(IsConnected ? L["status.ready"] : L["status.connecting"]);
+        }
+
+        UpdateState();
     }
+
+    private void SetLoading(string? modelId)
+    {
+        if (_loadingModel != modelId)
+        {
+            _loadingModel = modelId;
+            UpdateState();
+        }
+    }
+
+    /// <summary>«Повторить»: нет связи — заново запустить сервис; иначе ответить заново.</summary>
+    private async Task RetryAsync()
+    {
+        var problem = _problem;
+        SetProblem(null);
+        if (!IsConnected || problem?.Code is "ui.connection_lost" or "storage.no_access" or "status.service_failed")
+        {
+            await InitializeAsync().ConfigureAwait(true);
+        }
+        else if (CanRegenerate())
+        {
+            await RegenerateAsync().ConfigureAwait(true);
+        }
+        else
+        {
+            await RefreshModelsAsync().ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Перечитать список моделей (модель могли добавить, пока окно открыто).</summary>
+    private async Task RefreshModelsAsync()
+    {
+        try
+        {
+            var models = await _api.ModelsAsync().ConfigureAwait(true);
+            var selected = SelectedChat?.ModelId ?? SelectedModel?.Id;
+            Models.Clear();
+            foreach (var model in models)
+            {
+                Models.Add(model);
+            }
+
+            ShowModel(selected ?? Models.FirstOrDefault()?.Id);
+            if (_problem?.State == UiState.NoModel && Models.Count > 0)
+            {
+                SetProblem(null);
+            }
+
+            UpdateState();
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            ShowError(error);
+        }
+    }
+
+    /// <summary>Состояние из причины, связи, генерации и списка моделей; затем плашка.</summary>
+    private void UpdateState()
+    {
+        var state = _problem?.State
+            ?? (!IsConnected ? UiState.Connecting
+                : _loadingModel is not null ? UiState.Loading
+                : IsGenerating ? UiState.Generating
+                : Models.Count == 0 ? UiState.NoModel
+                : UiState.Ready);
+        Banner = MakeBanner(state); // плашка раньше состояния: кто ждёт State, видит готовую плашку
+        State = state;
+    }
+
+    private StateBanner? MakeBanner(UiState state)
+    {
+        var actions = new List<StateAction>();
+        void Add(string id, string label, Command command, object? parameter = null) =>
+            actions.Add(new StateAction(id, L[label], command, parameter));
+
+        string text;
+        switch (state)
+        {
+            case UiState.Ready or UiState.Generating or UiState.Connecting:
+                return null; // строка состояния и кнопка «Стоп» уже есть
+            case UiState.Loading:
+                text = L.Format("status.loading_model", ("model_id", _loadingModel));
+                Add("stop", "chat.stop", StopCommand);
+                break;
+            case UiState.NoModel:
+                text = _problem is { } missing ? L.Format(missing.Code, missing.Params) : L["state.no_model.text"];
+                Add("refresh", "action.refresh", RefreshModelsCommand);
+                if (Models.Count > 0)
+                {
+                    Add("choose_model", "action.choose_model", ChooseModelCommand);
+                }
+
+                break;
+            default:
+                var problem = _problem!;
+                text = L.Format(problem.Code, problem.Params);
+                if (state == UiState.LowMemory)
+                {
+                    text += "\n" + L["state.low_memory.hint"];
+                }
+
+                if (state == UiState.NoAccess && FolderOf(problem.Path) is { } folder)
+                {
+                    Add("open_folder", "action.open_folder", OpenFolderCommand, folder);
+                }
+
+                if (state is UiState.LowMemory or UiState.Incompatible or UiState.NoAccess && (IsConnected && Models.Count > 1))
+                {
+                    Add("choose_model", "action.choose_model", ChooseModelCommand);
+                }
+
+                if (state != UiState.Incompatible)
+                {
+                    Add("retry", "action.retry", RetryCommand);
+                }
+
+                if (state == UiState.Error && IsConnected)
+                {
+                    Add("dismiss", "action.dismiss", DismissCommand);
+                }
+
+                break;
+        }
+
+        return new StateBanner(state, L[$"state.{StateKey(state)}.title"], text, actions);
+    }
+
+    private static string? FolderOf(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return null;
+        }
+
+        if (Directory.Exists(path))
+        {
+            return path;
+        }
+
+        var parent = System.IO.Path.GetDirectoryName(path);
+        return parent is not null && Directory.Exists(parent) ? parent : null;
+    }
+
+    private static string StateKey(UiState state) => state switch
+    {
+        UiState.NoModel => "no_model",
+        UiState.LowMemory => "low_memory",
+        UiState.ApiBusy => "api_busy",
+        UiState.NoAccess => "no_access",
+        _ => state.ToString().ToLowerInvariant(),
+    };
 
     private void SetStatus(string text, bool error = false)
     {
@@ -540,6 +814,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         foreach (var command in new[]
                  {
                      NewChatCommand, SendCommand, StopCommand, RegenerateCommand, ClearCommand, DeleteChatCommand,
+                     RetryCommand, RefreshModelsCommand,
                  })
         {
             command.Refresh();

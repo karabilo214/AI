@@ -5,9 +5,16 @@
 `SwitchableProvider` — провайдер для `SharedLLM`: каждый запрос идёт в текущий
 движок, поэтому смена модели и автоперезапуск (новый порт) не требуют нового
 `SharedLLM` и не ломают аренды модулей.
+
+3.5 (UI-03): причина сбоя загрузки берётся из последней трассировки в выводе
+движка (`classify_failure`). Однозначные причины — нехватка памяти,
+несовместимость, нет доступа, нет файла — повторный запуск не исправит,
+поэтому `ensure` сразу отдаёт код причины, не дожидаясь лимита перезапусков.
 """
 
+import re
 import threading
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Protocol
@@ -25,6 +32,38 @@ class EngineError(RuntimeError):
     def __init__(self, code: str, **params: Any) -> None:
         super().__init__(code)
         self.code, self.params = code, params
+
+
+# Код причины → имена исключений (последний сегмент) или подстроки сообщения.
+FAILURES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("engine.no_memory", ("NoMemoryPlan", "OutOfMemoryError", "MemoryError"), ("out of memory",)),
+    ("engine.incompatible", ("NotImplementedError",), ()),
+    ("engine.no_access", ("PermissionError",), ()),
+    ("engine.model_missing", ("FileNotFoundError", "NotADirectoryError"), ()),
+)
+_EXCEPTION_LINE = re.compile(r"^(?P<name>[A-Za-z_][\w.]*)(?::\s?(?P<message>.*))?$")
+
+
+def classify_failure(lines: list[str]) -> tuple[str, str] | None:
+    """Код причины и сообщение по последней трассировке Python в выводе процесса.
+
+    Как печатает Python: заголовок `Traceback ...`, кадры с отступом, затем одна
+    строка исключения без отступа. Берётся последняя трассировка (при цепочке —
+    итоговое исключение). Неизвестная причина — None: такой сбой стоит перезапустить.
+    """
+    start = max((i for i, line in enumerate(lines) if line.startswith("Traceback ")), default=-1)
+    if start < 0:
+        return None
+    exception = next((line for line in lines[start + 1 :] if line and not line[0].isspace()), None)
+    match = _EXCEPTION_LINE.match(exception or "")
+    if match is None:
+        return None
+    name = match.group("name").rsplit(".", 1)[-1]
+    message = (match.group("message") or "").strip()
+    for code, names, phrases in FAILURES:
+        if name in names or any(p in message.lower() for p in phrases):
+            return code, message[:300]
+    return None
 
 
 class EngineTarget(Target, Protocol):
@@ -65,6 +104,8 @@ class EngineManager:
         self._supervisor: Supervisor | None = None
         self._provider: LocalEngineProvider | None = None
         self._loading: str | None = None
+        self._problem: tuple[str, str] | None = None
+        self._problem_model: str | None = None
 
     @property
     def model_id(self) -> str | None:
@@ -78,7 +119,35 @@ class EngineManager:
                 "loading": self._loading,
                 "state": "stopped" if sup is None else sup["state"],
                 "last_failure": None if sup is None else sup["last_failure"],
+                "problem": None if self._problem is None else self._problem_json(),
             }
+
+    def _problem_json(self) -> dict[str, Any]:
+        assert self._problem is not None
+        return {"code": self._problem[0], "params": self._params(self._problem[1])}
+
+    def _params(self, detail: str) -> dict[str, Any]:
+        model_id = self._problem_model
+        params: dict[str, Any] = {"model_id": model_id or "", "detail": detail}
+        if model_id is not None:
+            try:
+                params["path"] = str(Path(self.models.get(model_id).path).resolve())
+            except NotFound:
+                pass
+        return params
+
+    def _on_change(self, engine: EngineTarget, status: dict[str, Any]) -> None:
+        """Монитор супервизора: процесс упал — сохранить причину, пока вывод не сброшен.
+
+        Без блокировки менеджера: `stop()` ждёт поток монитора под ней.
+        """
+        if status["state"] not in ("restarting", "failed") or engine is not self._engine:
+            return
+        diagnostics = getattr(engine, "diagnostics", None)
+        lines = diagnostics() if callable(diagnostics) else []
+        found = classify_failure(lines)
+        if found is not None:
+            self._problem = found
 
     def ensure(self, model_id: str, *, timeout: float = 600.0) -> None:
         """Движок с этой моделью готов; иначе EngineError с ключом причины."""
@@ -93,9 +162,14 @@ class EngineManager:
                 raise EngineError("engine.model_not_found", model_id=model_id) from None
             self._stop_locked()
             self._loading = model_id
+            self._problem, self._problem_model = None, model_id
             engine = self._make_engine(model)
             supervisor = Supervisor(
-                engine, self.run_dir, policy=self._policy(), interval=self._interval
+                engine,
+                self.run_dir,
+                policy=self._policy(),
+                interval=self._interval,
+                on_change=lambda status: self._on_change(engine, status),
             )
             self._engine, self._supervisor, self._model_id = engine, supervisor, model_id
             try:
@@ -104,17 +178,36 @@ class EngineManager:
                 self._stop_locked()
                 raise EngineError("engine.start_failed", detail=str(error)) from error
         try:
-            state = supervisor.wait("ready", "failed", timeout=timeout)
+            state = self._wait(supervisor, timeout)
         finally:
             with self._lock:
                 if self._loading == model_id:
                     self._loading = None
+        if self._problem is not None and state["state"] != "ready":
+            with self._lock:
+                params = self._params(self._problem[1])
+                if self._supervisor is supervisor:
+                    self._stop_locked()  # перезапуск не поможет
+            raise EngineError(self._problem[0], **params)
         if state["state"] != "ready":
             failure = state.get("last_failure") or {}
             raise EngineError(
                 "engine.start_failed" if state["state"] == "failed" else "engine.start_timeout",
                 detail=failure.get("error") or failure.get("reason") or "",
             )
+
+    def _wait(self, supervisor: Supervisor, timeout: float) -> dict[str, Any]:
+        """Ждать готовности; однозначная причина сбоя прерывает ожидание сразу."""
+        deadline = time.monotonic() + timeout
+        while True:
+            state = supervisor.status()
+            if (
+                state["state"] in ("ready", "failed")
+                or self._problem is not None
+                or time.monotonic() >= deadline
+            ):
+                return state
+            time.sleep(0.02)
 
     def provider(self) -> LocalEngineProvider:
         """Клиент текущего движка; пересоздаётся, если движок сменил адрес."""
@@ -123,6 +216,8 @@ class EngineManager:
             if engine is None or supervisor is None or self._model_id is None:
                 raise EngineError("engine.no_model")
             if supervisor.status()["state"] != "ready":
+                if self._problem is not None:
+                    raise EngineError(self._problem[0], **self._params(self._problem[1]))
                 raise EngineError("engine.not_ready")
             url = engine.base_url
             if self._provider is None or self._provider.base_url != url:

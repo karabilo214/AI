@@ -60,4 +60,39 @@ public sealed class MainWindowTests
         Assert.Equal([$"send {chat} ещё files=0"], api.Calls);
         window.Close();
     }
+
+    [AvaloniaFact]
+    public async Task Problem_banner_shows_title_text_and_action_buttons()
+    {
+        Localizer.Current = Localizer.Load("ru");
+        var api = new FakeChatApi();
+        api.AddChat("Диалог", "model-a", Msg("user", "вопрос"));
+        var model = new MainViewModel(api);
+        var window = new MainWindow { DataContext = model };
+        window.Show();
+        await model.InitializeAsync();
+        Assert.False(window.FindControl<Border>("StateBanner")!.IsVisible);
+
+        var error = Error("engine.no_memory", ("model_id", "model-a"), ("detail", ""));
+        await api.Stream.Writer.WriteAsync(
+            new Api.ChatEvent("done", Finish: "error", Error: new Api.ApiError(error.Code, error.Parameters.ToDictionary())),
+            TestContext.Current.CancellationToken);
+        api.Stream.Writer.Complete();
+        model.Input = "x";
+        await model.SendCommand.RunAsync();
+        Dispatcher.UIThread.RunJobs();
+
+        var banner = window.FindControl<Border>("StateBanner")!;
+        Assert.True(banner.IsVisible);
+        Assert.Contains("problem", banner.Classes);
+        Assert.Equal("Недостаточно памяти", window.FindControl<TextBlock>("StateTitle")!.Text);
+        var buttons = banner.GetVisualDescendants().OfType<Button>().Select(b => b.Content as string).ToList();
+        Assert.Equal(["Выбрать другую модель", "Повторить"], buttons);
+        Assert.Empty(Localizer.Current.Missing);
+
+        await model.ChooseModelCommand.RunAsync();
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(window.FindControl<ComboBox>("ModelBox")!.IsDropDownOpen);
+        window.Close();
+    }
 }
