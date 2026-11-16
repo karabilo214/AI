@@ -1,5 +1,6 @@
 """Ограниченный supervisor дочернего процесса: общий для Engine и module workers."""
 
+import _thread
 import json
 import os
 import queue
@@ -29,6 +30,66 @@ def _windows_bootstrap_command(command: list[str]) -> list[str]:
     # BEFORE AssignProcessToJobObject. Use the real base interpreter for the gate.
     interpreter = getattr(sys, "_base_executable", None) or sys.executable
     return [interpreter, "-I", "-S", "-u", "-c", _WINDOWS_BOOTSTRAP, *command]
+
+
+PARENT_WATCH_ENV = "RAMVI_EXIT_WITH_PARENT"
+
+
+class ParentWatch:
+    """Завершить дочерний процесс, когда владелец закрыл его stdin (3.3).
+
+    Супервизор держит stdin ребёнка открытым и ничего в него не пишет. Если
+    процесс-владелец падает или его убивают, ОС закрывает канал, ребёнок видит
+    EOF: вызывает мягкую остановку и через `grace` секунд завершается сам.
+    Так движок не остаётся сиротой, держащей порт и видеопамять, и никому не
+    нужно убивать процессы по PID из файла.
+    """
+
+    def __init__(self, stream: Any = None, *, grace: float = 10.0) -> None:
+        if not 0 <= grace <= 600:
+            raise ValueError("invalid grace period")
+        self._stream = sys.stdin if stream is None else stream
+        self.grace = grace
+        self._shutdown: Any = None
+        self.closed = threading.Event()
+        self._thread = threading.Thread(target=self._watch, name="ramvi-parent-watch", daemon=True)
+
+    @classmethod
+    def from_env(cls) -> "ParentWatch | None":
+        """Включить сторож, если его попросил супервизор.
+
+        Мягкая остановка — KeyboardInterrupt в главном потоке, как Ctrl+C:
+        срабатывают прежние `finally` загрузки и `serve`, модели закрываются.
+        """
+        if os.environ.get(PARENT_WATCH_ENV) != "1":
+            return None
+        watch = cls()
+        watch.set_shutdown(_thread.interrupt_main)
+        return watch.start()
+
+    def start(self) -> "ParentWatch":
+        self._thread.start()
+        return self
+
+    def set_shutdown(self, callback: Any) -> None:
+        """Мягкая остановка (например `server.shutdown`); вызывается из потока сторожа."""
+        # Если владелец уже ушёл, процесс и так завершится по истечении grace.
+        self._shutdown = callback
+
+    def _watch(self) -> None:
+        try:
+            fileno = self._stream.fileno()
+            while os.read(fileno, 4096):
+                pass  # Владелец ничего не пишет; данные просто игнорируются.
+        except (OSError, ValueError):
+            pass
+        self.closed.set()
+        callback = self._shutdown
+        if callback is not None:
+            # Отдельный поток: мягкая остановка не должна мешать жёсткому сроку.
+            threading.Thread(target=callback, name="ramvi-parent-shutdown", daemon=True).start()
+        time.sleep(self.grace)
+        os._exit(0)
 
 
 class ProcessSupervisor:

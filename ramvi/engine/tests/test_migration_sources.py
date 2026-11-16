@@ -319,6 +319,16 @@ def allowed_layout_changes(name: str, source: str) -> str:
             'with tempfile.TemporaryDirectory(prefix="llm-grammar-") as folder:',
             'with tempfile.TemporaryDirectory(prefix="ramvi-grammar-", dir=ensure_dir(work_dir())) as folder:',
         )
+    if name == "__main__":
+        # 3.3: только сторож родителя перед загрузкой; загрузка/serve прежние.
+        assert source.count("    torch.set_grad_enabled(False)") == 1
+        source = source.replace(
+            "    torch.set_grad_enabled(False)",
+            '    if a.cmd == "serve":\n'
+            "        from ramvi_engine.processes import ParentWatch\n"
+            "        ParentWatch.from_env()\n"
+            "    torch.set_grad_enabled(False)",
+        )
     return source
 
 

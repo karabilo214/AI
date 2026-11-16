@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ramvi_engine.model_loader import ModelConfig
-from ramvi_engine.processes import ProcessSupervisor
+from ramvi_engine.processes import PARENT_WATCH_ENV, ProcessSupervisor
 from ramvi_engine.protocol import check_api_version
 
 
@@ -142,6 +142,7 @@ class EngineProcess:
             "RAMVI_API_KEY": self._key,
             "RAMVI_INSTANCE_ID": self._instance,
             "RAMVI_ENGINE_PORT": str(self._port),
+            PARENT_WATCH_ENV: "1",  # 3.3: движок выходит сам, если сервис умер
             "PYTHONUNBUFFERED": "1",
             "PYTHONUTF8": "1",
             "PYTHONPATH": str(Path(__file__).resolve().parents[1])
@@ -197,6 +198,26 @@ class EngineProcess:
             "failure": self._failure,
             "last_exit": self._last_exit,
             "restart_available": not alive,
+        }
+
+    def probe(self, timeout: float = 2.0) -> bool:
+        """Отвечает ли именно этот экземпляр движка на /health (для монитора 3.3)."""
+        if self._port is None or not self._ready:
+            return False
+        try:
+            health = self.call("/health", timeout=timeout)
+        except (OSError, ValueError, RuntimeError):
+            return False
+        return health.get("instance_id") == self._instance
+
+    def describe(self) -> dict[str, Any]:
+        """Публичные сведения для файла состояния: без API-ключа."""
+        child = self._supervisor.status() if self._supervisor else {"pid": None}
+        return {
+            "base_url": None if self._port is None else self.base_url,
+            "instance_id": self._instance,
+            "pid": child.get("pid"),
+            "model": self.config.model,
         }
 
     def stop(self) -> dict[str, Any]:

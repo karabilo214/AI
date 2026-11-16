@@ -76,6 +76,10 @@ def main() -> None:
         from ramvi_engine.model_loader import preview_plan
         print(json.dumps(preview_plan(config), ensure_ascii=False, indent=2))
         return
+    if a.cmd == "serve":
+        # 3.3: следить за владельцем ещё до долгой загрузки весов.
+        from ramvi_engine.processes import ParentWatch
+        ParentWatch.from_env()
     import torch
 
     torch.set_grad_enabled(False)
