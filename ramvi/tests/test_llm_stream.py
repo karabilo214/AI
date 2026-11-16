@@ -198,7 +198,7 @@ def test_cancelled_stream_delivers_no_old_chunks(tmp_path: Path, engine: FakeEng
         stream_id = scope.call("llm.stream", {"request": {"messages": []}})["stream_id"]
         time.sleep(DELAY * 4)
         assert scope.call("llm.cancel", {"stream_id": stream_id}) == {"ok": True}
-        with pytest.raises(ValueError, match="неизвестный поток"):
+        with pytest.raises(ValueError, match="unknown stream"):
             scope.call("llm.read", {"stream_id": stream_id})
         assert scope.call("llm.cancel", {"stream_id": stream_id}) == {"ok": True}
     finally:
@@ -239,7 +239,7 @@ def test_module_that_stops_reading_releases_model(
         while not engine.cancelled and time.monotonic() < deadline:
             time.sleep(0.02)
         assert engine.cancelled
-        with pytest.raises(TimeoutError, match="не читает"):
+        with pytest.raises(TimeoutError, match="does not read"):
             while True:
                 scope.call("llm.read", {"stream_id": stream_id, "timeout": 0.5})
         assert scope.llm is not None and not scope.llm.status()["active"]

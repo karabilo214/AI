@@ -40,8 +40,44 @@ internal sealed class FakeChatApi : IChatApi
     public static MessageInfo Msg(string role, string content, string reasoning = "", string? finish = null) =>
         new(Guid.NewGuid().ToString("N")[..16], "", role, content, 0, reasoning, finish);
 
+    /// <summary>Состояние движка, которое видит оболочка в /status (3.17).</summary>
+    public EngineStatus Engine { get; set; } = new(null, null, "stopped");
+
+    /// <summary>true — загрузка не заканчивается сама: тест сам меняет <see cref="Engine"/>.</summary>
+    public bool LoadPending { get; set; }
+
+    /// <summary>Загрузки и выгрузки моделей — отдельно от <see cref="Calls"/>, чтобы прежние проверки не менялись.</summary>
+    public List<string> EngineCalls { get; } = [];
+
     public Task<ServiceStatus> StatusAsync(CancellationToken cancel = default) =>
-        Task.FromResult(new ServiceStatus(new EngineStatus(null, null, "stopped"), Limits));
+        Task.FromResult(new ServiceStatus(Engine, Limits));
+
+    public Task<LoadResponse> LoadModelAsync(string modelId, CancellationToken cancel = default)
+    {
+        EngineCalls.Add($"load {modelId}");
+        if (Engine.ModelId == modelId && Engine.State == "ready")
+        {
+            return Task.FromResult(new LoadResponse(false, Engine));
+        }
+
+        Engine = LoadPending ? new EngineStatus(null, modelId, "starting") : new EngineStatus(modelId, null, "ready");
+        return Task.FromResult(new LoadResponse(true, Engine));
+    }
+
+    /// <summary>Переводы модулей, которые «отдаёт» сервис (3.14).</summary>
+    public Dictionary<string, IReadOnlyDictionary<string, string>> ModuleTexts { get; } = [];
+
+    public Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> ModuleTextsAsync(
+        CancellationToken cancel = default) =>
+        Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>>(ModuleTexts);
+
+    public Task<UnloadResponse> UnloadModelAsync(CancellationToken cancel = default)
+    {
+        EngineCalls.Add("unload");
+        var loaded = Engine.ModelId is not null || Engine.Loading is not null;
+        Engine = new EngineStatus(null, null, "stopped");
+        return Task.FromResult(new UnloadResponse(loaded, Engine));
+    }
 
     /// <summary>Что «найдёт» просмотр папки моделей: модели добавляются в список.</summary>
     public List<ModelInfo> FolderModels { get; } = [];
@@ -224,11 +260,6 @@ internal sealed class FakeChatApi : IChatApi
         if (AppSettings.DataDir != before.DataDir)
         {
             restart.Add("data_dir");
-        }
-
-        if (AppSettings.Language != before.Language)
-        {
-            restart.Add("language");
         }
 
         return Task.FromResult(Info(restart));

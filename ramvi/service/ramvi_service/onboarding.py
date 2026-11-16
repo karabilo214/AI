@@ -31,6 +31,7 @@ from ramvi_service import settings as app_settings
 from ramvi_service.chat import ChatError
 from ramvi_service.engines import resolve_model
 from ramvi_service.hardware import HardwareProfile, collect
+from ramvi_service.i18n import UserError
 
 STATE_FILE = "state.json"  # состояние мастера в папке данных (не настройки приложения)
 GIB_MB = 1024
@@ -73,7 +74,7 @@ def probe_backends(timeout: float = 120.0) -> dict[str, Any]:
         )
         value = json.loads(result.stdout.strip().splitlines()[-1])
         if not isinstance(value, dict):
-            raise ValueError("ожидался объект JSON")
+            raise ValueError("expected a JSON object")
         return value
     except (OSError, subprocess.TimeoutExpired, ValueError, IndexError) as error:
         return {"torch": None, "cuda": False, "error": f"{type(error).__name__}: {error}"}
@@ -187,21 +188,21 @@ MAX_KV = 1_000_000
 MAX_STRING = 64 * 2**20
 
 
-class NotGGUF(ValueError):
-    """Файл не GGUF или заголовок повреждён."""
+class NotGGUF(UserError, ValueError):
+    """Файл не GGUF или заголовок повреждён; причина — ключ `gguf.*` (3.14)."""
 
 
 def _read(file: BinaryIO, size: int) -> bytes:
     data = file.read(size)
     if len(data) != size:
-        raise NotGGUF("файл обрывается внутри заголовка")
+        raise NotGGUF("gguf.truncated")
     return data
 
 
 def _string(file: BinaryIO) -> str:
     (size,) = struct.unpack("<Q", _read(file, 8))
     if size > MAX_STRING:
-        raise NotGGUF("слишком длинная строка в заголовке")
+        raise NotGGUF("gguf.long_string")
     return _read(file, size).decode("utf-8", errors="replace")
 
 
@@ -214,24 +215,24 @@ def _value(file: BinaryIO, kind: int) -> Any:
     if kind == _ARRAY:
         item, count = struct.unpack("<IQ", _read(file, 12))
         if count > 64 * 2**20:
-            raise NotGGUF("слишком длинный массив в заголовке")
+            raise NotGGUF("gguf.long_array")
         if item in _SCALARS:  # пропустить, не разбирая
             file.seek(struct.calcsize(_SCALARS[item]) * count, os.SEEK_CUR)
             return None
         for _ in range(count):
             _value(file, item)
         return None
-    raise NotGGUF(f"неизвестный тип значения {kind}")
+    raise NotGGUF("gguf.unknown_type", kind=kind)
 
 
 def read_gguf_header(path: Path) -> dict[str, Any]:
     """Архитектура, тип квантования и имя из заголовка GGUF (без numpy и torch)."""
     with path.open("rb") as file:
         if _read(file, 4) != b"GGUF":
-            raise NotGGUF("нет сигнатуры GGUF")
+            raise NotGGUF("gguf.no_signature")
         version, _tensors, count = struct.unpack("<IQQ", _read(file, 20))
         if version not in (2, 3) or count > MAX_KV:
-            raise NotGGUF(f"версия GGUF {version} не поддерживается")
+            raise NotGGUF("gguf.bad_version", version=version)
         found: dict[str, Any] = {}
         for _ in range(count):
             key = _string(file)
@@ -243,7 +244,7 @@ def read_gguf_header(path: Path) -> dict[str, Any]:
                     break
     architecture = found.get("general.architecture")
     if not isinstance(architecture, str):
-        raise NotGGUF("в заголовке нет general.architecture")
+        raise NotGGUF("gguf.no_architecture")
     file_type = found.get("general.file_type")
     quant = FILE_TYPES.get(file_type, f"type {file_type}") if isinstance(file_type, int) else None
     name = found.get("general.name")
@@ -293,10 +294,10 @@ class Onboarding:
             return {"default_model": None, "onboarding_done": False}
         raw = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
-            raise ValueError(f"{path}: ожидался объект JSON")
+            raise ValueError(f"{path}: expected a JSON object")
         model, done = raw.get("default_model"), raw.get("onboarding_done", False)
         if not (model is None or isinstance(model, str)) or not isinstance(done, bool):
-            raise ValueError(f"{path}: неверное состояние мастера")
+            raise ValueError(f"{path}: invalid wizard state")
         return {"default_model": model, "onboarding_done": done}
 
     def _save_state(self, **changes: Any) -> None:
@@ -359,7 +360,7 @@ class Onboarding:
             header = read_gguf_header(path)
             size = path.stat().st_size
         except NotGGUF as error:
-            raise ChatError("import.not_gguf", path=str(path), detail=str(error)) from None
+            raise ChatError("import.not_gguf", path=str(path), detail=error.message) from None
         except PermissionError as error:
             raise ChatError("import.no_access", path=str(path), detail=str(error)) from None
         except OSError as error:

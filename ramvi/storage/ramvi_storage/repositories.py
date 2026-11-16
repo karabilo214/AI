@@ -45,7 +45,7 @@ def _now(value: float | None) -> float:
 def _choice(value: str, allowed: Iterable[str], what: str) -> str:
     allowed = tuple(allowed)
     if value not in allowed:
-        raise ValueError(f"{what}: {value!r} не из {allowed}")
+        raise ValueError(f"{what}: {value!r} is not one of {allowed}")
     return value
 
 
@@ -295,9 +295,9 @@ class Chats:
         message_id: str | None = None,
         now: float | None = None,
     ) -> Message:
-        _choice(role, MESSAGE_ROLES, "роль")
+        _choice(role, MESSAGE_ROLES, "role")
         if finish is not None:
-            _choice(finish, MESSAGE_FINISH, "причина завершения")
+            _choice(finish, MESSAGE_FINISH, "finish reason")
         stamp = _now(now)
         mid = message_id or new_id()
         with self.db.transaction():
@@ -417,7 +417,7 @@ class Downloads:
     ) -> DownloadRecord:
         current = self.get(download_id)
         if state is not None:
-            _choice(state, DOWNLOAD_STATES, "состояние загрузки")
+            _choice(state, DOWNLOAD_STATES, "download state")
         with self.db.transaction():
             self.db.execute(
                 "UPDATE downloads SET state = ?, bytes_done = ?, total_bytes = ? WHERE id = ?",
@@ -545,9 +545,9 @@ class AgentRuns:
         """Конечный статус (done/failed/cancelled) ставит ended_at; после него статус не меняется."""
         current = self.get(run_id)
         if status is not None:
-            _choice(status, AGENT_STATUSES, "статус агента")
+            _choice(status, AGENT_STATUSES, "agent status")
             if current.status in self.FINAL and status != current.status:
-                raise ValueError(f"запуск {run_id} уже завершён ({current.status})")
+                raise ValueError(f"run {run_id} is already finished ({current.status})")
         new_status = current.status if status is None else status
         ended = current.ended_at
         if new_status in self.FINAL and ended is None:
@@ -578,7 +578,7 @@ class AgentRuns:
         call_id: str | None = None,
     ) -> ToolCall:
         """Аргументы должны быть уже очищены от секретов — это делает Agent Runtime."""
-        _choice(permission, TOOL_PERMISSIONS, "разрешение инструмента")
+        _choice(permission, TOOL_PERMISSIONS, "tool permission")
         cid = call_id or new_id()
         with self.db.transaction():
             self.db.execute(

@@ -37,7 +37,10 @@ public sealed class ModuleSectionViewModel(SectionItem item) : ObservableObject
 
     public string State => Localizer.Current[$"section.state.{Item.Info.State}"];
 
-    public string? Error => Item.Info.Error;
+    /// <summary>Причина ошибки модуля (техническая) в рамке перевода (3.14).</summary>
+    public string? Error => string.IsNullOrEmpty(Item.Info.Error)
+        ? null
+        : Localizer.Current.Format("section.error", ("detail", Item.Info.Error));
 
     public bool HasError => !string.IsNullOrEmpty(Item.Info.Error);
 
@@ -136,5 +139,19 @@ public sealed class SectionsViewModel : ObservableObject
         }
 
         view.Refresh();
+    }
+
+    public override void Relocalize()
+    {
+        base.Relocalize();
+        foreach (var item in Items)
+        {
+            item.Relocalize();
+        }
+
+        foreach (var view in _views.Values)
+        {
+            view.Relocalize();
+        }
     }
 }

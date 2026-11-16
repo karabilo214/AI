@@ -111,7 +111,7 @@ def test_failed_migration_rolls_back_whole_database(tmp_path: Path) -> None:
 
     second = ModuleHost(tmp_path / "data")
     register(second, "agent", folder)
-    with pytest.raises(Exception, match="0003|broken|миграция"):
+    with pytest.raises(Exception, match="0003|broken|migration"):
         second.activate("agent")
     try:
         assert second.status("agent")["agent"]["state"] == "error"
@@ -144,7 +144,7 @@ def test_export_while_running(host: ModuleHost, tmp_path: Path) -> None:
 def test_reset_needs_stop_and_touches_only_this_module(host: ModuleHost) -> None:
     host.invoke("agent", "db_write", {"text": "агент"})
     host.invoke("character", "db_write", {"text": "персонаж"})
-    with pytest.raises(RuntimeError, match="остановите"):
+    with pytest.raises(RuntimeError, match="stop the module"):
         host.reset_data("character")
 
     host.dispose("character")

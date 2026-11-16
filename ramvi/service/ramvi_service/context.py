@@ -40,7 +40,7 @@ class GrantStore:
     def allow(self, owner: Owner, permission: str, application: str = "*") -> None:
         self.authority.require(owner)
         if not permission or not application:
-            raise ValueError("нужны permission/application")
+            raise ValueError("permission and application are required")
         with self._lock:
             self._grants.add((owner.token, permission, application))
 
@@ -55,7 +55,7 @@ class GrantStore:
         self.authority.require(owner)
         with self._lock:
             if (owner.token, permission, application) not in self._grants:
-                raise PermissionError(f"нет разрешения {permission} для {application}")
+                raise PermissionError(f"no permission {permission} for {application}")
 
     def watch(self, owner: Owner, rights: list[tuple[str, str]]) -> threading.Event:
         self.authority.require(owner)
@@ -94,9 +94,9 @@ class ContextProvider:
         min_interval: float = 0.1,
     ) -> None:
         if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
-            raise ValueError("неверный лимит контекста")
+            raise ValueError("invalid context limit")
         if isinstance(min_interval, bool) or not math.isfinite(min_interval) or min_interval < 0:
-            raise ValueError("неверный интервал контекста")
+            raise ValueError("invalid context interval")
         self.authority, self.grants, self.adapter = authority, grants, adapter
         self.max_bytes, self.min_interval = max_bytes, min_interval
         self._last: dict[str, float] = {}
@@ -113,20 +113,20 @@ class ContextProvider:
         capabilities: ProviderCapabilities | None = None,
     ) -> ContextSnapshot:
         if kind not in ("ui", "screen") or not application or not window:
-            raise ValueError("нужны kind, application и window")
+            raise ValueError("kind, application and window are required")
         self.grants.require(owner, "context." + kind, application)
         if kind == "screen" and (capabilities is None or not capabilities.image_input):
-            raise NotImplementedError("провайдер не поддерживает изображения")
+            raise NotImplementedError("the provider does not support images")
         with self._lock:
             now = time.monotonic()
             if now - self._last.get(owner.token, float("-inf")) < self.min_interval:
-                raise TimeoutError("лимит частоты контекста")
+                raise TimeoutError("context rate limit")
             self._last[owner.token] = now
         cancel = self.grants.watch(owner, [("context." + kind, application)])
         try:
             data = self.adapter.capture(application, window, kind, cancel)
             if cancel.is_set():
-                raise PermissionError("сбор контекста отменён отзывом права")
+                raise PermissionError("context collection cancelled: permission revoked")
         finally:
             self.grants.unwatch(cancel)
         # Грант мог быть отозван, пока OS adapter собирал данные.
@@ -134,18 +134,18 @@ class ContextProvider:
         import json
 
         if not isinstance(data, dict):
-            raise ValueError("Context Adapter должен вернуть объект")
+            raise ValueError("Context Adapter must return an object")
         for field in ("text", "image"):
             if data.get(field) is not None and not isinstance(data[field], str):
-                raise ValueError(field + " должен быть строкой")
+                raise ValueError(field + " must be a string")
         if data.get("structure") is not None and not isinstance(data["structure"], dict):
-            raise ValueError("structure должен быть объектом")
+            raise ValueError("structure must be an object")
         if len(json.dumps(data, ensure_ascii=False, allow_nan=False).encode()) > self.max_bytes:
-            raise ValueError("контекст превышает бюджет")
+            raise ValueError("context exceeds the budget")
         if set(data) - {"text", "image", "structure"}:
-            raise ValueError("неизвестные поля Context Adapter")
+            raise ValueError("unknown Context Adapter fields")
         if kind == "ui" and data.get("image") is not None:
-            raise PermissionError("UI Context не даёт доступа к Screen")
+            raise PermissionError("UI Context does not grant Screen access")
         snapshot = ContextSnapshot(
             uuid.uuid4().hex, application, window, time.monotonic_ns(), kind, **copy.deepcopy(data)
         )
@@ -159,7 +159,7 @@ class ContextProvider:
         with self._lock:
             original = self._snapshots.get(owner.token)
             if original is None or original[0] != snapshot.snapshot_id or original[1] != snapshot:
-                raise PermissionError("snapshot не принадлежит владельцу или изменён")
+                raise PermissionError("snapshot does not belong to the owner or was changed")
         self.grants.require(owner, "context." + snapshot.source, snapshot.application)
         if snapshot.text is not None or snapshot.structure is not None:
             self.grants.require(owner, "egress.text", snapshot.application)
@@ -193,7 +193,7 @@ class ContextProvider:
         try:
             result = sender(data, cancel)
             if cancel.is_set():
-                raise PermissionError("передача отменена отзывом права")
+                raise PermissionError("transfer cancelled: permission revoked")
             self.authorize_egress(owner, snapshot)
             return result
         finally:

@@ -34,7 +34,8 @@ public sealed record Limits(
     int MaxTotalBytes,
     int MaxNameChars);
 
-public sealed record EngineStatus(string? ModelId, string? Loading, string State);
+/// <summary>Движок: загруженная модель, модель в загрузке и причина сбоя загрузки (3.5, 3.17).</summary>
+public sealed record EngineStatus(string? ModelId, string? Loading, string State, ApiError? Problem = null);
 
 public sealed record ServiceStatus(EngineStatus Engine, Limits Limits);
 
@@ -113,6 +114,15 @@ internal sealed record ModelRequest(string? ModelId);
 
 internal sealed record StopResponse(bool Stopped);
 
+/// <summary>3.14: переводы модулей — язык → ключ → текст.</summary>
+internal sealed record ModuleTextsResponse(Dictionary<string, Dictionary<string, string>> Modules);
+
+/// <summary>3.17: ответ на «загрузить модель»: started=false — уже загружена или грузится.</summary>
+public sealed record LoadResponse(bool Started, EngineStatus Engine);
+
+/// <summary>3.17: ответ на «Выгрузить модель»: unloaded=false — модель не была загружена.</summary>
+public sealed record UnloadResponse(bool Unloaded, EngineStatus Engine);
+
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
@@ -126,6 +136,9 @@ internal sealed record StopResponse(bool Stopped);
 [JsonSerializable(typeof(SendRequest))]
 [JsonSerializable(typeof(ModelRequest))]
 [JsonSerializable(typeof(StopResponse))]
+[JsonSerializable(typeof(ModuleTextsResponse))]
+[JsonSerializable(typeof(LoadResponse))]
+[JsonSerializable(typeof(UnloadResponse))]
 [JsonSerializable(typeof(SystemReport))]
 [JsonSerializable(typeof(OnboardingState))]
 [JsonSerializable(typeof(ImportRequest))]

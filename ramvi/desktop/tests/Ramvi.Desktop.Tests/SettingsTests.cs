@@ -79,20 +79,28 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Fact]
-    public async Task Language_change_offers_restart()
+    public async Task Language_change_applies_at_once_without_restart()
     {
         var (api, model, calls) = await Open();
         var settings = model.Settings;
         settings.Language = settings.Languages.Single(l => l.Code == "en");
-        Assert.False(settings.RestartCommand.CanExecute(null));
+        try
+        {
+            await settings.SaveCommand.RunAsync();
 
-        await settings.SaveCommand.RunAsync();
-
-        Assert.Equal([new SettingsUpdate(Language: "en")], api.SettingsUpdates);
-        Assert.True(settings.RestartNeeded);
-        Assert.Equal(Ru["settings.restart_needed"], settings.Message);
-        await settings.RestartCommand.RunAsync();
-        Assert.Equal(["restart"], calls);
+            Assert.Equal([new SettingsUpdate(Language: "en")], api.SettingsUpdates);
+            Assert.False(settings.RestartNeeded); // 3.14: язык — без перезапуска
+            Assert.Equal("en", Localizer.Current.Language);
+            Assert.Equal("Settings saved", settings.Message);
+            Assert.Equal("Ready", model.Status);
+            Assert.Equal(["Same as system", "Light", "Dark"], settings.Themes.Select(t => t.Label));
+            Assert.Equal("en", settings.Language?.Code);
+            Assert.Empty(calls);
+        }
+        finally
+        {
+            Localizer.Current = Ru;
+        }
     }
 
     [Fact]

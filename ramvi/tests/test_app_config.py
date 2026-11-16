@@ -47,7 +47,7 @@ def test_defaults_are_inside_app_folder(config: AppConfig) -> None:
 def test_update_saves_and_reports_restart(config: AppConfig) -> None:
     got = config.update({"language": "en", "api_port": 12000, "network_access": True})
 
-    assert got["restart_required"] == ["language"]
+    assert got["restart_required"] == []  # язык — без перезапуска (3.14)
     saved = json.loads((config.app_dir / "settings.json").read_text(encoding="utf-8"))
     assert (
         saved["language"] == "en" and saved["api_port"] == 12000 and saved["network_access"] is True
@@ -137,7 +137,8 @@ def test_settings_survive_service_restart_via_http(tmp_path: Path) -> None:
         client = Client(server.port)
         assert client.ok("GET", "/settings")["settings"]["language"] == "ru"
         saved = client.ok("POST", "/settings", {"language": "en", "models_dir": str(app / "m")})
-        assert saved["restart_required"] == ["language"] and saved["settings"]["models_dir"] == "m"
+        assert saved["restart_required"] == []  # язык без перезапуска (3.14)
+        assert saved["settings"]["models_dir"] == "m"
         status, error = client.request("POST", "/settings", {"api_port": 5})
         assert status == 400 and error["error"]["code"] == "settings.invalid"
         assert error["error"]["params"]["field"] == "api_port"

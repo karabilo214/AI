@@ -294,6 +294,12 @@ class EngineManager:
         with self._lock:
             self._stop_locked()
 
+    def unload(self) -> None:
+        """«Выгрузить модель» (3.17): как stop, и прежняя причина сбоя больше не показывается."""
+        with self._lock:
+            self._stop_locked()
+            self._problem = self._problem_model = None
+
     def _stop_locked(self) -> None:
         if self._supervisor is not None:
             self._supervisor.stop()
@@ -341,7 +347,7 @@ class SwitchableProvider:
                 yield {"type": "status", "state": "loading", "model_id": model_id}
             self.manager.ensure(model_id)
             if cancel.is_set():
-                raise InterruptedError("запрос отменён")
+                raise InterruptedError("request cancelled")
         provider = self.manager.provider()
         with self._lock:
             self._active = provider

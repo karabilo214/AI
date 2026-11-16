@@ -134,13 +134,15 @@ public sealed class UiStateTests : IDisposable
 
         await stream.WriteAsync(new ChatEvent("status", State: "loading", ModelId: "model-b"), Cancel);
         await Until(() => model.State == UiState.Loading, "загрузка весов");
-        Assert.Equal(["stop"], Ids(model));
-        Assert.False(model.Banner!.IsProblem);
-        Assert.Contains("model-b", model.Banner.Text, StringComparison.Ordinal);
+        // 3.17: вместо плашки с текстом «Загрузка модели…» — вращающийся значок с подсказкой.
+        Assert.Null(model.Banner);
+        Assert.True(model.IsModelLoading);
+        Assert.Contains("model-b", model.LoadingTip, StringComparison.Ordinal);
 
         await stream.WriteAsync(new ChatEvent("text", Text: "a"), Cancel);
         await Until(() => model.State == UiState.Generating, "генерация");
         Assert.Null(model.Banner);
+        Assert.False(model.IsModelLoading);
         Assert.True(model.StopCommand.CanExecute(null));
 
         await stream.WriteAsync(new ChatEvent("done", Message: Msg("assistant", "a"), Finish: "stop"), Cancel);
@@ -150,7 +152,7 @@ public sealed class UiStateTests : IDisposable
     }
 
     [Fact]
-    public async Task Stop_from_loading_banner_cancels()
+    public async Task Stop_during_loading_cancels()
     {
         var (api, model, chat) = await Open();
         var stream = api.Stream.Writer;
@@ -159,7 +161,7 @@ public sealed class UiStateTests : IDisposable
         await stream.WriteAsync(new ChatEvent("status", State: "loading", ModelId: "model-a"), Cancel);
         await Until(() => model.State == UiState.Loading, "загрузка весов");
 
-        await ((Command)model.Banner!.Actions[0].Command).RunAsync();
+        await model.StopCommand.RunAsync(); // кнопка «Стоп» у поля ввода
 
         Assert.Contains($"stop {chat}", api.Calls);
         stream.Complete();

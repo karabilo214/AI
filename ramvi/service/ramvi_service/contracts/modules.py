@@ -14,7 +14,7 @@ VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 
 def module_id(value: str) -> str:
     if not isinstance(value, str) or not ID.fullmatch(value):
-        raise ValueError("неверный module_id")
+        raise ValueError("invalid module_id")
     return value
 
 
@@ -36,29 +36,29 @@ class Manifest:
     def __post_init__(self) -> None:
         module_id(self.module_id)
         if not VERSION.fullmatch(self.version):
-            raise ValueError("version должна быть major.minor.patch")
+            raise ValueError("version must be major.minor.patch")
         if self.api_version != MODULE_API_VERSION:
-            raise ValueError("несовместимая версия Module API")
+            raise ValueError("incompatible Module API version")
         if not re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*", self.entrypoint):
-            raise ValueError("entrypoint должен иметь вид package.module:factory")
+            raise ValueError("entrypoint must look like package.module:factory")
         for dependency in self.required + self.optional:
             module_id(dependency)
         if self.module_id in self.required + self.optional:
-            raise ValueError("модуль зависит от себя")
+            raise ValueError("the module depends on itself")
         if len(set(self.required + self.optional)) != len(self.required + self.optional):
-            raise ValueError("повтор зависимости")
+            raise ValueError("duplicate dependency")
         if (
             isinstance(self.data_schema, bool)
             or not isinstance(self.data_schema, int)
             or self.data_schema < 1
         ):
-            raise ValueError("неверная версия данных")
+            raise ValueError("invalid data version")
         for dependency, version in self.dependency_versions.items():
             if dependency not in self.required + self.optional or not VERSION.fullmatch(version):
-                raise ValueError("неверная версия зависимости")
+                raise ValueError("invalid dependency version")
         for name, value in self.resource_limits.items():
             if not name or isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise ValueError("неверная квота ресурса")
+                raise ValueError("invalid resource quota")
 
 
 @dataclass(frozen=True)
@@ -79,7 +79,7 @@ class Authority:
     def issue(self, module: str, principal: str, session: str) -> Owner:
         module_id(module)
         if not principal or not session:
-            raise ValueError("нужны principal и session")
+            raise ValueError("principal and session are required")
         owner = Owner(module, principal, session, secrets.token_urlsafe(32))
         with self._lock:
             self._owners[owner.token] = owner
@@ -88,12 +88,12 @@ class Authority:
     def resolve(self, token: str) -> Owner:
         with self._lock:
             if token not in self._owners:
-                raise PermissionError("владелец отозван или не авторизован")
+                raise PermissionError("the owner is revoked or not authorized")
             return self._owners[token]
 
     def require(self, owner: Owner) -> None:
         if self.resolve(owner.token) != owner:
-            raise PermissionError("подмена владельца")
+            raise PermissionError("owner substitution")
 
     def revoke(self, owner: Owner) -> None:
         with self._lock:

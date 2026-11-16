@@ -179,13 +179,13 @@ def test_chain_must_be_contiguous_and_owner_valid(db: Database) -> None:
 def test_changed_applied_migration_is_rejected(db: Database) -> None:
     migrate(db, "test.module", [V1])
     edited = Migration(1, "notes", V1.sql.replace("text TEXT", "body TEXT"))
-    with pytest.raises(MigrationError, match="изменена"):
+    with pytest.raises(MigrationError, match="was changed"):
         migrate(db, "test.module", [edited])
 
 
 def test_newer_database_is_not_opened_by_older_code(db: Database) -> None:
     migrate(db, "test.module", [V1, V2])
-    with pytest.raises(MigrationError, match="понижение"):
+    with pytest.raises(MigrationError, match="downgrade"):
         migrate(db, "test.module", [V1])
 
 
@@ -194,7 +194,7 @@ def test_failed_migration_leaves_no_trace(db: Database) -> None:
     broken = Migration(
         2, "broken", "CREATE TABLE m_half (id INTEGER) STRICT; ALTER TABLE нет ADD COLUMN x;"
     )
-    with pytest.raises(MigrationError, match="не применена"):
+    with pytest.raises(MigrationError, match="was not applied"):
         migrate(db, "test.module", [V1, broken])
     assert "m_half" not in tables(db)
     assert applied_version(db, "test.module") == 1
@@ -355,7 +355,7 @@ def test_agent_runs_and_tool_calls(db: Database) -> None:
         runs.add_tool_call(run.id, "x", {}, "maybe")
     finished = runs.update(run.id, status="done", token_usage={"in": 5}, now=9.0)
     assert finished.ended_at == 9.0 and finished.token_usage == {"in": 5}
-    with pytest.raises(ValueError, match="завершён"):
+    with pytest.raises(ValueError, match="already finished"):
         runs.update(run.id, status="running")
     assert runs.recent()[0].id == run.id
 

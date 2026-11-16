@@ -44,12 +44,12 @@ def handler(
 
     active=True — метод доступен только активному модулю."""
     if not permission:
-        raise ValueError("у метода должно быть право: " + method)
+        raise ValueError("the method needs a permission: " + method)
     check: Permission = (lambda _: (permission, "*")) if isinstance(permission, str) else permission
 
     def register(run: Handler) -> Handler:
         if method in ROUTES:
-            raise ValueError("метод уже зарегистрирован: " + method)
+            raise ValueError("method is already registered: " + method)
         ROUTES[method] = Route(run, check, active)
         return run
 
@@ -59,7 +59,7 @@ def handler(
 def _context_permission(payload: Payload) -> tuple[str, str]:
     kind = payload.get("kind", "ui")
     if kind not in ("ui", "screen"):
-        raise ValueError("нужны kind, application и window")
+        raise ValueError("kind, application and window are required")
     return "context." + kind, payload["application"]
 
 
@@ -130,7 +130,7 @@ class ScopedServices:
         self.authority.require(self.owner)
         with self._condition:
             if self._stopping:
-                raise PermissionError("scope остановлен")
+                raise PermissionError("scope stopped")
             self._calls += 1
         try:
             return self._dispatch(method, payload)
@@ -143,12 +143,12 @@ class ScopedServices:
         self.authority.require(self.owner)
         # Владелец — scope, не входное поле JSON/вывод модели.
         if set(payload) & {"module_id", "owner", "principal_id", "session_id", "token"}:
-            raise PermissionError("подмена владельца в payload запрещена")
+            raise PermissionError("owner substitution in payload is forbidden")
         route = ROUTES.get(method)
         if route is None:
-            raise ValueError("неизвестный метод Scoped Services")
+            raise ValueError("unknown Scoped Services method")
         if route.active and not self.active:
-            raise PermissionError("модуль не активен")
+            raise PermissionError("module is not active")
         self._permission(*route.permission(payload))
         return route.run(self, payload)
 
@@ -173,13 +173,13 @@ class ScopedServices:
     @handler("data.query", permission="data")
     def _db_query(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.database is None:
-            raise RuntimeError("у модуля нет своей базы (нет миграций)")
+            raise RuntimeError("the module has no database of its own (no migrations)")
         return dict(self.database.query(payload["sql"], payload.get("params")))
 
     @handler("data.execute", permission="data")
     def _db_execute(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.database is None:
-            raise RuntimeError("у модуля нет своей базы (нет миграций)")
+            raise RuntimeError("the module has no database of its own (no migrations)")
         return dict(self.database.execute(payload["sql"], payload.get("params")))
 
     @handler("secrets.get", permission="secrets")
@@ -255,15 +255,15 @@ class ScopedServices:
     ) -> tuple[SharedLLM, dict[str, Any], list[tuple[str, str]]]:
         """Общие проверки запроса к модели и дополнительные права, зависящие от содержимого."""
         if self.llm is None:
-            raise NotImplementedError("LLM Provider не подключён")
+            raise NotImplementedError("LLM Provider is not connected")
         request = payload["request"]
         if not isinstance(request, dict):
-            raise ValueError("LLM request должен быть объектом")
+            raise ValueError("LLM request must be an object")
         capabilities = self.llm.provider.capabilities
         if request.get("tools") and not capabilities.tools:
-            raise NotImplementedError("Provider не объявил tools")
+            raise NotImplementedError("Provider did not declare tools")
         if request.get("response_format") and not capabilities.json_schema:
-            raise NotImplementedError("Provider не объявил constrained JSON")
+            raise NotImplementedError("Provider did not declare constrained JSON")
         rights: list[tuple[str, str]] = []
         if capabilities.external:
             rights.append(("egress.text", "*"))
@@ -273,20 +273,20 @@ class ScopedServices:
             for part in content if isinstance(content, list) else []:
                 if isinstance(part, dict) and part.get("type") in ("image_url", "input_image"):
                     if not capabilities.image_input:
-                        raise NotImplementedError("провайдер не поддерживает изображения")
+                        raise NotImplementedError("the provider does not support images")
                     if capabilities.external:
                         rights.append(("egress.image", "*"))
                         self.grants.require(self.owner, "egress.image")
         with self._condition:
             if self._stopping:
-                raise PermissionError("scope остановлен")
+                raise PermissionError("scope stopped")
             self.llm.retain(self.owner)
         return self.llm, request, rights
 
     @handler("llm.complete", permission="llm", active=True)
     def _llm_complete(self, payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(payload.get("request"), dict) and payload["request"].get("stream"):
-            raise NotImplementedError("llm.complete возвращает один ответ; поток — llm.stream")
+            raise NotImplementedError("llm.complete returns one response; use llm.stream for a stream")
         llm, request, rights = self._llm_request(payload)
         cancel = self.grants.watch(self.owner, rights) if rights else threading.Event()
         try:
@@ -307,16 +307,16 @@ class ScopedServices:
     def _llm_stream(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Начать потоковый ответ; куски забираются llm.read, отмена — llm.cancel."""
         if self.llm is None:
-            raise NotImplementedError("LLM Provider не подключён")
+            raise NotImplementedError("LLM Provider is not connected")
         if not self.llm.provider.capabilities.streaming:
-            raise NotImplementedError("Provider не объявил streaming")
+            raise NotImplementedError("Provider did not declare streaming")
         with self._condition:
             now = time.monotonic()
             for identifier, old in list(self._streams.items()):
                 if old.finished and now - old.last_read > STREAM_IDLE:
                     del self._streams[identifier]
             if len(self._streams) >= MAX_STREAMS:
-                raise RuntimeError("слишком много одновременных потоков модуля")
+                raise RuntimeError("too many concurrent module streams")
         llm, request, rights = self._llm_request(payload)
         cancel = self.grants.watch(self.owner, rights) if rights else threading.Event()
         stream = LLMStream(cancel)
@@ -325,7 +325,7 @@ class ScopedServices:
             if self._stopping:
                 if rights:
                     self.grants.unwatch(cancel)
-                raise PermissionError("scope остановлен")
+                raise PermissionError("scope stopped")
             self._streams[identifier] = stream
         stream.thread = threading.Thread(
             target=self._produce,
@@ -356,12 +356,12 @@ class ScopedServices:
                     while len(stream.chunks) >= STREAM_BUFFER and not stream.cancel.is_set():
                         if time.monotonic() - stream.last_read > STREAM_IDLE:
                             # Причина записывается до отмены, чтобы чтение не увидело «отменён».
-                            stream.error = TimeoutError("модуль не читает поток")
+                            stream.error = TimeoutError("the module does not read the stream")
                             stream.cancel.set()
                             raise stream.error
                         stream.condition.wait(0.05)
                     if stream.cancel.is_set():
-                        raise InterruptedError("поток отменён")
+                        raise InterruptedError("stream cancelled")
                     stream.chunks.append(chunk)
                     stream.condition.notify_all()
             for permission, application in rights:
@@ -385,7 +385,7 @@ class ScopedServices:
         with self._condition:
             stream = self._streams.get(payload["stream_id"])
         if stream is None:
-            raise ValueError("неизвестный поток")
+            raise ValueError("unknown stream")
         return stream
 
     @handler("llm.read", permission="llm", active=True)
@@ -432,7 +432,7 @@ class ScopedServices:
     @handler("context.capture", permission=_context_permission, active=True)
     def _context_capture(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.context is None:
-            raise NotImplementedError("Context Provider не подключён")
+            raise NotImplementedError("Context Provider is not connected")
         return {
             "snapshot": asdict(
                 self.context.capture(
@@ -467,13 +467,13 @@ class ScopedServices:
             while self._calls:
                 left = deadline - time.monotonic()
                 if left <= 0:
-                    raise TimeoutError("Scoped Services операции не завершились")
+                    raise TimeoutError("Scoped Services operations did not finish")
                 self._condition.wait(left)
         for stream in streams:
             if stream.thread is not None:
                 stream.thread.join(max(0.0, deadline - time.monotonic()))
                 if stream.thread.is_alive():
-                    raise TimeoutError("поток модели не остановлен")
+                    raise TimeoutError("model stream did not stop")
         # Запрос мог получить аренду непосредственно перед установкой cancel.
         self.resources.release_owner(self.owner)
 
@@ -515,14 +515,14 @@ class ServiceGateway:
                 try:
                     self.connection.settimeout(1)
                     if self.path != "/":
-                        raise ValueError("неизвестный маршрут")
+                        raise ValueError("unknown route")
                     token = self.headers.get("Authorization", "").removeprefix("Bearer ")
                     gateway.authority.resolve(token)
                     with gateway._lock:
                         scope = gateway._scopes[token]
                     length = int(self.headers.get("Content-Length", "0"))
                     if length < 0 or length > 2**20:
-                        raise ValueError("слишком большой запрос")
+                        raise ValueError("request too large")
                     request = json.loads(self.rfile.read(length))
                     if (
                         not isinstance(request, dict)
@@ -531,7 +531,7 @@ class ServiceGateway:
                         or not isinstance(request["method"], str)
                         or len(request["method"]) > 128
                     ):
-                        raise ValueError("неверная форма RPC")
+                        raise ValueError("invalid RPC shape")
                     response = {"result": scope.call(request["method"], request["payload"])}
                 except PermissionError as error:
                     status, response = 403, {"error": str(error), "error_type": "PermissionError"}
@@ -611,7 +611,7 @@ class ServiceGateway:
                     while self._active:
                         left = deadline - time.monotonic()
                         if left <= 0:
-                            raise TimeoutError("Scoped Services handlers ещё выполняются")
+                            raise TimeoutError("Scoped Services handlers are still running")
                         self._condition.wait(left)
 
         self._server = Server(("127.0.0.1", 0), Handler)
@@ -629,7 +629,7 @@ class ServiceGateway:
             assert self._thread is not None
             self._thread.join(5)
             if self._thread.is_alive():
-                raise TimeoutError("Service Gateway не остановлен")
+                raise TimeoutError("Service Gateway did not stop")
             self._server, self._thread = None, None
 
 
@@ -648,7 +648,7 @@ class ServiceClient:
             with self._opener.open(request, timeout=self.timeout) as response:
                 raw = response.read(4 * 2**20 + 1)
                 if len(raw) > 4 * 2**20:
-                    raise ValueError("ответ Scoped Services превышает лимит")
+                    raise ValueError("Scoped Services response exceeds the limit")
                 return dict(json.loads(raw)["result"])
         except urllib.error.HTTPError as error:
             detail = json.loads(error.read(4096))

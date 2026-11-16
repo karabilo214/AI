@@ -10,7 +10,7 @@ def loopback_url(value: str) -> str:
         parts = urlsplit(value)
         port = parts.port
     except ValueError as error:
-        raise ValueError("неверный локальный URL") from error
+        raise ValueError("invalid local URL") from error
     if (
         parts.scheme != "http"
         or parts.hostname not in {"127.0.0.1", "localhost", "::1"}
@@ -22,7 +22,7 @@ def loopback_url(value: str) -> str:
         or port is None
         or not 0 < port < 65536
     ):
-        raise ValueError("нужен чистый loopback HTTP URL с портом")
+        raise ValueError("a plain loopback HTTP URL with a port is required")
     host = "[::1]" if parts.hostname == "::1" else parts.hostname
     return urlunsplit(("http", f"{host}:{port}", "", "", ""))
 

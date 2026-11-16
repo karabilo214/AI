@@ -53,14 +53,14 @@ class ModuleHost:
         controller: Callable[[Manifest], WorkerController] | None = None,
     ) -> None:
         if isinstance(timeout, bool) or not math.isfinite(timeout) or not 0 < timeout <= 3600:
-            raise ValueError("timeout должен быть положительным")
+            raise ValueError("timeout must be positive")
         self.root, self.principal_id, self.timeout = (
             root.resolve() / "modules",
             principal_id,
             timeout,
         )
         if self.root.is_symlink():
-            raise PermissionError("modules root не может быть symlink")
+            raise PermissionError("modules root cannot be a symlink")
         self.root.mkdir(parents=True, exist_ok=True)
         self.authority = authority or (
             llm.authority
@@ -73,7 +73,7 @@ class ModuleHost:
         )
         for service in (llm, grants, context):
             if service is not None and service.authority is not self.authority:
-                raise ValueError("сервисы используют разных Authority")
+                raise ValueError("services use different Authority objects")
         self.grants = grants or (context.grants if context else GrantStore(self.authority))
         self.resources = ResourceBroker(self.authority, capacity or {"cpu_slots": 1})
         self.events = EventBus(self.authority)
@@ -98,9 +98,9 @@ class ModuleHost:
     ) -> None:
         with self._lock:
             if manifest.module_id in self._entries:
-                raise ValueError("module_id уже зарегистрирован")
+                raise ValueError("module_id is already registered")
             if set(approved_permissions) - set(manifest.permissions):
-                raise ValueError("одобрение не запрошенного разрешения")
+                raise ValueError("approval of a permission that was not requested")
             self._entries[manifest.module_id] = Entry(copy.deepcopy(manifest), approved_permissions)
             self._migrations[manifest.module_id] = dict(migrations or {})
             self._sql[manifest.module_id] = list(sql_migrations)
@@ -118,7 +118,7 @@ class ModuleHost:
 
         def visit(identifier: str) -> None:
             if identifier in visiting:
-                raise ValueError("цикл обязательных зависимостей")
+                raise ValueError("cycle of required dependencies")
             if identifier in done or identifier not in self._entries:
                 return
             visiting.add(identifier)
@@ -133,7 +133,7 @@ class ModuleHost:
     def _entry(self, identifier: str) -> Entry:
         with self._lock:
             if identifier not in self._entries:
-                raise KeyError("модуль не установлен")
+                raise KeyError("module is not installed")
             return self._entries[identifier]
 
     def status(self, identifier: str | None = None) -> dict[str, Any]:
@@ -144,7 +144,7 @@ class ModuleHost:
             with entry.lock:
                 worker = entry.worker.status() if entry.worker else None
                 if worker is not None and worker["state"] != "running":
-                    detail = worker.get("error") or "module worker завершился"
+                    detail = worker.get("error") or "module worker exited"
                     self._stop(entry)
                     entry.state, entry.error = "error", str(detail)
                     worker = None
@@ -183,7 +183,7 @@ class ModuleHost:
         self, entry: Entry, method: str, payload: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         if entry.worker is None:
-            raise RuntimeError("module worker не создан")
+            raise RuntimeError("module worker is not created")
         try:
             return entry.worker.call(method, payload or {}, self.timeout)
         except Exception as error:
@@ -193,7 +193,7 @@ class ModuleHost:
 
     def _start(self, entry: Entry) -> None:
         if set(entry.manifest.permissions) - set(entry.approved):
-            raise PermissionError("разрешения модуля не одобрены")
+            raise PermissionError("module permissions are not approved")
         available = {"settings", "data", "secrets", "resources", "events"}
         if self.llm:
             available.add("llm")
@@ -201,14 +201,14 @@ class ModuleHost:
             available.add("context")
         missing = set(entry.manifest.capabilities) - available
         if missing:
-            raise NotImplementedError("недоступные сервисы: " + ", ".join(sorted(missing)))
+            raise NotImplementedError("unavailable services: " + ", ".join(sorted(missing)))
         for dependency in entry.manifest.required:
             if dependency not in self._entries or self._entries[dependency].state == "disposed":
-                raise RuntimeError("не установлена зависимость " + dependency)
+                raise RuntimeError("dependency is not installed: " + dependency)
         for dependency, version in entry.manifest.dependency_versions.items():
             installed = self._entries.get(dependency)
             if installed is not None and installed.manifest.version != version:
-                raise RuntimeError("несовместимая версия зависимости " + dependency)
+                raise RuntimeError("incompatible dependency version: " + dependency)
         data = ScopedData(self.root, entry.manifest.module_id)
         data.migrate(entry.manifest.data_schema, self._migrations[entry.manifest.module_id])
         sql = self._sql[entry.manifest.module_id]
@@ -268,10 +268,10 @@ class ModuleHost:
             "egress.image",
             "agent.control",
         }:
-            raise ValueError("неверное право приложения")
+            raise ValueError("invalid application permission")
         with entry.lock:
             if permission not in entry.approved or permission not in entry.manifest.permissions:
-                raise PermissionError("разрешение не запрошено/не одобрено")
+                raise PermissionError("permission is not requested/approved")
             entry.application_grants.add((permission, application))
             if entry.owner is not None:
                 self.grants.allow(entry.owner, permission, application)
@@ -289,7 +289,7 @@ class ModuleHost:
             if entry.state in {"initialized", "active", "suspended"} and entry.worker is not None:
                 return self.status(identifier)
             if entry.state == "disposed":
-                raise RuntimeError("модуль disposed")
+                raise RuntimeError("module is disposed")
             try:
                 self._start(entry)
             except Exception as error:
@@ -303,7 +303,7 @@ class ModuleHost:
             if entry.state == "active":
                 return self.status(identifier)
             if entry.state == "suspended":
-                raise RuntimeError("используйте resume")
+                raise RuntimeError("use resume")
             for dependency in entry.manifest.required:
                 self.activate(dependency)
             self.initialize(identifier)
@@ -341,7 +341,7 @@ class ModuleHost:
             if entry.state == "suspended":
                 return self.status(identifier)
             if entry.state != "active":
-                raise RuntimeError("suspend требует active")
+                raise RuntimeError("suspend requires active")
             assert entry.services is not None
             entry.services.active = False
             self._checkpoint(entry)
@@ -356,7 +356,7 @@ class ModuleHost:
             if entry.state == "active":
                 return self.status(identifier)
             if entry.state != "suspended":
-                raise RuntimeError("resume требует suspended")
+                raise RuntimeError("resume requires suspended")
             self._start(entry)
             assert entry.services is not None
             entry.services.active = True
@@ -370,7 +370,7 @@ class ModuleHost:
         entry = self._entry(identifier)
         with entry.lock:
             if entry.state != "active":
-                raise RuntimeError("module invoke требует active")
+                raise RuntimeError("module invoke requires active")
             return self._call(entry, "invoke", {"method": method, "arguments": arguments or {}})
 
     def dispose(self, identifier: str) -> dict[str, Any]:
@@ -394,7 +394,7 @@ class ModuleHost:
     ) -> dict[str, Any]:
         entry = self._entry(identifier)
         if manifest.module_id != identifier:
-            raise ValueError("update не может менять module_id")
+            raise ValueError("update cannot change module_id")
         with entry.lock:
             was_active, was_suspended = entry.state == "active", entry.state == "suspended"
             previous, old_migrations = entry.manifest, self._migrations[identifier]
@@ -403,7 +403,7 @@ class ModuleHost:
                 entry.database.close()
             data = ScopedData(self.root, identifier)
             if any(p.is_symlink() for p in data.root.rglob("*")):
-                raise PermissionError("update namespace с symlink запрещён")
+                raise PermissionError("update of a namespace with a symlink is forbidden")
             with tempfile.TemporaryDirectory(prefix=".update-", dir=self.root) as temporary:
                 backup = Path(temporary) / "backup"
                 shutil.copytree(data.root, backup)
@@ -425,7 +425,7 @@ class ModuleHost:
                     shutil.copytree(backup, data.root)
                     entry.manifest = previous
                     self._migrations[identifier] = old_migrations
-                    entry.state, entry.error = "inactive", "обновление откатилось"
+                    entry.state, entry.error = "inactive", "update rolled back"
                     if was_active:
                         self.activate(identifier)
                     elif was_suspended:
@@ -453,7 +453,7 @@ class ModuleHost:
         entry = self._entry(identifier)
         with entry.lock:
             if entry.worker is not None:
-                raise RuntimeError("остановите модуль перед сбросом данных")
+                raise RuntimeError("stop the module before resetting its data")
             ScopedData(self.root, identifier).reset()
             entry.error = None
             return self.status(identifier)

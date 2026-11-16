@@ -95,7 +95,7 @@ public sealed class SectionsTests
         await MainViewModelTests.Until(() => model.Sections.Current!.HasError, "ошибка показана");
 
         Assert.Equal(Ru["section.state.error"], model.Sections.Current!.State);
-        Assert.Equal("ModuleNotFoundError: character", model.Sections.Current.Error);
+        Assert.Equal("Ошибка модуля: ModuleNotFoundError: character", model.Sections.Current.Error);
         await Select(model, "chat");
         model.Input = "работает?";
         api.Stream.Writer.Complete();

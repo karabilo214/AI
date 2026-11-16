@@ -182,6 +182,8 @@ def build(
     shutil.copytree(shell, out)
     for part in CODE:
         shutil.copytree(source / part, out / "ramvi" / part, ignore=SKIP)
+    # 3.14: каталог переводов — сервису (справка CLI); оболочка держит его в себе.
+    shutil.copytree(source / "i18n", out / "ramvi" / "i18n")
     site = install_python(embed, out / "runtime" / "python")
     dev = (
         copy_dev_files(Path(sys.base_prefix), out / "runtime" / "python")

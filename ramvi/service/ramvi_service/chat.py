@@ -148,6 +148,21 @@ class ChatService:
             self.llm.release_owner(owner)
             self.llm.authority.revoke(owner)
 
+    def stop_all(self) -> int:
+        """Остановить ответы во всех чатах (перед «Выгрузить модель», 3.17)."""
+        with self._lock:
+            active = list(self._active.values())
+        for cancel in active:
+            cancel.set()
+        return len(active)
+
+    def has_model(self, model_id: str) -> bool:
+        try:
+            self._require_model(model_id)
+        except ChatError:
+            return False
+        return True
+
     def stop(self, chat_id: str) -> bool:
         """Остановить текущий ответ; False — нечего останавливать."""
         self.get(chat_id)

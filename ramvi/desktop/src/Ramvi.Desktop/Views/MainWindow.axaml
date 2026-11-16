@@ -119,6 +119,15 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
+            <!-- 3.17: модель загружается — крутится значок; подсказка называет модель -->
+            <Border x:Name="LoadingSpinner" Background="Transparent" VerticalAlignment="Center" Margin="0,0,6,0"
+                    IsVisible="{Binding IsModelLoading}" ToolTip.Tip="{Binding LoadingTip}">
+              <PathIcon Classes="spinner" Data="{StaticResource icon-loading}">
+                <PathIcon.RenderTransform>
+                  <RotateTransform />
+                </PathIcon.RenderTransform>
+              </PathIcon>
+            </Border>
           </StackPanel>
         </Border>
         <Button x:Name="ClearButton" Grid.Column="2" Classes="icon" ToolTip.Tip="{l:T chat.clear_hint}"
@@ -299,6 +308,16 @@
             <Button x:Name="OpenOnboardingButton" HorizontalAlignment="Left" Content="{l:T settings.onboarding_open}"
                     Command="{Binding Settings.OpenOnboardingCommand}" />
             <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.onboarding_note}" />
+
+            <!-- 3.17: модель держится в памяти до выбора другой, выгрузки или выхода -->
+            <TextBlock Classes="heading" Text="{l:T settings.model}" />
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Button x:Name="UnloadModelButton" Classes="icon" ToolTip.Tip="{l:T settings.unload_model}"
+                      Command="{Binding Settings.UnloadModelCommand}">
+                <PathIcon Data="{StaticResource icon-eject}" />
+              </Button>
+              <TextBlock x:Name="LoadedModelText" VerticalAlignment="Center" Text="{Binding Settings.LoadedModelText}" />
+            </StackPanel>
 
             <TextBlock Classes="heading" Text="{l:T settings.language}" />
             <ComboBox x:Name="LanguageBox" MinWidth="200" ItemsSource="{Binding Settings.Languages}"

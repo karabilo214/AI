@@ -157,6 +157,19 @@
     </Style.Animations>
   </Style>
 
+  <!-- 3.17: значок загрузки модели вращается (вместо текста «Загрузка модели…») -->
+  <Style Selector="PathIcon.spinner">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-primary}" />
+    <Style.Animations>
+      <Animation Duration="0:0:0.9" IterationCount="Infinite">
+        <KeyFrame Cue="0%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="RotateTransform.Angle" Value="360" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
   <!-- Кнопки: обычная (вторичная), accent (основное действие), icon (значок с подсказкой) -->
   <Style Selector="Button">
     <Setter Property="CornerRadius" Value="12" />

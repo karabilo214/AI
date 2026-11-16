@@ -3,6 +3,8 @@
 Пауза = остановка с сохранением `.part`; продолжение — HTTP Range с места
 остановки. Файл появляется под своим именем только после проверки SHA-256
 (атомарный os.replace). Имя файла не может выйти за папку моделей.
+
+3.14: ошибка загрузки — ключ `download.*` и параметры (`DownloadError.code/params`).
 """
 
 import hashlib
@@ -15,11 +17,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
+from ramvi_service.i18n import UserError
+
 CHUNK = 1024 * 1024
 SPACE_RESERVE = 512 * 1024 * 1024  # не заполнять диск до нуля
 
 
-class DownloadError(Exception):
+class DownloadError(UserError):
     pass
 
 
@@ -36,14 +40,14 @@ class Progress:
 def safe_target(models_dir: str | os.PathLike[str], name: str) -> Path:
     """Только относительный путь без `..`, абсолютных путей, дисков и ссылок наружу."""
     if not name or "\x00" in name:
-        raise DownloadError("пустое или недопустимое имя файла")
+        raise DownloadError("download.bad_name")
     for pure in (PurePosixPath(name), PureWindowsPath(name)):
         if pure.is_absolute() or pure.drive or ".." in pure.parts:
-            raise DownloadError(f"недопустимый путь: {name}")
+            raise DownloadError("download.bad_path", name=name)
     root = Path(models_dir).resolve()
     target = (root / name).resolve()
     if root not in target.parents:
-        raise DownloadError(f"путь выходит за папку моделей: {name}")
+        raise DownloadError("download.outside_models", name=name)
     return target
 
 
@@ -68,9 +72,9 @@ class Download:
         timeout: float = 30.0,
     ):
         if not url.lower().startswith(("https://", "http://")):
-            raise DownloadError("поддерживаются только http(s) адреса")
+            raise DownloadError("download.only_http")
         if len(sha256) != 64:
-            raise DownloadError("нужен SHA-256 (64 hex-символа) — без хеша файл не активируется")
+            raise DownloadError("download.need_sha256")
         self.url, self.sha256, self.size = url, sha256.lower(), size
         self.target = safe_target(models_dir, name)
         self.part = self.target.with_name(self.target.name + ".part")
@@ -83,7 +87,7 @@ class Download:
     def _check_space(self, need: int) -> None:
         free = shutil.disk_usage(self.target.parent).free
         if need + SPACE_RESERVE > free:
-            raise DownloadError(f"мало места: нужно {need} байт + запас, свободно {free}")
+            raise DownloadError("download.no_space", need=need, free=free)
 
     def run(self) -> Path:
         """Скачать (или продолжить) и активировать. Paused — `.part` сохранён."""
@@ -112,7 +116,7 @@ class Download:
             with self.part.open("ab" if done else "wb") as file:
                 while True:
                     if self._pause.is_set():
-                        raise Paused("загрузка на паузе")
+                        raise Paused("download.paused")
                     block = response.read(min(CHUNK, self.limit_bps or CHUNK))
                     if not block:
                         break
@@ -128,9 +132,9 @@ class Download:
                 file.flush()
                 os.fsync(file.fileno())
         if total is not None and self.part.stat().st_size != total:
-            raise DownloadError("соединение оборвалось; можно продолжить")
+            raise DownloadError("download.interrupted")
         if digest.hexdigest() != self.sha256:
             self.part.unlink()
-            raise DownloadError("хеш не совпал — файл удалён, не активирован")
+            raise DownloadError("download.hash_mismatch")
         os.replace(self.part, self.target)
         return self.target

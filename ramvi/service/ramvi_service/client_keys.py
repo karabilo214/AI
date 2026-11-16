@@ -16,8 +16,14 @@ from pathlib import Path
 
 from ramvi_storage import CORE_MIGRATIONS, CORE_OWNER, Database, migrate
 
+from ramvi_service.i18n import UserError
+
 PREFIX = "ramvi-"
 PERMISSIONS = frozenset({"chat", "models", "agent"})
+
+
+class ClientKeyError(UserError, ValueError):
+    """Неверный запрос ключа: ключ сообщения `client_keys.*` (3.14)."""
 
 
 @dataclass(frozen=True)
@@ -56,10 +62,14 @@ class KeyStore:
         """Вернуть запись и ключ. Ключ больше нигде не сохраняется и не показывается."""
         name = name.strip()
         if not name:
-            raise ValueError("нужно имя клиента")
+            raise ClientKeyError("client_keys.no_name")
         unknown = set(permissions) - PERMISSIONS
         if unknown or not permissions:
-            raise ValueError(f"права из {sorted(PERMISSIONS)}, получено {sorted(permissions)}")
+            raise ClientKeyError(
+                "client_keys.bad_permissions",
+                allowed=", ".join(sorted(PERMISSIONS)),
+                got=", ".join(sorted(permissions)),
+            )
         key = PREFIX + secrets.token_urlsafe(32)
         key_id = secrets.token_hex(6)
         with self._lock, self._db.transaction():

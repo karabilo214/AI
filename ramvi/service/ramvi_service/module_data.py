@@ -56,7 +56,7 @@ def load_migrations(folder: Path) -> list[Migration]:
     for path in sorted(folder.glob("*.sql")):
         match = _MIGRATION_FILE.fullmatch(path.name)
         if match is None:
-            raise ValueError(f"имя миграции должно быть 0001_name.sql: {path.name}")
+            raise ValueError(f"migration name must be 0001_name.sql: {path.name}")
         result.append(
             Migration(int(match.group(1)), match.group(2), path.read_text(encoding="utf-8"))
         )
@@ -88,12 +88,12 @@ def _scalar_params(params: Any) -> list[Any]:
     if params is None:
         return []
     if not isinstance(params, list) or len(params) > MAX_PARAMS:
-        raise ValueError("params — список до 999 значений")
+        raise ValueError("params must be a list of up to 999 values")
     for value in params:
         if isinstance(value, bool) or (
             value is not None and not isinstance(value, (str, int, float))
         ):
-            raise ValueError("params — только строки, числа и null")
+            raise ValueError("params may hold only strings, numbers and null")
     return params
 
 
@@ -136,9 +136,9 @@ class ModuleDatabase:
 
     def _require(self, sql: Any) -> Database:
         if self._db is None:
-            raise RuntimeError("база модуля не открыта")
+            raise RuntimeError("the module database is not open")
         if not isinstance(sql, str) or not sql.strip() or len(sql) > MAX_SQL:
-            raise ValueError("sql — непустая строка до 100000 символов")
+            raise ValueError("sql must be a non-empty string of up to 100000 characters")
         return self._db
 
     def query(self, sql: str, params: Any = None) -> dict[str, Any]:
@@ -149,11 +149,11 @@ class ModuleDatabase:
         try:
             rows = db.all(sql, values)
         except sqlite3.DatabaseError as error:
-            raise PermissionError(f"запрос отклонён: {error}") from None
+            raise PermissionError(f"query rejected: {error}") from None
         finally:
             db.set_authorizer(None)
         if len(rows) > MAX_ROWS:
-            raise ValueError(f"больше {MAX_ROWS} строк — добавьте LIMIT")
+            raise ValueError(f"more than {MAX_ROWS} rows — add LIMIT")
         return {"columns": list(rows[0].keys()) if rows else [], "rows": [list(r) for r in rows]}
 
     def execute(self, sql: str, params: Any = None) -> dict[str, Any]:
@@ -165,7 +165,7 @@ class ModuleDatabase:
             with db.transaction():
                 cursor = db.execute(sql, values)
         except sqlite3.DatabaseError as error:
-            raise PermissionError(f"запрос отклонён: {error}") from None
+            raise PermissionError(f"query rejected: {error}") from None
         finally:
             db.set_authorizer(None)
         return {"rowcount": cursor.rowcount, "lastrowid": cursor.lastrowid}

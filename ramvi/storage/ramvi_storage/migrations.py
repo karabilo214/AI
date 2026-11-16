@@ -66,17 +66,17 @@ class Migration:
 
 def _check_owner(owner: str) -> str:
     if not OWNER_RE.fullmatch(owner):
-        raise MigrationError(f"неверный владелец миграций: {owner!r}")
+        raise MigrationError(f"invalid migration owner: {owner!r}")
     return owner
 
 
 def _check_chain(migrations: Sequence[Migration]) -> None:
     versions = [m.version for m in migrations]
     if versions != list(range(1, len(versions) + 1)):
-        raise MigrationError(f"версии миграций должны идти подряд с 1, получено {versions}")
+        raise MigrationError(f"migration versions must be consecutive from 1, got {versions}")
     for m in migrations:
         if not m.name.strip() or (not m.sql.strip() and m.run is None):
-            raise MigrationError(f"миграция {m.version}: нужны имя и SQL или функция")
+            raise MigrationError(f"migration {m.version}: name and SQL or a function are required")
 
 
 def _ensure_bookkeeping(db: Database) -> None:
@@ -112,14 +112,14 @@ def migrate(
     newer = sorted(v for v in applied if v not in known)
     if newer:
         raise MigrationError(
-            f"{owner}: база создана более новой версией (схема {max(newer)}, код знает "
-            f"{len(migrations)}); понижение не поддерживается"
+            f"{owner}: the database was created by a newer version (schema {max(newer)}, code knows "
+            f"{len(migrations)}); downgrade is not supported"
         )
     for version, checksum in applied.items():
         if known[version].checksum != checksum:
             raise MigrationError(
-                f"{owner}: миграция {version} изменена после применения — так нельзя, "
-                "нужна новая миграция"
+                f"{owner}: migration {version} was changed after it was applied — not allowed, "
+                "add a new migration"
             )
     pending = [m for m in migrations if m.version not in applied]
     if not pending:
@@ -144,6 +144,6 @@ def migrate(
             raise
         except Exception as error:
             raise MigrationError(
-                f"{owner}: миграция {m.version} ({m.name}) не применена: {error}"
+                f"{owner}: migration {m.version} ({m.name}) was not applied: {error}"
             ) from error
     return len(migrations)

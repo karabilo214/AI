@@ -71,6 +71,15 @@ public sealed class MessageViewModel : ObservableObject
 
     public bool HasAttachments => Attachments.Count > 0;
 
+    public override void Relocalize()
+    {
+        base.Relocalize();
+        foreach (var attachment in Attachments)
+        {
+            attachment.Relocalize();
+        }
+    }
+
     public string Content
     {
         get => _content;

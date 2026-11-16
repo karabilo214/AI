@@ -21,8 +21,8 @@ def stream_chunks(event: dict[str, Any]) -> Iterator[dict[str, Any]]:
         error = event["error"]
         message = str(error.get("message", "")) if isinstance(error, dict) else str(error)
         if isinstance(error, dict) and error.get("type") == "cancelled":
-            raise InterruptedError(message or "запрос отменён")
-        raise RuntimeError(message or "ошибка Engine")
+            raise InterruptedError(message or "request cancelled")
+        raise RuntimeError(message or "Engine error")
     for choice in event.get("choices") or []:
         delta = choice.get("delta") or {}
         if delta.get("reasoning_content"):
@@ -77,17 +77,17 @@ class LocalEngineProvider:
         with self._opener.open(request, timeout=self.timeout) as response:
             data = response.read(4 * 2**20 + 1)
             if len(data) > 4 * 2**20:
-                raise ValueError("ответ Engine превышает лимит")
+                raise ValueError("Engine response exceeds the limit")
             result = json.loads(data)
             if not isinstance(result, dict):
-                raise ValueError("ответ Engine должен быть объектом")
+                raise ValueError("Engine response must be an object")
             return result
 
     def complete(self, request: dict[str, Any], cancel: threading.Event) -> dict[str, Any]:
         if cancel.is_set():
-            raise InterruptedError("запрос отменён")
+            raise InterruptedError("request cancelled")
         if not self._operation.acquire(blocking=False):
-            raise RuntimeError("Provider уже выполняет запрос; используйте общую очередь")
+            raise RuntimeError("Provider is already running a request; use the shared queue")
         request_id = uuid.uuid4().hex
         try:
             with self._lock:
@@ -95,7 +95,7 @@ class LocalEngineProvider:
             payload = dict(request, model=self.model, stream=False)
             result = self._call("/v1/chat/completions", payload, request_id)
             if cancel.is_set():
-                raise InterruptedError("поздний ответ отменён")
+                raise InterruptedError("late response cancelled")
             return result
         finally:
             with self._lock:
@@ -105,9 +105,9 @@ class LocalEngineProvider:
     def stream(self, request: dict[str, Any], cancel: threading.Event) -> Iterator[dict[str, Any]]:
         """Читает SSE движка по мере генерации; отмена прерывает чтение сразу."""
         if cancel.is_set():
-            raise InterruptedError("запрос отменён")
+            raise InterruptedError("request cancelled")
         if not self._operation.acquire(blocking=False):
-            raise RuntimeError("Provider уже выполняет запрос; используйте общую очередь")
+            raise RuntimeError("Provider is already running a request; use the shared queue")
         request_id = uuid.uuid4().hex
         done = threading.Event()
         completed = False
@@ -149,15 +149,15 @@ class LocalEngineProvider:
                     line = response.readline(MAX_STREAM_LINE + 1)
                 except (OSError, ValueError, AttributeError):
                     if cancel.is_set():
-                        raise InterruptedError("запрос отменён") from None
+                        raise InterruptedError("request cancelled") from None
                     raise
                 if cancel.is_set():
-                    raise InterruptedError("запрос отменён")
+                    raise InterruptedError("request cancelled")
                 if not line:
-                    raise RuntimeError("поток Engine оборвался без [DONE]")
+                    raise RuntimeError("Engine stream ended without [DONE]")
                 total += len(line)
                 if len(line) > MAX_STREAM_LINE or total > MAX_STREAM_BYTES:
-                    raise ValueError("поток Engine превышает лимит")
+                    raise ValueError("Engine stream exceeds the limit")
                 text = line.decode().strip()
                 if not text.startswith("data:"):
                     continue
@@ -166,7 +166,7 @@ class LocalEngineProvider:
                     break
                 event = json.loads(data)
                 if not isinstance(event, dict):
-                    raise ValueError("кусок Engine должен быть объектом")
+                    raise ValueError("Engine chunk must be an object")
                 for chunk in stream_chunks(event):
                     if chunk["type"] == "finish":
                         finish = chunk["finish_reason"]

@@ -2,6 +2,8 @@
 
 Пути внутри папки приложения хранятся относительными: смена буквы диска
 или перенос распакованной папки их не ломает (PORT-01).
+
+3.14: неверное значение — `SettingsError` с ключом `settings.*` (текст — в каталоге).
 """
 
 import json
@@ -11,9 +13,15 @@ from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
+from ramvi_service.i18n import UserError
+
 LANGUAGES = ("ru", "en", "uk")
 THEMES = ("system", "light", "dark")  # 3.16: тема окна оболочки
 FILE_NAME = "settings.json"
+
+
+class SettingsError(UserError, ValueError):
+    """Неверная настройка: ключ сообщения и параметры."""
 
 
 @dataclass(frozen=True)
@@ -27,21 +35,21 @@ class Settings:
 
     def validate(self) -> "Settings":
         if self.language not in LANGUAGES:
-            raise ValueError(f"язык должен быть одним из {LANGUAGES}")
+            raise SettingsError("settings.bad_language", allowed=", ".join(LANGUAGES))
         if (
             isinstance(self.api_port, bool)
             or not isinstance(self.api_port, int)
             or not 1024 <= self.api_port <= 65535
         ):
-            raise ValueError("порт API должен быть целым числом 1024–65535")
+            raise SettingsError("settings.bad_port")
         if self.theme not in THEMES:
-            raise ValueError(f"тема должна быть одной из {THEMES}")
+            raise SettingsError("settings.bad_theme", allowed=", ".join(THEMES))
         if not isinstance(self.network_access, bool):
-            raise ValueError("сетевой доступ должен быть true/false")
+            raise SettingsError("settings.bad_network")
         for name in ("data_dir", "models_dir"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{name} не может быть пустым")
+                raise SettingsError("settings.empty_folder", field=name)
         return self
 
     def resolve(self, app_dir: str | os.PathLike[str], name: str) -> Path:
@@ -69,7 +77,7 @@ def load(data_dir: str | os.PathLike[str]) -> Settings:
         return Settings()
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
-        raise ValueError(f"{path}: ожидался объект JSON")
+        raise SettingsError("settings.bad_file", path=str(path))
     known = {f.name for f in fields(Settings)}
     return Settings(**{k: v for k, v in raw.items() if k in known}).validate()
 

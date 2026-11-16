@@ -13,7 +13,8 @@ public sealed record ThemeOption(string Code, string Label);
 /// <summary>
 /// Экран настроек (3.7): папка данных, папка моделей, язык, порт внешнего API, доступ из сети.
 /// Проверяет и сохраняет сервис; отправляются только изменённые поля. Смена папки данных
-/// или языка применяется перезапуском приложения — экран предлагает перезапустить сразу.
+/// применяется перезапуском приложения — экран предлагает перезапустить сразу; язык и
+/// тема — сразу, без перезапуска (3.14, 3.16).
 /// </summary>
 public sealed class SettingsViewModel : ObservableObject
 {
@@ -22,6 +23,9 @@ public sealed class SettingsViewModel : ObservableObject
     private readonly Func<Task> _restart;
     private readonly Action<string>? _applyTheme;
     private readonly Func<Task>? _openOnboarding;
+    private readonly Action? _onUnloaded;
+    private readonly Action<string>? _applyLanguage;
+    private string? _loadedModel;
     private ThemeOption? _theme;
     private AppSettings? _saved;
     private bool _isOpen;
@@ -40,9 +44,14 @@ public sealed class SettingsViewModel : ObservableObject
         Func<string?, Task<string?>> pickFolder,
         Func<Task> restart,
         Action<string>? applyTheme = null,
-        Func<Task>? openOnboarding = null)
+        Func<Task>? openOnboarding = null,
+        Action? onUnloaded = null,
+        Action<string>? applyLanguage = null)
     {
         _api = api;
+        _applyLanguage = applyLanguage;
+        _onUnloaded = onUnloaded;
+        UnloadModelCommand = new Command(UnloadModelAsync, () => _loadedModel is not null);
         _applyTheme = applyTheme;
         _openOnboarding = openOnboarding;
         OpenOnboardingCommand = new Command(
@@ -52,7 +61,7 @@ public sealed class SettingsViewModel : ObservableObject
                 await _openOnboarding!().ConfigureAwait(true);
             },
             () => _openOnboarding is not null);
-        Themes = [.. ThemeCodes.Select(code => new ThemeOption(code, L[$"settings.theme.{code}"]))];
+        Themes = [.. ThemeOptions()];
         _pickFolder = pickFolder;
         _restart = restart;
         SaveCommand = new Command(SaveAsync, () => _saved is not null);
@@ -82,11 +91,32 @@ public sealed class SettingsViewModel : ObservableObject
     /// <summary>Снова открыть мастер первого запуска: проверка компьютера и подключение модели.</summary>
     public Command OpenOnboardingCommand { get; }
 
-    public List<LanguageOption> Languages { get; } = [];
+    /// <summary>3.17: «Выгрузить модель» — освободить память; активна, только когда модель загружена.</summary>
+    public Command UnloadModelCommand { get; }
+
+    /// <summary>Какая модель сейчас в памяти (или загружается); null — не загружена.</summary>
+    public string? LoadedModel
+    {
+        get => _loadedModel;
+        private set
+        {
+            if (Set(ref _loadedModel, value))
+            {
+                Raise(nameof(LoadedModelText));
+                UnloadModelCommand.Refresh();
+            }
+        }
+    }
+
+    public string LoadedModelText => _loadedModel is { } model
+        ? L.Format("settings.model_loaded", ("model_id", model))
+        : L["settings.model_not_loaded"];
+
+    public List<LanguageOption> Languages { get; private set; } = [];
 
     public static IReadOnlyList<string> ThemeCodes { get; } = ["system", "light", "dark"];
 
-    public List<ThemeOption> Themes { get; }
+    public List<ThemeOption> Themes { get; private set; }
 
     /// <summary>Тема применяется сразу после сохранения, без перезапуска.</summary>
     public ThemeOption? Theme
@@ -182,11 +212,47 @@ public sealed class SettingsViewModel : ObservableObject
         try
         {
             Show(await _api().SettingsAsync().ConfigureAwait(true));
+            ShowEngine((await _api().StatusAsync().ConfigureAwait(true)).Engine);
         }
         catch (Exception error) when (error is ApiException or HttpRequestException)
         {
             Error = Text(error);
         }
+    }
+
+    private void ShowEngine(EngineStatus engine) =>
+        LoadedModel = engine.Loading ?? (engine.State is "stopped" or "failed" ? null : engine.ModelId);
+
+    private async Task UnloadModelAsync()
+    {
+        Error = null;
+        Message = null;
+        try
+        {
+            var result = await _api().UnloadModelAsync().ConfigureAwait(true);
+            ShowEngine(result.Engine);
+            _onUnloaded?.Invoke();
+            Message = L["settings.model_unloaded"];
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            Error = Text(error);
+        }
+    }
+
+    private static IEnumerable<ThemeOption> ThemeOptions() =>
+        ThemeCodes.Select(code => new ThemeOption(code, L[$"settings.theme.{code}"]));
+
+    /// <summary>Подписи языков и тем — на новом языке; выбор сохраняется.</summary>
+    public override void Relocalize()
+    {
+        var theme = Theme?.Code;
+        var language = Language?.Code;
+        Themes = [.. ThemeOptions()];
+        Languages = [.. Languages.Select(l => new LanguageOption(l.Code, L[$"settings.lang.{l.Code}"]))];
+        base.Relocalize();
+        Theme = Themes.FirstOrDefault(t => t.Code == theme);
+        Language = Languages.FirstOrDefault(l => l.Code == language);
     }
 
     private void Show(SettingsInfo info)
@@ -241,6 +307,11 @@ public sealed class SettingsViewModel : ObservableObject
             if (update.Theme is not null)
             {
                 _applyTheme?.Invoke(info.Settings.Theme);
+            }
+
+            if (update.Language is not null)
+            {
+                _applyLanguage?.Invoke(info.Settings.Language); // сразу, без перезапуска
             }
 
             if (info.RestartRequired is { Count: > 0 })

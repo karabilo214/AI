@@ -29,7 +29,7 @@ class Database:
 
     def __init__(self, path: str | Path, *, busy_timeout_ms: int = 5000) -> None:
         if sqlite3.sqlite_version_info < MIN_SQLITE:
-            raise StorageError(f"нужен SQLite >= 3.37, установлен {sqlite3.sqlite_version}")
+            raise StorageError(f"SQLite >= 3.37 is required, installed {sqlite3.sqlite_version}")
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
@@ -39,7 +39,7 @@ class Database:
         mode = self._conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
         if str(mode).lower() != "wal":
             self._conn.close()
-            raise StorageError(f"не удалось включить WAL (режим {mode})")
+            raise StorageError(f"could not enable WAL (mode {mode})")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
@@ -92,7 +92,7 @@ class Database:
         """
         with self._lock:
             if self._depth == 0:
-                raise StorageError("executescript_in_transaction вне транзакции")
+                raise StorageError("executescript_in_transaction outside a transaction")
             for statement in _split_sql(sql):
                 self._conn.execute(statement)
 
@@ -133,7 +133,7 @@ def _split_sql(sql: str) -> list[str]:
                 statements.append(text)
             start = index + 1
     if _has_code(sql[start:]):
-        raise StorageError("незавершённый SQL-оператор в миграции")
+        raise StorageError("unterminated SQL statement in migration")
     return statements
 
 

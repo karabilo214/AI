@@ -60,6 +60,16 @@ public interface IChatApi
 
     Task<SettingsInfo> SaveSettingsAsync(SettingsUpdate update, CancellationToken cancel = default);
 
+    /// <summary>3.17: начать загрузку выбранной модели сразу, не дожидаясь сообщения.</summary>
+    Task<LoadResponse> LoadModelAsync(string modelId, CancellationToken cancel = default);
+
+    /// <summary>3.17: «Выгрузить модель» — ответы останавливаются, память освобождается.</summary>
+    Task<UnloadResponse> UnloadModelAsync(CancellationToken cancel = default);
+
+    /// <summary>3.14: переводы установленных модулей (язык → ключ → текст).</summary>
+    Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> ModuleTextsAsync(
+        CancellationToken cancel = default);
+
     /// <summary>3.11: разделы интерфейса.</summary>
     Task<IReadOnlyList<SectionInfo>> SectionsAsync(CancellationToken cancel = default);
 
@@ -138,6 +148,22 @@ public sealed class ChatApiClient : IChatApi, IDisposable
 
     public IAsyncEnumerable<ChatEvent> RegenerateAsync(string chatId, CancellationToken cancel = default) =>
         StreamAsync($"chats/{Id(chatId)}/regenerate", null, cancel);
+
+    public Task<LoadResponse> LoadModelAsync(string modelId, CancellationToken cancel = default) =>
+        PostAsync("engine/load", new ModelRequest(modelId), ApiJson.Default.ModelRequest,
+            ApiJson.Default.LoadResponse, cancel);
+
+    public Task<UnloadResponse> UnloadModelAsync(CancellationToken cancel = default) =>
+        PostAsync("engine/unload", new ModelRequest(null), ApiJson.Default.ModelRequest,
+            ApiJson.Default.UnloadResponse, cancel);
+
+    public async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> ModuleTextsAsync(
+        CancellationToken cancel = default)
+    {
+        var response = await GetAsync("i18n", ApiJson.Default.ModuleTextsResponse, cancel).ConfigureAwait(false);
+        return response.Modules.ToDictionary(
+            p => p.Key, p => (IReadOnlyDictionary<string, string>)p.Value, StringComparer.Ordinal);
+    }
 
     public Task<SystemReport> SystemAsync(CancellationToken cancel = default) =>
         GetAsync("system", ApiJson.Default.SystemReport, cancel);

@@ -470,6 +470,87 @@ public sealed class StyleTests
         window.Close();
     }
 
+    /// <summary>3.14: язык меняется без перезапуска — разметка, строка состояния, плашка, настройки.</summary>
+    [AvaloniaFact]
+    public async Task Language_switch_updates_open_window_without_restart()
+    {
+        var api = new FakeChatApi();
+        api.Models.Clear(); // плашка «Нет модели» — тексты моделей представления тоже меняются
+        var (window, model, _) = await OpenAsync(api);
+        var send = window.FindControl<Button>("SendButton")!;
+        string SendText() => send.GetVisualDescendants().OfType<TextBlock>().Single().Text!;
+        Assert.Equal("Отправить", SendText());
+        Assert.Equal("Нет модели", window.FindControl<TextBlock>("StateTitle")!.Text);
+        GC.Collect(); // слабые подписки не теряют живое окно
+        GC.WaitForPendingFinalizers();
+        try
+        {
+            model.ApplyLanguage("en");
+            Pump();
+
+            Assert.Equal("Send", SendText());
+            Assert.Equal("Settings", ToolTip.GetTip(window.FindControl<Button>("SettingsButton")!));
+            Assert.Equal("No model", window.FindControl<TextBlock>("StateTitle")!.Text);
+            Assert.Equal("Ready", model.Status);
+            await model.Settings.OpenAsync();
+            Pump();
+            Assert.Equal("Same as system", model.Settings.Theme?.Label);
+            Assert.Empty(Localizer.Current.Missing);
+            Shoot(window, "settings-en");
+        }
+        finally
+        {
+            model.ApplyLanguage("ru");
+            Pump();
+            Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+            window.Close();
+        }
+
+        Assert.Equal("Отправить", SendText());
+    }
+
+    /// <summary>3.17: пока модель грузится — вращающийся значок с подсказкой, а не текст.</summary>
+    [AvaloniaFact]
+    public async Task Loading_spinner_rotates_and_settings_has_unload_button()
+    {
+        var api = new FakeChatApi { LoadPending = true };
+        api.AddChat("Диалог", "model-a");
+        var (window, model, _) = await OpenAsync(api);
+        var spinner = window.FindControl<Border>("LoadingSpinner")!;
+        Assert.True(spinner.IsEffectivelyVisible);
+        Assert.Equal("Загрузка модели model-a…", ToolTip.GetTip(spinner));
+        Assert.False(window.FindControl<Border>("StateBanner")!.IsVisible);
+        var icon = spinner.GetVisualDescendants().OfType<PathIcon>().Single();
+        var rotate = Assert.IsType<RotateTransform>(icon.RenderTransform);
+        var angles = new HashSet<double>();
+        for (var i = 0; i < 40 && angles.Count < 3; i++)
+        {
+            Pump();
+            angles.Add(Math.Round(rotate.Angle));
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+
+        Assert.True(angles.Count >= 3, $"значок не вращается: {string.Join(",", angles)}");
+        Shoot(window, "loading");
+
+        api.Engine = new EngineStatus("model-a", null, "ready");
+        await UntilAsync(() => !spinner.IsVisible, "конец загрузки");
+
+        await model.Settings.OpenAsync();
+        Pump();
+        var unload = window.FindControl<Button>("UnloadModelButton")!;
+        Assert.True(unload.IsEffectivelyVisible && unload.IsEffectivelyEnabled);
+        Assert.StartsWith("Выгрузить модель", (string)ToolTip.GetTip(unload)!, StringComparison.Ordinal);
+        Assert.Equal("Загружена: model-a", window.FindControl<TextBlock>("LoadedModelText")!.Text);
+        Shoot(window, "settings-model");
+        unload.Command!.Execute(null);
+        await UntilAsync(() => !unload.IsEffectivelyEnabled, "кнопка выключена после выгрузки");
+        Assert.Equal("Модель не загружена", window.FindControl<TextBlock>("LoadedModelText")!.Text);
+        Assert.Empty(Localizer.Current.Missing);
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Settings_file_theme_is_read_before_service()
     {

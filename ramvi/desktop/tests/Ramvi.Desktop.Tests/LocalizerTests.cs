@@ -28,6 +28,55 @@ public sealed partial class LocalizerTests
     }
 
     [Fact]
+    public void Nested_service_message_is_translated_in_same_language()
+    {
+        const string json = """
+            {
+              "field": "theme",
+              "detail": {"code": "settings.bad_theme", "params": {"allowed": "system, light, dark"}},
+              "why": [{"code": "compat.choice.item", "params": {"name": "70B", "status": {"code": "compat.no_ram", "params": {}}}}]
+            }
+            """;
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var values = doc.RootElement.EnumerateObject()
+            .ToDictionary(p => p.Name, p => (object?)p.Value, StringComparer.Ordinal);
+        var ru = Localizer.Load("ru");
+        var en = Localizer.Load("en");
+
+        Assert.Equal(
+            "Неверное значение поля theme: тема должна быть одной из: system, light, dark",
+            ru.Format("settings.invalid", values));
+        Assert.EndsWith("the theme must be one of: system, light, dark", en.Format("settings.invalid", values), StringComparison.Ordinal);
+        Assert.Equal("ни одна модель не запустится на этом ПК (70B: Не хватает RAM)", ru.Format("compat.choice.none", values));
+        Assert.Equal("no model will run on this PC (70B: Not enough RAM)", en.Format("compat.choice.none", values));
+        Assert.Empty(ru.Missing);
+    }
+
+    [Fact]
+    public void Module_texts_join_catalog_and_follow_language()
+    {
+        var before = Localizer.Current;
+        try
+        {
+            Localizer.Current = Localizer.Load("ru");
+            Localizer.SetModuleTexts(new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal)
+            {
+                ["ru"] = new Dictionary<string, string> { ["module.helper.hi"] = "Привет", ["chat.send"] = "Чужое" },
+                ["en"] = new Dictionary<string, string> { ["module.helper.hi"] = "Hi" },
+            });
+            Assert.Equal("Привет", Localizer.Current["module.helper.hi"]);
+            Assert.Equal("Отправить", Localizer.Current["chat.send"]); // ключ ядра модуль не переопределяет
+            Localizer.Current = Localizer.Load("en");
+            Assert.Equal("Hi", Localizer.Current["module.helper.hi"]);
+        }
+        finally
+        {
+            Localizer.SetModuleTexts(new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal));
+            Localizer.Current = before;
+        }
+    }
+
+    [Fact]
     public void Every_key_used_in_shell_exists()
     {
         var catalog = Localizer.ReadCatalog("ru");

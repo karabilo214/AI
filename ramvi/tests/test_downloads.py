@@ -74,7 +74,7 @@ def test_server_without_range_restarts(server, tmp_path):
 
 def test_bad_hash_not_activated(server, tmp_path):
     _, url = server
-    with pytest.raises(dl.DownloadError, match="хеш"):
+    with pytest.raises(dl.DownloadError, match="download.hash_mismatch"):
         dl.Download(url, tmp_path, "m.gguf", "0" * 64).run()
     assert list(tmp_path.iterdir()) == []
 
@@ -82,7 +82,7 @@ def test_bad_hash_not_activated(server, tmp_path):
 def test_no_space(server, tmp_path, monkeypatch):
     _, url = server
     monkeypatch.setattr(dl.shutil, "disk_usage", lambda p: type("U", (), {"free": 10})())
-    with pytest.raises(dl.DownloadError, match="мало места"):
+    with pytest.raises(dl.DownloadError, match="download.no_space"):
         dl.Download(url, tmp_path, "m.gguf", SHA, size=len(DATA)).run()
 
 

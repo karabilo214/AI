@@ -18,6 +18,8 @@ from typing import Any
 
 from ramvi_service.app_config import AppConfig
 from ramvi_service.chat import ChatError, ChatService, Generation
+from ramvi_service.i18n import to_json
+from ramvi_service.model_control import ModelControl
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
 
@@ -38,10 +40,14 @@ class UIServer:
         config: AppConfig | None = None,
         sections: SectionRegistry | None = None,
         module_data: ModuleDataApi | None = None,
+        model_control: ModelControl | None = None,
     ) -> None:
         if len(token) < 16:
-            raise ValueError("слишком короткий ключ интерфейса")
+            raise ValueError("UI token is too short")
         self.chat, self._token = chat, token
+        self.model_control = model_control
+        if engine_status is None and model_control is not None:
+            engine_status = model_control.status
         self._engine_status = engine_status or (lambda: {"state": "stopped"})
         self.onboarding = onboarding
         self.config = config
@@ -87,8 +93,13 @@ class UIServer:
             created = chat.create(model_id)
             self._remember(model_id)
             return {"chat": created}
+        if path in ("/engine/load", "/engine/unload"):
+            return self._engine_route(method, path, body)
         if path == "/modules" or path.startswith("/modules/"):
             return self._modules_route(method, path, body)
+        if method == "GET" and path == "/i18n":
+            texts = self.sections.texts() if self.sections is not None else {}
+            return {"modules": texts}  # 3.14: переводы модулей; ядро — в каталоге оболочки
         if path == "/sections" or path.startswith("/sections/"):
             return self._sections_route(method, path)
         if path == "/settings":
@@ -127,6 +138,20 @@ class UIServer:
             if action == "/title":
                 return {"chat": chat.rename(chat_id, _required_str(body, "title"))}
         raise ChatError("api.not_found")
+
+    def _engine_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
+        """3.17: загрузить выбранную модель сразу; «Выгрузить модель» в настройках."""
+        control = self.model_control
+        if control is None or method != "POST":
+            raise ChatError("api.not_found")
+        if path == "/engine/load":
+            model_id = _required_str(body, "model_id")
+            if not self.chat.has_model(model_id):
+                raise ChatError("chat.model_not_found", model_id=model_id)
+            started = control.load(model_id)
+            return {"started": started, "engine": self._engine_status()}
+        unloaded = control.unload()
+        return {"unloaded": unloaded, "engine": self._engine_status()}
 
     def _onboarding_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
         """3.6: мастер первого запуска."""
@@ -236,7 +261,7 @@ def _handler(server: UIServer) -> type[BaseHTTPRequestHandler]:
             except ChatError as error:
                 self._json(
                     _STATUS.get(error.code, 400),
-                    {"error": {"code": error.code, "params": error.params}},
+                    {"error": {"code": error.code, "params": to_json(error.params)}},
                 )
                 return
             except Exception as error:  # сервис не падает из-за одного запроса

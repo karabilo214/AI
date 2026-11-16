@@ -122,11 +122,18 @@ public sealed class RealServiceStartTests
                 using var client = new Api.ChatApiClient(host.Address, host.Token);
                 var saved = await client.SaveSettingsAsync(new Api.SettingsUpdate(Language: "en", ApiPort: 12345), TestContext.Current.CancellationToken);
                 Assert.Equal(("en", 12345), (saved.Settings.Language, saved.Settings.ApiPort));
-                Assert.Equal(["language"], saved.RestartRequired);
+                Assert.Empty(saved.RestartRequired!); // язык применяется без перезапуска (3.14)
                 var error = await Assert.ThrowsAsync<Api.ApiException>(
                     () => client.ImportModelAsync(Path.Combine(app, "нет-такого.gguf"), TestContext.Current.CancellationToken));
                 Assert.Equal("import.not_found", error.Code); // путь дошёл, а не «нет поля path»
                 Assert.True((await client.CompleteOnboardingAsync(null, TestContext.Current.CancellationToken)).Done);
+                // 3.17: загрузка при выборе и «Выгрузить модель» — те же поля, что у сервиса.
+                var missing = await Assert.ThrowsAsync<Api.ApiException>(
+                    () => client.LoadModelAsync("нет-такой", TestContext.Current.CancellationToken));
+                Assert.Equal("chat.model_not_found", missing.Code);
+                var unloaded = await client.UnloadModelAsync(TestContext.Current.CancellationToken);
+                Assert.False(unloaded.Unloaded);
+                Assert.Equal(("stopped", null, null), (unloaded.Engine.State, unloaded.Engine.ModelId, unloaded.Engine.Problem));
             }
             finally
             {

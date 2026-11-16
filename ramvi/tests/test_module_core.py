@@ -48,9 +48,9 @@ def test_manifest_validation_and_lazy_import(tmp_path: Path) -> None:
 def test_capabilities_and_dependency_diagnostics(tmp_path: Path) -> None:
     host = ModuleHost(tmp_path)
     host.register(Manifest("one", "1.0.0", "a:create", required=("two",)))
-    with pytest.raises(RuntimeError, match="зависимость"):
+    with pytest.raises(RuntimeError, match="dependency"):
         host.initialize("one")
-    with pytest.raises(ValueError, match="цикл"):
+    with pytest.raises(ValueError, match="cycle"):
         host.register(Manifest("two", "1.0.0", "a:create", required=("one",)))
     host.register(Manifest("needs_audio", "1.0.0", "a:create", capabilities=("audio",)))
     with pytest.raises(NotImplementedError):

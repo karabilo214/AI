@@ -16,6 +16,7 @@ import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from ramvi_engine.processes import ParentWatch
 from ramvi_storage.repositories import Model, Models
@@ -30,6 +31,8 @@ from ramvi_service.engines import (
     SwitchableProvider,
     default_engine,
 )
+from ramvi_service.i18n import load_catalog, render
+from ramvi_service.model_control import ModelControl
 from ramvi_service.modules.host import ModuleHost
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.resources import SharedLLM
@@ -80,6 +83,7 @@ def build(
     chat = ChatService(
         db, llm, default_model=lambda: engines.model_id or onboarding.default_model()
     )
+    control = ModelControl(engines, llm, chat.stop_all)
     host = ModuleHost(data_dir, llm=llm)
     sections = SectionRegistry(host)
     if root is not None:
@@ -88,7 +92,7 @@ def build(
         chat,
         token,
         port=port,
-        engine_status=engines.status,
+        model_control=control,
         onboarding=onboarding,
         config=None if app_dir is None else AppConfig(app_dir, data_dir),
         sections=sections,
@@ -103,18 +107,20 @@ def check_data_dir(data_dir: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="ramvi-service")
-    parser.add_argument("--data-dir", required=True, help="папка данных приложения")
-    parser.add_argument("--port", type=int, default=0, help="порт API интерфейса (0 — любой)")
-    parser.add_argument("--app-dir", help="папка приложения с settings.json (экран настроек, 3.7)")
-    parser.add_argument(
-        "--engine-command-json",
-        help="для проверок: JSON-список команды поддельного движка вместо настоящего",
-    )
+    texts = load_catalog(os.environ.get("RAMVI_LANGUAGE", "ru"))  # 3.14: справка на языке
+
+    def t(key: str, **params: Any) -> str:
+        return render(key, texts, **params)
+
+    parser = argparse.ArgumentParser(prog="ramvi-service", description=t("cli.service.about"))
+    parser.add_argument("--data-dir", required=True, help=t("cli.service.data_dir"))
+    parser.add_argument("--port", type=int, default=0, help=t("cli.service.port"))
+    parser.add_argument("--app-dir", help=t("cli.service.app_dir"))
+    parser.add_argument("--engine-command-json", help=t("cli.service.engine_command_json"))
     args = parser.parse_args(argv)
     token = os.environ.get(TOKEN_ENV, "")
     if len(token) < 16:
-        parser.error(f"нужен {TOKEN_ENV} длиной от 16 символов")
+        parser.error(t("cli.service.need_token", name=TOKEN_ENV))
     command = json.loads(args.engine_command_json) if args.engine_command_json else None
     data_dir = Path(args.data_dir)
     try:

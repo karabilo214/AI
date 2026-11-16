@@ -32,7 +32,7 @@ class ProcessModuleWorker:
         if method == "initialize":
             self.process.start()
         elif self.process.status()["state"] != "running":
-            raise RuntimeError("module worker завершился; требуется initialize/recovery")
+            raise RuntimeError("module worker exited; initialize/recovery required")
         return self.process.request(method, payload, timeout=timeout)
 
     def stop(self) -> None:

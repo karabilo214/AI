@@ -149,7 +149,7 @@ else:
 
 def _check_name(name: str) -> str:
     if not name or len(name) > 64 or not set(name) <= _NAME_CHARS:
-        raise ValueError("имя супервизора: строчные латинские буквы, цифры, _ и -")
+        raise ValueError("supervisor name: lowercase Latin letters, digits, _ and -")
     return name
 
 
@@ -231,7 +231,7 @@ class Supervisor:
                 return self.status()
             if not self._lock_file.acquire():
                 raise OwnershipError(
-                    f"{self.name}: уже управляется другим владельцем",
+                    f"{self.name}: already managed by another owner",
                     discover(self.run_dir, self.name),
                 )
             previous = discover(self.run_dir, self.name)

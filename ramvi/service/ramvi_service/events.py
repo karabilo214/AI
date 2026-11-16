@@ -23,7 +23,7 @@ class EventSpec:
             or set(self.required) - set(payload)
             or set(payload) - set(self.required) - set(optional)
         ):
-            raise ValueError("неверные поля события")
+            raise ValueError("invalid event fields")
         for key, value in payload.items():
             expected = self.required.get(key, optional.get(key))
             if (
@@ -31,7 +31,7 @@ class EventSpec:
                 or not isinstance(value, expected)
                 or (expected is int and isinstance(value, bool))
             ):
-                raise ValueError("неверный тип поля события " + key)
+                raise ValueError("invalid event field type " + key)
 
 
 class Subscription:
@@ -106,14 +106,14 @@ class EventBus:
     def emit(self, owner: Owner, response: str, name: str, payload: dict[str, Any]) -> bool:
         self.authority.require(owner)
         if not name or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789_." for c in name):
-            raise ValueError("неверный тип события")
+            raise ValueError("invalid event type")
         with self._lock:
             current = self._responses.get(owner.token)
             if current is None or current[0] != response:
                 return False
             schema = self._schemas.get((owner.module_id, name))
             if schema is None:
-                raise ValueError("схема события не зарегистрирована Host")
+                raise ValueError("event schema is not registered by the Host")
             schema.validate(payload)
             event = current[2].emit(f"module.{owner.module_id}.{name}", payload)
             for subscription in self._subscriptions.values():
@@ -128,11 +128,11 @@ class EventBus:
     def poll(self, owner: Owner, subscription_id: str, timeout: float = 0) -> dict[str, Any] | None:
         self.authority.require(owner)
         if isinstance(timeout, bool) or not math.isfinite(timeout) or not 0 <= timeout <= 1:
-            raise ValueError("неверный timeout подписки")
+            raise ValueError("invalid subscription timeout")
         with self._lock:
             subscription = self._subscriptions[subscription_id]
             if subscription.owner != owner:
-                raise PermissionError("чужая подписка")
+                raise PermissionError("not your subscription")
         # Новое begin/cancel аннулирует и уже поставленные в очередь старые события.
         end = None
         while True:
@@ -158,7 +158,7 @@ class EventBus:
         with self._lock:
             subscription = self._subscriptions.get(identifier)
             if subscription is not None and subscription.owner != owner:
-                raise PermissionError("чужая подписка")
+                raise PermissionError("not your subscription")
             if subscription is not None:
                 subscription.close()
                 self._subscriptions.pop(identifier)

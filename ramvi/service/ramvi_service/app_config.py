@@ -5,8 +5,8 @@
 до запуска сервиса; пишет — только через этот API (одна проверка, `settings.py`).
 
 Что когда применяется:
-- `data_dir`, `language` — после перезапуска приложения (`restart_required`);
-- `theme` — сразу: оболочка меняет тему окна после сохранения (3.16);
+- `data_dir` — после перезапуска приложения (`restart_required`);
+- `theme` и `language` — сразу: оболочка меняет тему окна (3.16) и язык всех текстов (3.14);
 - `models_dir` — сразу: «Обновить список» подключает найденные в ней модели на месте
   (`POST /models/scan`, в т.ч. Ollama `blobs`), и туда пойдут загрузки (4.3); ничего не копируется;
 - `api_port`, `network_access` — вместе с внешним API (раздел 7: 7.1, 7.4);
@@ -20,10 +20,11 @@ from typing import Any
 
 from ramvi_service import settings as st
 from ramvi_service.chat import ChatError
+from ramvi_service.i18n import UserError
 
 UI_LANGUAGES = ("ru", "en")  # есть каталоги ramvi/i18n/<язык>.json
 FOLDERS = ("data_dir", "models_dir")
-RESTART = ("data_dir", "language")
+RESTART = ("data_dir",)  # язык и тема применяются сразу (3.14, 3.16)
 
 
 def check_folder(path: Path) -> None:
@@ -72,7 +73,8 @@ class AppConfig:
                 try:
                     updated = replace(updated, **{name: value}).validate()
                 except (TypeError, ValueError) as error:
-                    raise ChatError("settings.invalid", field=name, detail=str(error)) from None
+                    detail = error.message if isinstance(error, UserError) else str(error)
+                    raise ChatError("settings.invalid", field=name, detail=detail) from None
         st.save(self.app_dir, updated)
         changed = [n for n in RESTART if getattr(updated, n) != getattr(current, n)]
         return {**self.get(), "restart_required": changed}

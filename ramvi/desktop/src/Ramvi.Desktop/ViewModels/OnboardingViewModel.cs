@@ -5,9 +5,16 @@ using Ramvi.Desktop.Localization;
 
 namespace Ramvi.Desktop.ViewModels;
 
-/// <summary>Строка проверки компьютера: значок статуса и текст.</summary>
-public sealed record CheckItem(string Id, string Status, string Text)
+/// <summary>Строка проверки компьютера: значок статуса и текст (по ключу — на текущем языке).</summary>
+public sealed class CheckItem(string id, string status, string code, IReadOnlyDictionary<string, object?> parameters)
+    : ObservableObject
 {
+    public string Id { get; } = id;
+
+    public string Status { get; } = status;
+
+    public string Text => Localizer.Current.Format(code, parameters);
+
     public string Mark => Status switch
     {
         "ok" => "✓",
@@ -172,7 +179,7 @@ public sealed class OnboardingViewModel : ObservableObject
             var report = await _api().SystemAsync().ConfigureAwait(true);
             foreach (var check in report.Checks)
             {
-                Checks.Add(new CheckItem(check.Id, check.Status, L.Format(check.Code, Params(check.Params))));
+                Checks.Add(new CheckItem(check.Id, check.Status, check.Code, Params(check.Params)));
             }
         }
         catch (Exception error) when (error is ApiException or HttpRequestException)
@@ -243,6 +250,15 @@ public sealed class OnboardingViewModel : ObservableObject
     private static string Text(Exception error) => error is ApiException api
         ? L.Format(api.Code, Params(api.Parameters))
         : L["ui.connection_lost"];
+
+    public override void Relocalize()
+    {
+        base.Relocalize();
+        foreach (var check in Checks)
+        {
+            check.Relocalize();
+        }
+    }
 
     private static Dictionary<string, object?> Params(IReadOnlyDictionary<string, JsonElement>? values) =>
         values?.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal)

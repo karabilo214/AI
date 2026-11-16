@@ -127,15 +127,15 @@ exclude = [
 python_version = "3.12"
 strict = true
 follow_imports = "silent"
-mypy_path = ["$MYPY_CONFIG_FILE_DIR/..", "$MYPY_CONFIG_FILE_DIR/engine", "$MYPY_CONFIG_FILE_DIR/service", "$MYPY_CONFIG_FILE_DIR/storage"]
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/..", "$MYPY_CONFIG_FILE_DIR/engine", "$MYPY_CONFIG_FILE_DIR/service", "$MYPY_CONFIG_FILE_DIR/storage", "$MYPY_CONFIG_FILE_DIR/tools"]
 exclude = ["engine/tests/legacy/"]
 warn_unused_configs = true
-files = ["service/ramvi_service", "storage/ramvi_storage", "engine/ramvi_engine/model_template.py", "engine/ramvi_engine/protocol.py", "engine/ramvi_engine/model_location.py", "engine/tools/checks/check_reference.py", "engine/tools/checks/check_stage2_runtime.py", "engine/ramvi_engine/processes.py", "engine/ramvi_engine/engine_process.py", "tests", "engine/tests", "engine/ramvi_engine/console.py", "engine/ramvi_engine/capabilities.py", "engine/ramvi_engine/lifecycle.py", "engine/ramvi_engine/metrics.py", "engine/ramvi_engine/model_loader.py", "engine/ramvi_engine/planning/resources.py", "engine/ramvi_engine/planning/automatic.py", "engine/ramvi_engine/validation", "engine/ramvi_engine/config.py", "engine/ramvi_engine/server", "engine/tools/bench/report_migration.py", "engine/tools/__main__.py", "engine/tools/processes.py", "engine/tests/legacy/conftest.py"]
+files = ["service/ramvi_service", "storage/ramvi_storage", "tools", "engine/ramvi_engine/model_template.py", "engine/ramvi_engine/protocol.py", "engine/ramvi_engine/model_location.py", "engine/tools/checks/check_reference.py", "engine/tools/checks/check_stage2_runtime.py", "engine/ramvi_engine/processes.py", "engine/ramvi_engine/engine_process.py", "tests", "engine/tests", "engine/ramvi_engine/console.py", "engine/ramvi_engine/capabilities.py", "engine/ramvi_engine/lifecycle.py", "engine/ramvi_engine/metrics.py", "engine/ramvi_engine/model_loader.py", "engine/ramvi_engine/planning/resources.py", "engine/ramvi_engine/planning/automatic.py", "engine/ramvi_engine/validation", "engine/ramvi_engine/config.py", "engine/ramvi_engine/server", "engine/tools/bench/report_migration.py", "engine/tools/__main__.py", "engine/tools/processes.py", "engine/tests/legacy/conftest.py"]
 
 [tool.pytest.ini_options]
 minversion = "9.2"
 testpaths = ["tests", "engine/tests"]
-pythonpath = ["engine", "service", "storage", ".."]
+pythonpath = ["engine", "service", "storage", "tools", ".."]
 addopts = "-ra --strict-config --strict-markers"
 
 # Диспетчер существует только в репозитории; его выбранные исходники проверяются

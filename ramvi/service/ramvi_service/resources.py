@@ -26,7 +26,7 @@ def amounts(values: dict[str, int]) -> dict[str, int]:
             or not isinstance(value, int)
             or value < 0
         ):
-            raise ValueError("ресурсы должны быть неотрицательными целыми")
+            raise ValueError("resources must be non-negative integers")
     return dict(values)
 
 
@@ -49,7 +49,7 @@ class ResourceBroker:
         # ResourceEstimate — единый источник памяти, импорт движка не нужен.
         need = estimate.required
         if not estimate.assess(vram_available=vram, ram_available=ram)["estimated_fit"]:
-            raise ValueError("модель превышает общий бюджет")
+            raise ValueError("the model exceeds the total budget")
         return cls(
             authority,
             {
@@ -83,29 +83,29 @@ class ResourceBroker:
         self.authority.require(owner)
         request = amounts(values)
         if isinstance(timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
-            raise ValueError("timeout должен быть положительным")
+            raise ValueError("timeout must be positive")
         if any(value > self.capacity.get(key, 0) for key, value in request.items()):
-            raise ValueError("запрос превышает полный бюджет")
+            raise ValueError("the request exceeds the full budget")
         ticket = uuid.uuid4().hex
         end = time.monotonic() + timeout
         with self._condition:
             if len(self._queue) >= 256:
-                raise ResourceBusy("очередь ресурсов заполнена")
+                raise ResourceBusy("resource queue is full")
             if sum(existing == owner for existing, _ in self._leases.values()) >= 64:
-                raise PermissionError("превышен лимит числа аренд")
+                raise PermissionError("lease count limit exceeded")
             self._queue.append((ticket, owner))
             try:
                 while True:
                     self.authority.require(owner)
                     if cancel is not None and cancel.is_set():
-                        raise InterruptedError("аренда отменена")
+                        raise InterruptedError("lease cancelled")
                     own, used = self._used(owner.token), self._used()
                     quota = self._quotas.get(owner.token, self.capacity)
                     if any(
                         own.get(k, 0) + v > quota.get(k, self.capacity.get(k, 0))
                         for k, v in request.items()
                     ):
-                        raise PermissionError("превышена квота владельца")
+                        raise PermissionError("owner quota exceeded")
                     fits = all(
                         used.get(k, 0) + v <= self.capacity.get(k, 0) for k, v in request.items()
                     )
@@ -116,7 +116,7 @@ class ResourceBroker:
                         return ticket
                     remaining = end - time.monotonic()
                     if remaining <= 0:
-                        raise TimeoutError("ожидание ресурса истекло")
+                        raise TimeoutError("resource wait timed out")
                     self._condition.wait(min(0.05, remaining))
             finally:
                 self._queue = deque(row for row in self._queue if row[0] != ticket)
@@ -126,7 +126,7 @@ class ResourceBroker:
         with self._condition:
             current = self._leases.get(lease)
             if current is not None and current[0] != owner:
-                raise PermissionError("чужая аренда")
+                raise PermissionError("not your lease")
             self._leases.pop(lease, None)
             self._condition.notify_all()
 
@@ -183,7 +183,7 @@ class SharedLLM:
         self.authority.require(owner)
         with self._lock:
             if owner.token not in self._owners:
-                raise PermissionError("нет аренды модели")
+                raise PermissionError("no model lease")
         with self._finished:
             # Перебивание: прошлый запрос владельца уже отменён и сейчас останавливается.
             # Новый ждёт его конца, а не получает отказ по квоте.
@@ -196,10 +196,10 @@ class SharedLLM:
             ):
                 left = end - time.monotonic()
                 if left <= 0:
-                    raise TimeoutError("прошлый запрос не остановился")
+                    raise TimeoutError("the previous request did not stop")
                 self._finished.wait(min(0.05, left))
             if owner.token not in self._owners:
-                raise InterruptedError("владелец остановлен")
+                raise InterruptedError("owner stopped")
             self._requests.setdefault(owner.token, set()).add(cancel)
         lease: str | None = None
         try:
@@ -207,9 +207,9 @@ class SharedLLM:
             with self._lock:
                 self.authority.require(owner)
                 if owner.token not in self._owners:
-                    raise InterruptedError("владелец остановлен")
+                    raise InterruptedError("owner stopped")
                 if cancel.is_set():
-                    raise InterruptedError("запрос отменён")
+                    raise InterruptedError("request cancelled")
                 self._active = (owner, cancel)
             yield
         finally:
@@ -226,6 +226,15 @@ class SharedLLM:
             if lease is not None:
                 self._broker.release(owner, lease)
 
+    @contextlib.contextmanager
+    def exclusive(
+        self, owner: Owner, *, timeout: float = 30, cancel: threading.Event | None = None
+    ) -> Iterator[None]:
+        """Занять слот модели без запроса к ней — загрузить или выгрузить модель (3.17)
+        после идущего ответа, а не посреди него."""
+        with self._slot(owner, timeout, cancel if cancel is not None else threading.Event()):
+            yield
+
     def complete(
         self,
         owner: Owner,
@@ -239,7 +248,7 @@ class SharedLLM:
             result = self.provider.complete(request, cancel)
             self.authority.require(owner)
             if cancel.is_set():
-                raise InterruptedError("поздний ответ отменён")
+                raise InterruptedError("late response cancelled")
             return result
 
     def stream(
@@ -253,13 +262,13 @@ class SharedLLM:
         """Как complete, но куски идут по мере генерации; слот занят до конца потока."""
         provider = self.provider
         if not provider.capabilities.streaming or not isinstance(provider, StreamingLLMProvider):
-            raise NotImplementedError("Provider не объявил streaming")
+            raise NotImplementedError("Provider did not declare streaming")
         cancel = cancel if cancel is not None else threading.Event()
         with self._slot(owner, timeout, cancel):
             for chunk in provider.stream(request, cancel):
                 self.authority.require(owner)
                 if cancel.is_set():
-                    raise InterruptedError("запрос отменён")
+                    raise InterruptedError("request cancelled")
                 yield chunk
 
     def release_owner(self, owner: Owner) -> None:

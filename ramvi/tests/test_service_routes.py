@@ -102,7 +102,7 @@ def test_unknown_method_is_one_common_error(tmp_path: Path) -> None:
     services_scope, grants = scope(tmp_path)
     grants.allow(services_scope.owner, "settings")
     for method in ("settings.unknown", "nothing", ""):
-        with pytest.raises(ValueError, match="неизвестный метод"):
+        with pytest.raises(ValueError, match="unknown Scoped Services method"):
             services_scope.call(method, {})
 
 
@@ -112,7 +112,7 @@ def test_inactive_module_reaches_only_inactive_methods(tmp_path: Path) -> None:
     for method in ("resources", "llm"):
         grants.allow(services_scope.owner, method)
     for method in ("resources.release", "llm.complete", "llm.stream", "context.capture"):
-        with pytest.raises(PermissionError, match="не активен"):
+        with pytest.raises(PermissionError, match="not active"):
             services_scope.call(method, dict(PAYLOAD))
     grants.allow(services_scope.owner, "settings")
     assert services_scope.call("settings.get", {}) == {"value": {}}
@@ -128,7 +128,7 @@ def test_registration_requires_permission_and_unique_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(services, "ROUTES", dict(ROUTES))
-    with pytest.raises(ValueError, match="право"):
+    with pytest.raises(ValueError, match="needs a permission"):
         handler("x.y", permission="")
-    with pytest.raises(ValueError, match="уже зарегистрирован"):
+    with pytest.raises(ValueError, match="already registered"):
         handler("settings.get", permission="settings")(lambda _scope, _payload: {})

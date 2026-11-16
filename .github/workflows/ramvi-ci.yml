@@ -41,6 +41,8 @@ jobs:
           python -m ruff check .
           python -m ruff format --check .
           python -m mypy
+      - name: Translations (3.14)
+        run: python tools/check_i18n.py
       - name: Lightweight tests
         run: python -m pytest
       - name: Build Engine, Storage and Service wheels

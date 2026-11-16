@@ -22,6 +22,9 @@ public abstract class ObservableObject : INotifyPropertyChanged
 
     protected void Raise([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    /// <summary>Сменился язык (3.14): все тексты этого объекта показать заново.</summary>
+    public virtual void Relocalize() => Raise(string.Empty);
 }
 
 /// <summary>Команда; асинхронная версия не запускается повторно, пока выполняется.</summary>

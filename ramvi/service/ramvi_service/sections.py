@@ -8,6 +8,9 @@
 - Ленивость: процесс модуля стартует при первом открытии раздела, а не при запуске.
   Повторное открытие ничего не перезапускает, поэтому переключение разделов не меняет
   состояние и разрешения модуля. Ошибка модуля — статус его раздела, остальные работают.
+- 3.14: переводы модуля — `<папка модуля>/i18n/<язык>.json`. Ключи только свои
+  (`section.<id>`, `module.<id>.*`), на всех языках ядра, с одинаковыми параметрами;
+  иначе модуль не устанавливается. Оболочка получает их через `GET /i18n`.
 """
 
 import json
@@ -22,6 +25,7 @@ from ramvi_storage.migrations import Migration
 
 from ramvi_service.chat import ChatError
 from ramvi_service.contracts.modules import Manifest
+from ramvi_service.i18n import LANGUAGES, check_catalogs, load_catalog
 from ramvi_service.module_data import load_migrations
 from ramvi_service.modules.host import ModuleHost
 
@@ -50,7 +54,7 @@ def section_of(manifest: Manifest) -> Section | None:
     if raw is None:
         return None
     if not isinstance(raw, dict):
-        raise ValueError("ui.section должен быть объектом")
+        raise ValueError("ui.section must be an object")
     view, title, icon, order = (
         raw.get("view"),
         raw.get("title_key"),
@@ -58,20 +62,42 @@ def section_of(manifest: Manifest) -> Section | None:
         raw.get("order", 100),
     )
     if view not in VIEWS or view == "chat":
-        raise ValueError(f"ui.section.view должен быть одним из {VIEWS[1:]}")
+        raise ValueError(f"ui.section.view must be one of {VIEWS[1:]}")
     if not isinstance(title, str) or not _TITLE.fullmatch(title):
-        raise ValueError("ui.section.title_key — ключ перевода section.*")
+        raise ValueError("ui.section.title_key must be a translation key section.*")
     if not isinstance(icon, str) or not _ICON.fullmatch(icon):
-        raise ValueError("ui.section.icon — короткое имя иконки")
+        raise ValueError("ui.section.icon must be a short icon name")
     if isinstance(order, bool) or not isinstance(order, int) or not 0 <= order <= 10_000:
-        raise ValueError("ui.section.order — целое 0–10000")
+        raise ValueError("ui.section.order must be an integer 0–10000")
     return Section(manifest.module_id, title, icon, order, view, manifest.module_id)
+
+
+def load_texts(folder: Path, module_id: str) -> dict[str, dict[str, str]]:
+    """Переводы модуля из `<folder>/i18n`; нарушение правил 3.14 — ValueError."""
+    i18n = folder / "i18n"
+    if not i18n.is_dir():
+        return {}
+    catalogs = {path.stem: load_catalog(path.stem, i18n) for path in sorted(i18n.glob("*.json"))}
+    check_texts(catalogs, module_id)
+    return {lang: catalogs[lang] for lang in LANGUAGES}
+
+
+def check_texts(catalogs: dict[str, dict[str, str]], module_id: str) -> None:
+    allowed = re.compile(rf"section\.{module_id}|module\.{module_id}\.[a-z0-9_.]+")
+    errors = check_catalogs(catalogs, where=f"module {module_id}", allowed=allowed)
+    core = load_catalog(LANGUAGES[0])
+    errors += [
+        f"module {module_id}: key {key} already exists in the core catalog"
+        for key in sorted(set().union(*catalogs.values()) & core.keys())
+    ]
+    if errors:
+        raise ValueError("; ".join(errors))
 
 
 def load_manifest(path: Path) -> Manifest:
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
-        raise ValueError("манифест должен быть объектом JSON")
+        raise ValueError("the manifest must be a JSON object")
     for name in ("required", "optional", "capabilities", "permissions"):
         if name in raw:
             raw[name] = tuple(raw[name])
@@ -83,16 +109,35 @@ class SectionRegistry:
         self.host = host
         self._sections: dict[str, Section] = {s.id: s for s in CORE}
         self.problems: list[dict[str, str]] = []  # модули, которые не удалось установить
+        self._texts: dict[str, dict[str, dict[str, str]]] = {}  # модуль -> язык -> ключ -> текст
 
-    def install(self, manifest: Manifest, sql: Sequence[Migration] = ()) -> Section | None:
-        """Зарегистрировать модуль в Host (с его SQL-миграциями, 3.12); процесс не запускается."""
+    def install(
+        self,
+        manifest: Manifest,
+        sql: Sequence[Migration] = (),
+        texts: dict[str, dict[str, str]] | None = None,
+    ) -> Section | None:
+        """Зарегистрировать модуль в Host (с его SQL-миграциями, 3.12, и переводами, 3.14);
+        процесс не запускается."""
         section = section_of(manifest)
         if section is not None and section.id in self._sections:
-            raise ValueError(f"раздел {section.id} уже есть")
+            raise ValueError(f"section {section.id} already exists")
+        if texts:
+            check_texts(texts, manifest.module_id)
         self.host.register(manifest, approved_permissions=manifest.permissions, sql_migrations=sql)
         if section is not None:
             self._sections[section.id] = section
+        if texts:
+            self._texts[manifest.module_id] = texts
         return section
+
+    def texts(self) -> dict[str, dict[str, str]]:
+        """Переводы установленных модулей: язык -> ключ -> текст."""
+        merged: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
+        for catalogs in self._texts.values():
+            for lang in LANGUAGES:
+                merged[lang].update(catalogs.get(lang, {}))
+        return merged
 
     def discover(self, modules_dir: Path) -> None:
         """Установленные модули из `<папка>/<id>/manifest.json`; испорченный — в problems."""
@@ -100,7 +145,12 @@ class SectionRegistry:
             return
         for path in sorted(modules_dir.glob("*/manifest.json")):
             try:
-                self.install(load_manifest(path), load_migrations(path.parent / "migrations"))
+                manifest = load_manifest(path)
+                self.install(
+                    manifest,
+                    load_migrations(path.parent / "migrations"),
+                    load_texts(path.parent, manifest.module_id),
+                )
             except Exception as error:  # один сломанный модуль не мешает остальным
                 self.problems.append(
                     {"path": str(path), "error": f"{type(error).__name__}: {error}"}
@@ -117,6 +167,7 @@ class SectionRegistry:
     def remove(self, module_id: str) -> None:
         """Убрать раздел удалённого модуля."""
         self._sections = {k: v for k, v in self._sections.items() if v.module_id != module_id}
+        self._texts.pop(module_id, None)
 
     def list(self) -> list[dict[str, Any]]:
         sections = sorted(self._sections.values(), key=lambda s: (s.order, s.id))

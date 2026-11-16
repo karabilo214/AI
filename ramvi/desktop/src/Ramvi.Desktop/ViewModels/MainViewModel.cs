@@ -19,6 +19,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly Func<string, Task> _openFolder;
     private readonly Func<string?, Task<string?>>? _pickFolder;
     private readonly Func<string, Task>? _chooseDataDir;
+    private readonly TimeSpan _loadPoll;
     private IChatApi? _connected;
     private Problem? _problem;
     private string? _loadingModel;
@@ -28,13 +29,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private ChatItemViewModel? _selectedChat;
     private ModelInfo? _selectedModel;
     private string _input = "";
-    private string _status;
+    private Func<string> _status;
     private bool _isError;
     private bool _isGenerating;
     private bool _ignoreModelChange;
     private Limits _limits = new(32_000, 5, 128 * 1024, 256 * 1024, 255);
     private CancellationTokenSource? _streamCancel;
     private string? _generatingChatId;
+    private int _loadWatch;
 
     public MainViewModel(
         IChatApi api,
@@ -45,9 +47,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Func<Task>? restartApp = null,
         Func<string, Task>? chooseDataDir = null,
         Func<Task<IReadOnlyList<DroppedFile>>>? pickFiles = null,
-        Action<string>? applyTheme = null)
+        Action<string>? applyTheme = null,
+        TimeSpan? loadPoll = null)
         : this(() => Task.FromResult(api), copy, openFolder, pickModelFile, pickFolder, restartApp, chooseDataDir,
-            pickFiles, applyTheme)
+            pickFiles, applyTheme, loadPoll)
     {
     }
 
@@ -55,6 +58,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <param name="pickModelFile">Выбор файла GGUF в мастере; null — отмена.</param>
     /// <param name="pickFiles">Кнопка «Прикрепить файл»: выбранные файлы (пусто — отмена).</param>
     /// <param name="applyTheme">Применить тему окна сразу после сохранения настроек (system/light/dark).</param>
+    /// <param name="loadPoll">Как часто спрашивать сервис, закончилась ли загрузка модели (3.17).</param>
     public MainViewModel(
         Func<Task<IChatApi>> connect,
         Func<string, Task>? copy = null,
@@ -64,9 +68,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Func<Task>? restartApp = null,
         Func<string, Task>? chooseDataDir = null,
         Func<Task<IReadOnlyList<DroppedFile>>>? pickFiles = null,
-        Action<string>? applyTheme = null)
+        Action<string>? applyTheme = null,
+        TimeSpan? loadPoll = null)
     {
         _connect = connect;
+        _loadPoll = loadPoll ?? TimeSpan.FromMilliseconds(300);
         Sections = new SectionsViewModel(() => _api);
         _pickFolder = pickFolder;
         _chooseDataDir = chooseDataDir;
@@ -75,7 +81,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             pickFolder ?? (_ => Task.FromResult<string?>(null)),
             restartApp ?? (() => Task.CompletedTask),
             applyTheme,
-            () => Onboarding!.OpenAsync(SelectedModel?.Id));
+            () => Onboarding!.OpenAsync(SelectedModel?.Id),
+            OnModelUnloaded,
+            ApplyLanguage);
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -83,7 +91,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             OnboardingCompletedAsync);
         _copy = copy ?? (_ => Task.CompletedTask);
         _openFolder = openFolder ?? (_ => Task.CompletedTask);
-        _status = L["status.connecting"];
+        _status = () => L["status.connecting"];
         NewChatCommand = new Command(NewChatAsync, () => !IsGenerating && IsConnected);
         SendCommand = new Command(SendAsync, CanSend);
         StopCommand = new Command(StopAsync, () => IsGenerating);
@@ -133,7 +141,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private static Localizer L => Localizer.Current;
 
-    private IChatApi _api => _connected ?? throw new InvalidOperationException("сервис не подключён");
+    private IChatApi _api => _connected ?? throw new InvalidOperationException("the service is not connected");
 
     public void Dispose() => _streamCancel?.Cancel();
 
@@ -261,11 +269,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string Status
-    {
-        get => _status;
-        private set => Set(ref _status, value);
-    }
+    /// <summary>Строка состояния; текст собирается заново на текущем языке (3.14).</summary>
+    public string Status => _status();
 
     public bool IsError
     {
@@ -289,6 +294,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool IsIdle => !IsGenerating;
 
+    /// <summary>3.17: идёт загрузка модели — вместо текста крутится значок у списка «Модель».</summary>
+    public bool IsModelLoading => _loadingModel is not null;
+
+    /// <summary>Подсказка к значку загрузки: какая модель загружается.</summary>
+    public string LoadingTip => L.Format("status.loading_model", ("model_id", _loadingModel ?? ""));
+
     /// <summary>Загрузить лимиты, модели и диалоги; открыть последний диалог.</summary>
     public async Task InitializeAsync()
     {
@@ -299,7 +310,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Raise(nameof(HasChats));
         Raise(nameof(IsConnected));
         SetProblem(null);
-        SetStatus(L["status.connecting"]);
+        SetStatus(() => L["status.connecting"]);
         try
         {
             _connected = await _connect().ConfigureAwait(true);
@@ -313,6 +324,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             }
 
             await ReloadChatsAsync().ConfigureAwait(true);
+            Localizer.SetModuleTexts(await _api.ModuleTextsAsync().ConfigureAwait(true)); // 3.14
             var onboarding = await _api.OnboardingAsync().ConfigureAwait(true);
             await Sections.LoadAsync().ConfigureAwait(true);
             SelectedChat = Chats.FirstOrDefault();
@@ -321,8 +333,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 ShowModel(status.Engine.ModelId ?? onboarding.DefaultModel ?? Models.FirstOrDefault()?.Id);
             }
 
-            SetStatus(L["status.ready"]);
+            SetStatus(() => L["status.ready"]);
             UpdateState();
+            await LoadModelAsync(SelectedModel?.Id).ConfigureAwait(true); // 3.17: сразу при запуске
             if (!onboarding.Done)
             {
                 await Onboarding.OpenAsync(onboarding.DefaultModel).ConfigureAwait(true);
@@ -363,7 +376,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (result.ErrorKey is not null)
         {
-            SetStatus(L.Format(result.ErrorKey, result.ErrorParams), error: true);
+            SetStatus(() => L.Format(result.ErrorKey, result.ErrorParams), error: true);
         }
 
         RefreshCommands();
@@ -438,7 +451,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         IsGenerating = true;
         _generatingChatId = chatId;
         _streamCancel = new CancellationTokenSource();
-        SetStatus(L["status.generating"]);
+        SetStatus(() => L["status.generating"]);
         MessageViewModel? answer = null;
         var accepted = false;
         try
@@ -465,8 +478,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
                         break;
                     case "status" when item.State == "loading":
-                        SetLoading(item.ModelId ?? "");
-                        SetStatus(L.Format("status.loading_model", ("model_id", item.ModelId)));
+                        SetLoading(item.ModelId ?? ""); // значок загрузки вместо текста (3.17)
                         break;
                     case "reasoning" or "text":
                         SetLoading(null);
@@ -478,7 +490,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                                 Messages.Add(answer);
                             }
 
-                            SetStatus(L["status.generating"]);
+                            SetStatus(() => L["status.generating"]);
                         }
 
                         if (item.Type == "text")
@@ -562,7 +574,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         else
         {
-            SetStatus(L["status.ready"]);
+            SetStatus(() => L["status.ready"]);
         }
     }
 
@@ -629,30 +641,154 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (message is not null && !string.IsNullOrEmpty(message.Content))
         {
             await _copy(message.Content).ConfigureAwait(true);
-            SetStatus(L["chat.copied"]);
+            SetStatus(() => L["chat.copied"]);
         }
     }
 
+    /// <summary>Модель выбрана в списке: запомнить её у диалога и сразу начать загрузку (3.17).</summary>
     private async Task ChangeModelAsync(ModelInfo model)
     {
-        if (SelectedChat is not { } chat || chat.ModelId == model.Id)
+        if (SelectedChat is { } chat && chat.ModelId != model.Id)
+        {
+            try
+            {
+                chat.Update(await _api.SetModelAsync(chat.Id, model.Id).ConfigureAwait(true));
+            }
+            catch (Exception error) when (error is ApiException or HttpRequestException)
+            {
+                ShowModel(chat.ModelId);
+                ShowError(error);
+                return;
+            }
+        }
+
+        if (_problem?.State is UiState.LowMemory or UiState.Incompatible or UiState.NoAccess or UiState.NoModel)
+        {
+            SetProblem(null); // другая модель — прежняя причина к ней не относится
+        }
+
+        await LoadModelAsync(model.Id).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 3.17: начать загрузку модели в сервисе и, пока она идёт, крутить значок. Сервис держит
+    /// модель загруженной до выбора другой, «Выгрузить модель» или выхода из программы.
+    /// </summary>
+    private async Task LoadModelAsync(string? modelId)
+    {
+        if (modelId is null || !IsConnected)
         {
             return;
         }
 
+        var watch = ++_loadWatch;
         try
         {
-            chat.Update(await _api.SetModelAsync(chat.Id, model.Id).ConfigureAwait(true));
-            if (_problem?.State is UiState.LowMemory or UiState.Incompatible or UiState.NoAccess or UiState.NoModel)
+            var engine = (await _api.LoadModelAsync(modelId).ConfigureAwait(true)).Engine;
+            if (ShowLoad(watch, engine, modelId))
             {
-                SetProblem(null); // другая модель — прежняя причина к ней не относится
+                _ = WatchLoadAsync(watch, modelId); // окно не ждёт конца загрузки
             }
         }
         catch (Exception error) when (error is ApiException or HttpRequestException)
         {
-            ShowModel(chat.ModelId);
+            LoadFailed(watch, error);
+        }
+    }
+
+    /// <summary>Спрашивать сервис, пока загрузка не закончится; новый выбор прекращает опрос.</summary>
+    private async Task WatchLoadAsync(int watch, string modelId)
+    {
+        try
+        {
+            do
+            {
+                await Task.Delay(_loadPoll).ConfigureAwait(true);
+                if (watch != _loadWatch)
+                {
+                    return;
+                }
+            }
+            while (ShowLoad(watch, (await _api.StatusAsync().ConfigureAwait(true)).Engine, modelId));
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            LoadFailed(watch, error);
+        }
+    }
+
+    /// <summary>Показать ход загрузки; true — ещё грузится.</summary>
+    private bool ShowLoad(int watch, EngineStatus engine, string modelId)
+    {
+        if (watch != _loadWatch)
+        {
+            return false;
+        }
+
+        if (engine.Loading is null && engine.State != "starting")
+        {
+            if (!IsGenerating)
+            {
+                SetLoading(null);
+                if (_problem is null && !IsError)
+                {
+                    SetStatus(() => L["status.ready"]);
+                }
+            }
+
+            if (engine.Problem is { } problem)
+            {
+                SetProblem(new Problem(problem.Code, Params(problem.Params)));
+            }
+
+            return false;
+        }
+
+        if (!IsGenerating && _problem is null)
+        {
+            SetStatus(() => ""); // не «Готово», пока крутится значок загрузки
+        }
+
+        SetLoading(engine.Loading ?? engine.ModelId ?? modelId);
+        return true;
+    }
+
+    private void LoadFailed(int watch, Exception error)
+    {
+        if (watch == _loadWatch)
+        {
+            SetLoading(null);
             ShowError(error);
         }
+    }
+
+    /// <summary>3.14: язык из настроек — сразу, без перезапуска.</summary>
+    public void ApplyLanguage(string language)
+    {
+        Localizer.Current = Localizer.Load(language);
+        Relocalize();
+    }
+
+    /// <summary>Все тексты окна — на текущем языке: разметка обновляется сама, здесь — тексты моделей.</summary>
+    public override void Relocalize()
+    {
+        base.Relocalize();
+        UpdateState(); // плашка собирается заново
+        foreach (var item in new IEnumerable<ObservableObject>[] { Chats, Messages, Attachments }.SelectMany(x => x))
+        {
+            item.Relocalize();
+        }
+
+        Sections.Relocalize();
+        Settings.Relocalize();
+        Onboarding.Relocalize();
+    }
+
+    /// <summary>Из настроек нажали «Выгрузить модель»: значок загрузки больше не нужен.</summary>
+    private void OnModelUnloaded()
+    {
+        _loadWatch++;
+        SetLoading(null);
     }
 
     private async Task LoadChatAsync(ChatItemViewModel? chat)
@@ -741,11 +877,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Raise(nameof(Problem));
         if (problem is not null)
         {
-            SetStatus(L.Format(problem.Code, problem.Params), error: true);
+            SetStatus(() => L.Format(problem.Code, problem.Params), error: true);
         }
         else if (IsError)
         {
-            SetStatus(IsConnected ? L["status.ready"] : L["status.connecting"]);
+            var key = IsConnected ? "status.ready" : "status.connecting";
+            SetStatus(() => L[key]);
         }
 
         UpdateState();
@@ -756,6 +893,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (_loadingModel != modelId)
         {
             _loadingModel = modelId;
+            Raise(nameof(IsModelLoading));
+            Raise(nameof(LoadingTip));
             UpdateState();
         }
     }
@@ -799,12 +938,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Мастер закрыт: выбранная модель — для нового диалога.</summary>
     private Task OnboardingCompletedAsync(OnboardingState state)
     {
+        UpdateState();
         if (SelectedChat is null && state.DefaultModel is { } model)
         {
             ShowModel(model);
+            return LoadModelAsync(model); // модель из мастера загружается сразу (3.17)
         }
 
-        UpdateState();
         return Task.CompletedTask;
     }
 
@@ -833,7 +973,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             if (_problem is null)
             {
-                SetStatus(L.Format(
+                SetStatus(() => L.Format(
                     "models.scanned",
                     ("added", scan.Added.Count), ("skipped", scan.Skipped.Count), ("folder", scan.Folder)));
             }
@@ -868,12 +1008,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         string text;
         switch (state)
         {
-            case UiState.Ready or UiState.Generating or UiState.Connecting:
-                return null; // строка состояния и кнопка «Стоп» уже есть
-            case UiState.Loading:
-                text = L.Format("status.loading_model", ("model_id", _loadingModel));
-                Add("stop", "chat.stop", StopCommand);
-                break;
+            case UiState.Ready or UiState.Generating or UiState.Connecting or UiState.Loading:
+                // Строка состояния и кнопка «Стоп» уже есть; загрузку показывает значок (3.17).
+                return null;
             case UiState.NoModel:
                 text = _problem is { } missing ? L.Format(missing.Code, missing.Params) : L["state.no_model.text"];
                 Add("refresh", "action.refresh", RefreshModelsCommand);
@@ -947,9 +1084,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _ => state.ToString().ToLowerInvariant(),
     };
 
-    private void SetStatus(string text, bool error = false)
+    private void SetStatus(Func<string> text, bool error = false)
     {
-        Status = text;
+        _status = text;
+        Raise(nameof(Status));
         IsError = error;
     }
 
