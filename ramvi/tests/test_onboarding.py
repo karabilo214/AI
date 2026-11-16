@@ -1,5 +1,6 @@
 """3.6 (UI-01): мастер первого запуска — проверки, импорт GGUF, выбор после перезапуска."""
 
+import json
 import os
 import struct
 import sys
@@ -7,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from ramvi_service import settings as app_settings
 from ramvi_service.app import build
 from ramvi_service.chat import ChatError
 from ramvi_service.hardware import GPUInfo, HardwareProfile
@@ -247,8 +247,9 @@ def test_complete_with_model_or_skip(onboarding: Onboarding, tmp_path: Path) -> 
 
     model = onboarding.import_model(str(write_gguf(tmp_path / "m.gguf")))
     assert onboarding.complete(model["id"]) == {"done": True, "default_model": model["id"]}
-    saved = app_settings.load(onboarding.data_dir)
-    assert saved.onboarding_done and saved.default_model == model["id"]
+    saved = json.loads((onboarding.data_dir / "state.json").read_text(encoding="utf-8"))
+    assert saved == {"default_model": model["id"], "onboarding_done": True}
+    assert not (onboarding.data_dir / "settings.json").exists()  # настройки приложения не трогаются
 
 
 def test_removed_default_model_is_not_offered(onboarding: Onboarding, tmp_path: Path) -> None:

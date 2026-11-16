@@ -14,6 +14,8 @@
     <DockPanel Grid.Column="0" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
       <Button x:Name="NewChatButton" DockPanel.Dock="Top" Margin="12" HorizontalAlignment="Stretch"
               Content="{l:T chat.new}" Command="{Binding NewChatCommand}" />
+      <Button x:Name="SettingsButton" DockPanel.Dock="Bottom" Margin="12" HorizontalAlignment="Stretch"
+              Content="{l:T settings.open}" Command="{Binding OpenSettingsCommand}" />
       <TextBlock DockPanel.Dock="Top" Margin="16,4" Opacity="0.6" Text="{l:T chat.no_chats}"
                  IsVisible="{Binding !HasChats}" />
       <ListBox x:Name="ChatList" ItemsSource="{Binding Chats}" SelectedItem="{Binding SelectedChat}"
@@ -160,6 +162,60 @@
         </ItemsControl>
       </ScrollViewer>
     </DockPanel>
+
+    <!-- Настройки (3.7): поверх окна -->
+    <Border x:Name="SettingsPanel" Grid.ColumnSpan="2" ZIndex="9" IsVisible="{Binding Settings.IsOpen}"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+      <ScrollViewer>
+        <StackPanel MaxWidth="640" Margin="24" Spacing="10" HorizontalAlignment="Center">
+          <TextBlock FontSize="22" FontWeight="SemiBold" Text="{l:T settings.title}" />
+
+          <TextBlock FontWeight="SemiBold" Text="{l:T settings.data_dir}" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox x:Name="DataDirBox" Text="{Binding Settings.DataDir}" />
+            <Button Grid.Column="1" Margin="8,0,0,0" Content="{l:T settings.browse}"
+                    Command="{Binding Settings.BrowseDataDirCommand}" />
+          </Grid>
+          <TextBlock FontSize="12" Opacity="0.7" TextWrapping="Wrap" Text="{Binding Settings.DataDirNote}" />
+
+          <TextBlock FontWeight="SemiBold" Text="{l:T settings.models_dir}" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox x:Name="ModelsDirBox" Text="{Binding Settings.ModelsDir}" />
+            <Button Grid.Column="1" Margin="8,0,0,0" Content="{l:T settings.browse}"
+                    Command="{Binding Settings.BrowseModelsDirCommand}" />
+          </Grid>
+
+          <TextBlock FontWeight="SemiBold" Text="{l:T settings.language}" />
+          <ComboBox x:Name="LanguageBox" MinWidth="200" ItemsSource="{Binding Settings.Languages}"
+                    SelectedItem="{Binding Settings.Language}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:LanguageOption">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+
+          <TextBlock FontWeight="SemiBold" Text="{l:T settings.api_port}" />
+          <TextBox x:Name="ApiPortBox" MaxWidth="160" HorizontalAlignment="Left" Text="{Binding Settings.ApiPort}" />
+          <CheckBox x:Name="NetworkBox" Content="{l:T settings.network_access}" IsChecked="{Binding Settings.NetworkAccess}" />
+          <TextBlock FontSize="12" Classes="warn" TextWrapping="Wrap" Text="{l:T settings.network_warning}"
+                     IsVisible="{Binding Settings.NetworkAccess}" />
+          <TextBlock FontSize="12" Opacity="0.7" TextWrapping="Wrap" Text="{l:T settings.api_note}" />
+
+          <TextBlock x:Name="SettingsError" Classes="error" TextWrapping="Wrap" Text="{Binding Settings.Error}"
+                     IsVisible="{Binding Settings.HasError}" />
+          <TextBlock x:Name="SettingsMessage" TextWrapping="Wrap" Text="{Binding Settings.Message}"
+                     IsVisible="{Binding Settings.HasMessage}" />
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button x:Name="RestartButton" Content="{l:T settings.restart_now}" Command="{Binding Settings.RestartCommand}"
+                    IsVisible="{Binding Settings.RestartNeeded}" />
+            <Button x:Name="SettingsClose" Content="{l:T settings.cancel}" Command="{Binding Settings.CloseCommand}" />
+            <Button x:Name="SettingsSave" Classes="accent" Content="{l:T settings.save}"
+                    Command="{Binding Settings.SaveCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
 
     <!-- Мастер первого запуска (UI-01, 3.6): поверх всего окна -->
     <Border x:Name="Onboarding" Grid.ColumnSpan="2" ZIndex="10" IsVisible="{Binding Onboarding.IsOpen}"

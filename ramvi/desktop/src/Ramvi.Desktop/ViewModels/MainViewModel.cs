@@ -17,6 +17,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly Func<Task<IChatApi>> _connect;
     private readonly Func<string, Task> _copy;
     private readonly Func<string, Task> _openFolder;
+    private readonly Func<string?, Task<string?>>? _pickFolder;
+    private readonly Func<string, Task>? _chooseDataDir;
     private IChatApi? _connected;
     private Problem? _problem;
     private string? _loadingModel;
@@ -38,8 +40,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         IChatApi api,
         Func<string, Task>? copy = null,
         Func<string, Task>? openFolder = null,
-        Func<Task<string?>>? pickModelFile = null)
-        : this(() => Task.FromResult(api), copy, openFolder, pickModelFile)
+        Func<Task<string?>>? pickModelFile = null,
+        Func<string?, Task<string?>>? pickFolder = null,
+        Func<Task>? restartApp = null,
+        Func<string, Task>? chooseDataDir = null)
+        : this(() => Task.FromResult(api), copy, openFolder, pickModelFile, pickFolder, restartApp, chooseDataDir)
     {
     }
 
@@ -49,9 +54,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Func<Task<IChatApi>> connect,
         Func<string, Task>? copy = null,
         Func<string, Task>? openFolder = null,
-        Func<Task<string?>>? pickModelFile = null)
+        Func<Task<string?>>? pickModelFile = null,
+        Func<string?, Task<string?>>? pickFolder = null,
+        Func<Task>? restartApp = null,
+        Func<string, Task>? chooseDataDir = null)
     {
         _connect = connect;
+        _pickFolder = pickFolder;
+        _chooseDataDir = chooseDataDir;
+        Settings = new SettingsViewModel(
+            () => _api,
+            pickFolder ?? (_ => Task.FromResult<string?>(null)),
+            restartApp ?? (() => Task.CompletedTask));
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -80,6 +94,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return Task.CompletedTask;
         });
         RetryCommand = new Command(RetryAsync, () => !IsGenerating);
+        OpenSettingsCommand = new Command(() => Settings.OpenAsync(), () => IsConnected);
+        ChooseDataDirCommand = new Command(ChooseDataDirAsync);
         ChooseModelCommand = new Command(() =>
         {
             IsModelPickerOpen = true;
@@ -137,6 +153,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Мастер первого запуска (3.6).</summary>
     public OnboardingViewModel Onboarding { get; }
+
+    /// <summary>Экран настроек (3.7).</summary>
+    public SettingsViewModel Settings { get; }
+
+    public Command OpenSettingsCommand { get; }
+
+    /// <summary>«Выбрать папку данных…» при недоступной папке данных (3.9, USB только на чтение).</summary>
+    public Command ChooseDataDirCommand { get; }
 
     public bool IsConnected => _connected is not null;
 
@@ -703,6 +727,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private async Task ChooseDataDirAsync()
+    {
+        if (_pickFolder is null || _chooseDataDir is null)
+        {
+            return;
+        }
+
+        var path = await _pickFolder(_problem?.Path).ConfigureAwait(true);
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        await _chooseDataDir(path).ConfigureAwait(true);
+        await InitializeAsync().ConfigureAwait(true); // сервис запускается заново уже с новой папкой
+    }
+
     /// <summary>Мастер закрыт: выбранная модель — для нового диалога.</summary>
     private Task OnboardingCompletedAsync(OnboardingState state)
     {
@@ -787,6 +828,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     text += "\n" + L["state.low_memory.hint"];
                 }
 
+                if (problem.Code == "storage.no_access" && _pickFolder is not null && _chooseDataDir is not null)
+                {
+                    Add("choose_data_dir", "action.choose_data_dir", ChooseDataDirCommand);
+                }
+
                 if (state == UiState.NoAccess && FolderOf(problem.Path) is { } folder)
                 {
                     Add("open_folder", "action.open_folder", OpenFolderCommand, folder);
@@ -849,7 +895,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         foreach (var command in new[]
                  {
                      NewChatCommand, SendCommand, StopCommand, RegenerateCommand, ClearCommand, DeleteChatCommand,
-                     RetryCommand, RefreshModelsCommand,
+                     RetryCommand, RefreshModelsCommand, OpenSettingsCommand,
                  })
         {
             command.Refresh();

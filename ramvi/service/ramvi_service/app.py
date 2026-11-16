@@ -21,6 +21,7 @@ from ramvi_engine.processes import ParentWatch
 from ramvi_storage.repositories import Model, Models
 from ramvi_storage.schema import open_core
 
+from ramvi_service.app_config import AppConfig, check_folder
 from ramvi_service.chat import ChatService
 from ramvi_service.contracts.modules import Authority
 from ramvi_service.engines import (
@@ -44,6 +45,7 @@ def build(
     port: int = 0,
     engine_command: list[str] | None = None,
     restart_policy: Callable[[], RestartPolicy] = RestartPolicy,
+    app_dir: Path | None = None,
 ) -> tuple[UIServer, EngineManager]:
     """Собрать сервис; `engine_command` — только для проверок без модели."""
     db = open_core(data_dir)
@@ -61,31 +63,41 @@ def build(
                 startup_timeout=30,
             )
 
+    root = None if app_dir is None else Path(app_dir).resolve()
     engines = EngineManager(
-        Models(db), data_dir / "run", make_engine=make_engine, policy=restart_policy
+        Models(db),
+        data_dir / "run",
+        make_engine=make_engine,
+        policy=restart_policy,
+        model_root=root,
     )
     authority = Authority()
     llm = SharedLLM(authority, SwitchableProvider(engines))
-    onboarding = Onboarding(data_dir, Models(db))
+    onboarding = Onboarding(data_dir, Models(db), app_dir=root)
     chat = ChatService(
         db, llm, default_model=lambda: engines.model_id or onboarding.default_model()
     )
-    server = UIServer(chat, token, port=port, engine_status=engines.status, onboarding=onboarding)
+    server = UIServer(
+        chat,
+        token,
+        port=port,
+        engine_status=engines.status,
+        onboarding=onboarding,
+        config=None if app_dir is None else AppConfig(app_dir, data_dir),
+    )
     return server, engines
 
 
 def check_data_dir(data_dir: Path) -> None:
     """Папка данных существует (создаётся) и доступна на запись; иначе OSError."""
-    data_dir.mkdir(parents=True, exist_ok=True)
-    probe = data_dir / f".write-test-{os.getpid()}"
-    probe.write_bytes(b"")
-    probe.unlink()
+    check_folder(data_dir)
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="ramvi-service")
     parser.add_argument("--data-dir", required=True, help="папка данных приложения")
     parser.add_argument("--port", type=int, default=0, help="порт API интерфейса (0 — любой)")
+    parser.add_argument("--app-dir", help="папка приложения с settings.json (экран настроек, 3.7)")
     parser.add_argument(
         "--engine-command-json",
         help="для проверок: JSON-список команды поддельного движка вместо настоящего",
@@ -98,7 +110,13 @@ def main(argv: list[str] | None = None) -> None:
     data_dir = Path(args.data_dir)
     try:
         check_data_dir(data_dir)
-        server, engines = build(data_dir, token, port=args.port, engine_command=command)
+        server, engines = build(
+            data_dir,
+            token,
+            port=args.port,
+            engine_command=command,
+            app_dir=Path(args.app_dir) if args.app_dir else None,
+        )
     except (OSError, sqlite3.Error) as error:
         # 3.5 (UI-03): оболочка показывает «нет доступа к каталогу» с действиями.
         print(

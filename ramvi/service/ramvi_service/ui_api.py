@@ -16,6 +16,7 @@ from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from ramvi_service.app_config import AppConfig
 from ramvi_service.chat import ChatError, ChatService, Generation
 from ramvi_service.onboarding import Onboarding
 
@@ -33,12 +34,14 @@ class UIServer:
         port: int = 0,
         engine_status: Callable[[], dict[str, Any]] | None = None,
         onboarding: Onboarding | None = None,
+        config: AppConfig | None = None,
     ) -> None:
         if len(token) < 16:
             raise ValueError("слишком короткий ключ интерфейса")
         self.chat, self._token = chat, token
         self._engine_status = engine_status or (lambda: {"state": "stopped"})
         self.onboarding = onboarding
+        self.config = config
         self._server = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
         self._server.daemon_threads = True
         self._thread: threading.Thread | None = None
@@ -79,6 +82,13 @@ class UIServer:
             created = chat.create(model_id)
             self._remember(model_id)
             return {"chat": created}
+        if path == "/settings":
+            if self.config is None:
+                raise ChatError("api.not_found")
+            if method == "GET":
+                return self.config.get()
+            if method == "POST":
+                return self.config.update(body)
         if path in ("/system", "/onboarding", "/models/import"):
             return self._onboarding_route(method, path, body)
         match = re.fullmatch(f"/chats/{_ID}(/[a-z]+)?", path)

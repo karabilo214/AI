@@ -22,8 +22,6 @@ class Settings:
     language: str = "ru"
     api_port: int = 11435
     network_access: bool = False  # слушать не только 127.0.0.1 — только по явному включению
-    default_model: str | None = None  # 3.6: модель новых чатов (последний явный выбор)
-    onboarding_done: bool = False  # 3.6: мастер первого запуска пройден
 
     def validate(self) -> "Settings":
         if self.language not in LANGUAGES:
@@ -36,12 +34,6 @@ class Settings:
             raise ValueError("порт API должен быть целым числом 1024–65535")
         if not isinstance(self.network_access, bool):
             raise ValueError("сетевой доступ должен быть true/false")
-        if self.default_model is not None and (
-            not isinstance(self.default_model, str) or not self.default_model.strip()
-        ):
-            raise ValueError("default_model должен быть непустой строкой или null")
-        if not isinstance(self.onboarding_done, bool):
-            raise ValueError("onboarding_done должен быть true/false")
         for name in ("data_dir", "models_dir"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
@@ -81,13 +73,17 @@ def load(data_dir: str | os.PathLike[str]) -> Settings:
 def save(data_dir: str | os.PathLike[str], settings: Settings) -> Path:
     """Атомарная запись: сбой посреди записи не портит прежний файл."""
     settings.validate()
-    folder = Path(data_dir)
+    return write_json(Path(data_dir), FILE_NAME, asdict(settings))
+
+
+def write_json(folder: Path, name: str, value: Any) -> Path:
+    """Записать JSON атомарно (временный файл рядом + os.replace)."""
     folder.mkdir(parents=True, exist_ok=True)
-    target = folder / FILE_NAME
-    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".settings-", suffix=".tmp")
+    target = folder / name
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{Path(name).stem}-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as file:
-            json.dump(asdict(settings), file, ensure_ascii=False, indent=2)
+            json.dump(value, file, ensure_ascii=False, indent=2)
             file.flush()
             os.fsync(file.fileno())
         os.replace(tmp, target)

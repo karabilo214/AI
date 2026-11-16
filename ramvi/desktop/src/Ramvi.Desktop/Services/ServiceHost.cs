@@ -4,37 +4,77 @@ using System.Text.Json;
 
 namespace Ramvi.Desktop.Services;
 
-/// <summary>Как запускать сервис: интерпретатор Python, корень `ramvi/` и папка данных.</summary>
-public sealed record ServiceOptions(string Python, string RamviRoot, string DataDir, IReadOnlyList<string> ExtraArgs)
+/// <summary>Как запускать сервис: интерпретатор Python, корень `ramvi/`, папка данных и папка приложения.</summary>
+public sealed record ServiceOptions(
+    string Python,
+    string RamviRoot,
+    string DataDir,
+    IReadOnlyList<string> ExtraArgs,
+    string? AppDir = null,
+    IReadOnlyDictionary<string, string>? Environment = null)
 {
+    /// <summary>Встроенный Python комплекта (PORT-02): `runtime/python/python.exe`.</summary>
+    public const string BundledPython = "runtime/python/python.exe";
+
+    /// <summary>Токенизатор комплекта для GGUF-движка (вместо кеша Hugging Face).</summary>
+    public const string BundledTokenizer = "runtime/tokenizers/Qwen3-8B";
+
+    /// <summary>Папка приложения с `settings.json` (3.7): `RAMVI_APP_DIR` или папка exe.</summary>
+    public static string AppDirectory =>
+        System.Environment.GetEnvironmentVariable("RAMVI_APP_DIR") ?? AppContext.BaseDirectory;
+
     /// <summary>
-    /// Для разработки: `RAMVI_PYTHON`, `RAMVI_ROOT`, `RAMVI_DATA_DIR`; иначе — рядом с exe.
-    /// Порядок поставки (встроенный Python) задаёт 3.9.
+    /// Для разработки: `RAMVI_PYTHON`, `RAMVI_ROOT`, `RAMVI_DATA_DIR`. В комплекте (3.9):
+    /// встроенный Python, код сервиса в `ramvi/`, токенизатор в `runtime/tokenizers`.
+    /// Папка данных — из `settings.json` папки приложения, а если писать в неё нельзя
+    /// (USB только на чтение) — явно выбранная пользователем (<see cref="AppLocations"/>).
     /// </summary>
-    public static ServiceOptions FromEnvironment()
+    public static ServiceOptions FromEnvironment() => Resolve(AppDirectory, AppContext.BaseDirectory);
+
+    internal static ServiceOptions Resolve(string appDir, string exeDir)
     {
-        var root = Environment.GetEnvironmentVariable("RAMVI_ROOT") ?? FindRoot(AppContext.BaseDirectory);
-        var python = Environment.GetEnvironmentVariable("RAMVI_PYTHON")
-            ?? (OperatingSystem.IsWindows() ? "python.exe" : "python3");
-        var data = Environment.GetEnvironmentVariable("RAMVI_DATA_DIR")
-            ?? Path.Combine(AppContext.BaseDirectory, "data");
-        var extra = Environment.GetEnvironmentVariable("RAMVI_SERVICE_ARGS_JSON") is { } json
+        static string? Env(string name) => System.Environment.GetEnvironmentVariable(name);
+        var bundled = Path.Combine(appDir, BundledPython);
+        var python = Env("RAMVI_PYTHON")
+            ?? (File.Exists(bundled) ? bundled : OperatingSystem.IsWindows() ? "python.exe" : "python3");
+        var root = Env("RAMVI_ROOT") ?? FindRoot(appDir) ?? FindRoot(exeDir) ?? exeDir;
+        var data = Env("RAMVI_DATA_DIR") ?? AppLocations.DataDir(appDir);
+        var extra = Env("RAMVI_SERVICE_ARGS_JSON") is { } json
             ? JsonSerializer.Deserialize(json, HostJson.Default.StringArray) ?? []
             : [];
-        return new ServiceOptions(python, root, data, extra);
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal);
+        var tokenizer = Path.Combine(appDir, BundledTokenizer);
+        if (Directory.Exists(tokenizer))
+        {
+            environment["RAMVI_TOKENIZER"] = Path.GetFullPath(tokenizer);
+        }
+
+        if (python == bundled)
+        {
+            // Комплект изолирован от Python пользователя и не ходит в сеть Hugging Face.
+            environment["PYTHONNOUSERSITE"] = "1";
+            environment["HF_HUB_OFFLINE"] = "1";
+            environment["TRANSFORMERS_OFFLINE"] = "1";
+        }
+
+        return new ServiceOptions(python, root, data, extra, appDir, environment);
     }
 
-    private static string FindRoot(string start)
+    /// <summary>Корень кода сервиса: папка с `service/ramvi_service/app.py` или её `ramvi/`.</summary>
+    private static string? FindRoot(string start)
     {
         for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "service", "ramvi_service", "app.py")))
+            foreach (var candidate in new[] { dir.FullName, Path.Combine(dir.FullName, "ramvi") })
             {
-                return dir.FullName;
+                if (File.Exists(Path.Combine(candidate, "service", "ramvi_service", "app.py")))
+                {
+                    return candidate;
+                }
             }
         }
 
-        return start;
+        return null;
     }
 }
 
@@ -78,12 +118,23 @@ public sealed class ServiceHost : IAsyncDisposable
             info.ArgumentList.Add(arg);
         }
 
+        if (options.AppDir is { } appDir)
+        {
+            info.ArgumentList.Add("--app-dir");
+            info.ArgumentList.Add(appDir);
+        }
+
         info.Environment["RAMVI_UI_TOKEN"] = token;
         info.Environment["RAMVI_EXIT_WITH_PARENT"] = "1";
         info.Environment["PYTHONUTF8"] = "1";
         info.Environment["PYTHONPATH"] = string.Join(
             Path.PathSeparator,
             PythonFolders.Select(p => Path.Combine(options.RamviRoot, p)));
+        info.Environment.Remove("PYTHONHOME"); // чужой PYTHONHOME сломал бы встроенный Python
+        foreach (var (name, value) in options.Environment ?? new Dictionary<string, string>())
+        {
+            info.Environment[name] = value;
+        }
         var process = Process.Start(info) ?? throw new InvalidOperationException("service did not start");
         var errors = new System.Text.StringBuilder();
         process.ErrorDataReceived += (_, e) =>

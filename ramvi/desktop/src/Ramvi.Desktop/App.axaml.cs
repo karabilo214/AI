@@ -22,7 +22,8 @@ public sealed partial class App : Application, IDisposable
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            Localizer.Current = Localizer.Load(Environment.GetEnvironmentVariable("RAMVI_LANGUAGE") ?? "ru");
+            Localizer.Current = Localizer.Load(Environment.GetEnvironmentVariable("RAMVI_LANGUAGE")
+                ?? AppSettingsFile.Read(ServiceOptions.AppDirectory).Language);
             var window = new MainWindow();
             desktop.MainWindow = window;
             window.Opened += async (_, _) => await ConnectAsync(window).ConfigureAwait(true);
@@ -34,9 +35,33 @@ public sealed partial class App : Application, IDisposable
 
     private async Task ConnectAsync(MainWindow window)
     {
-        var model = new MainViewModel(StartServiceAsync, window.CopyAsync, window.OpenFolderAsync, window.PickModelFileAsync);
+        var model = new MainViewModel(
+            StartServiceAsync, window.CopyAsync, window.OpenFolderAsync, window.PickModelFileAsync,
+            window.PickFolderAsync, RestartAsync, ChooseDataDirAsync);
         window.DataContext = model;
         await model.InitializeAsync().ConfigureAwait(true);
+    }
+
+    private static Task ChooseDataDirAsync(string path)
+    {
+        AppLocations.SaveDataDir(ServiceOptions.AppDirectory, path);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Перезапуск приложения (смена папки данных или языка, 3.7): новый процесс с тем же
+    /// окружением, затем закрытие текущего — сервис и движок завершаются как при обычном выходе.
+    /// </summary>
+    private Task RestartAsync()
+    {
+        if (Environment.ProcessPath is { } exe
+            && ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false });
+            desktop.Shutdown();
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>Запустить (или перезапустить) сервис; вызывается и действием «Повторить».</summary>

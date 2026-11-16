@@ -126,4 +126,37 @@ public sealed class MainWindowTests
         Assert.Empty(Localizer.Current.Missing);
         window.Close();
     }
+
+    [AvaloniaFact]
+    public async Task Settings_panel_shows_fields_and_network_warning()
+    {
+        Localizer.Current = Localizer.Load("ru");
+        var api = new FakeChatApi();
+        var model = new MainViewModel(api);
+        var window = new MainWindow { DataContext = model };
+        window.Show();
+        await model.InitializeAsync();
+        Assert.False(window.FindControl<Border>("SettingsPanel")!.IsVisible);
+
+        window.FindControl<Button>("SettingsButton")!.Command!.Execute(null);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        Dispatcher.UIThread.RunJobs();
+
+        var panel = window.FindControl<Border>("SettingsPanel")!;
+        Assert.True(panel.IsVisible);
+        Assert.Equal("data", window.FindControl<TextBox>("DataDirBox")!.Text);
+        Assert.Equal("11435", window.FindControl<TextBox>("ApiPortBox")!.Text);
+        Assert.Equal("Русский", (window.FindControl<ComboBox>("LanguageBox")!.SelectedItem as LanguageOption)?.Label);
+        var visible = panel.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
+        Assert.Contains(Localizer.Current["settings.api_note"], visible);
+        Assert.DoesNotContain(Localizer.Current["settings.network_warning"], visible);
+
+        window.FindControl<CheckBox>("NetworkBox")!.IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+        visible = panel.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
+        Assert.Contains(Localizer.Current["settings.network_warning"], visible);
+        Assert.False(window.FindControl<Button>("RestartButton")!.IsVisible);
+        Assert.Empty(Localizer.Current.Missing);
+        window.Close();
+    }
 }

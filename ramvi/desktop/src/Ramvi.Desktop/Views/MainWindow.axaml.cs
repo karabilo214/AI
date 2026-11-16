@@ -48,6 +48,19 @@ public sealed partial class MainWindow : Window
         return files.Count == 1 ? files[0].TryGetLocalPath() : null;
     }
 
+    /// <summary>Выбрать папку (настройки); путь на диске или null.</summary>
+    public async Task<string?> PickFolderAsync(string? start)
+    {
+        var options = new FolderPickerOpenOptions { AllowMultiple = false };
+        if (!string.IsNullOrEmpty(start) && Directory.Exists(start))
+        {
+            options.SuggestedStartLocation = await StorageProvider.TryGetFolderFromPathAsync(start).ConfigureAwait(true);
+        }
+
+        var folders = await StorageProvider.OpenFolderPickerAsync(options).ConfigureAwait(true);
+        return folders.Count == 1 ? folders[0].TryGetLocalPath() : null;
+    }
+
     /// <summary>Открыть папку в файловом менеджере (действие «Открыть папку»).</summary>
     public async Task OpenFolderAsync(string path)
     {

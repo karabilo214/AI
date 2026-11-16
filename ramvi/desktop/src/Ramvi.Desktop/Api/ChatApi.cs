@@ -51,6 +51,11 @@ public interface IChatApi
 
     /// <summary>Подключить файл GGUF без копирования.</summary>
     Task<ModelInfo> ImportModelAsync(string path, CancellationToken cancel = default);
+
+    /// <summary>3.7: настройки приложения.</summary>
+    Task<SettingsInfo> SettingsAsync(CancellationToken cancel = default);
+
+    Task<SettingsInfo> SaveSettingsAsync(SettingsUpdate update, CancellationToken cancel = default);
 }
 
 /// <summary>HTTP-клиент `ramvi_service.ui_api`: только loopback, ключ в заголовке.</summary>
@@ -131,6 +136,12 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     public Task<OnboardingState> CompleteOnboardingAsync(string? modelId, CancellationToken cancel = default) =>
         PostAsync("onboarding", new ModelRequest(modelId), ApiJson.Default.ModelRequest,
             ApiJson.Default.OnboardingState, cancel);
+
+    public Task<SettingsInfo> SettingsAsync(CancellationToken cancel = default) =>
+        GetAsync("settings", ApiJson.Default.SettingsInfo, cancel);
+
+    public Task<SettingsInfo> SaveSettingsAsync(SettingsUpdate update, CancellationToken cancel = default) =>
+        PostAsync("settings", update, ApiJson.Default.SettingsUpdate, ApiJson.Default.SettingsInfo, cancel);
 
     public async Task<ModelInfo> ImportModelAsync(string path, CancellationToken cancel = default) =>
         (await PostAsync("models/import", new ImportRequest(path), ApiJson.Default.ImportRequest,

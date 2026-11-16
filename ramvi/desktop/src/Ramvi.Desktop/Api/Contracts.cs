@@ -58,6 +58,23 @@ public sealed record SystemReport(IReadOnlyList<SystemCheck> Checks);
 
 public sealed record OnboardingState(bool Done, string? DefaultModel);
 
+/// <summary>3.7: настройки приложения (как в `ramvi_service.settings.Settings`).</summary>
+public sealed record AppSettings(string DataDir, string ModelsDir, string Language, int ApiPort, bool NetworkAccess);
+
+public sealed record SettingsFolders(string DataDir, string ModelsDir);
+
+public sealed record SettingsInfo(
+    AppSettings Settings,
+    SettingsFolders Resolved,
+    string CurrentDataDir,
+    IReadOnlyList<string> Languages,
+    IReadOnlyList<string>? RestartRequired = null);
+
+/// <summary>Только изменённые поля; null не отправляется.</summary>
+public sealed record SettingsUpdate(
+    string? DataDir = null, string? ModelsDir = null, string? Language = null, int? ApiPort = null,
+    bool? NetworkAccess = null);
+
 internal sealed record ImportRequest(string Path);
 
 internal sealed record ImportResponse(ModelInfo Model);
@@ -97,4 +114,6 @@ internal sealed record StopResponse(bool Stopped);
 [JsonSerializable(typeof(OnboardingState))]
 [JsonSerializable(typeof(ImportRequest))]
 [JsonSerializable(typeof(ImportResponse))]
+[JsonSerializable(typeof(SettingsInfo))]
+[JsonSerializable(typeof(SettingsUpdate))]
 internal sealed partial class ApiJson : JsonSerializerContext;

@@ -6,8 +6,9 @@
 - `import_model(path)` — подключить файл GGUF без копирования: файл остаётся на
   месте, в базе хранится путь. Заголовок читается стандартной библиотекой и
   проверяется до регистрации (архитектура, которую умеет движок).
-- Выбор модели и признак «мастер пройден» хранятся в `settings.json` папки
+- Выбор модели и признак «мастер пройден» хранятся в `state.json` папки
   данных: после перезапуска мастер не показывается, новые чаты берут модель.
+  Настройки приложения (3.7) — отдельно, в `settings.json` папки приложения.
 
 Пользовательских строк нет: проверки и ошибки — ключи перевода с параметрами.
 """
@@ -21,7 +22,6 @@ import sys
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -29,8 +29,10 @@ from ramvi_storage.repositories import Model, Models, NotFound
 
 from ramvi_service import settings as app_settings
 from ramvi_service.chat import ChatError
+from ramvi_service.engines import resolve_model
 from ramvi_service.hardware import HardwareProfile, collect
 
+STATE_FILE = "state.json"  # состояние мастера в папке данных (не настройки приложения)
 GIB_MB = 1024
 DISK_LOW_MB = 2 * GIB_MB  # меньше — история и база ещё влезут, модель уже нет
 # Как в ramvi_engine.model_loader: qwen3 — core.gengine, qwen3moe — core.moe.
@@ -268,8 +270,10 @@ class Onboarding:
         *,
         hardware: Callable[[Path], HardwareProfile] = collect,
         backends: Callable[[], dict[str, Any]] = probe_backends,
+        app_dir: Path | None = None,
     ) -> None:
         self.data_dir, self.models = Path(data_dir), models
+        self.app_dir = None if app_dir is None else Path(app_dir).resolve()
         self._hardware, self._probe = hardware, backends
         self._backends: dict[str, Any] | None = None
         self._lock = threading.Lock()
@@ -282,17 +286,29 @@ class Onboarding:
             backends = self._backends
         return {"hardware": hw.to_dict(), "backends": backends, "checks": checks(hw, backends)}
 
-    def _settings(self) -> app_settings.Settings:
-        return app_settings.load(self.data_dir)
+    def _state(self) -> dict[str, Any]:
+        """Состояние мастера папки данных; испорченный файл — ошибка, а не тихий сброс."""
+        path = self.data_dir / STATE_FILE
+        if not path.exists():
+            return {"default_model": None, "onboarding_done": False}
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError(f"{path}: ожидался объект JSON")
+        model, done = raw.get("default_model"), raw.get("onboarding_done", False)
+        if not (model is None or isinstance(model, str)) or not isinstance(done, bool):
+            raise ValueError(f"{path}: неверное состояние мастера")
+        return {"default_model": model, "onboarding_done": done}
+
+    def _save_state(self, **changes: Any) -> None:
+        app_settings.write_json(self.data_dir, STATE_FILE, {**self._state(), **changes})
 
     def state(self) -> dict[str, Any]:
-        current = self._settings()
-        return {"done": current.onboarding_done, "default_model": self.default_model()}
+        return {"done": self._state()["onboarding_done"], "default_model": self.default_model()}
 
     def default_model(self) -> str | None:
         """Сохранённый выбор, если такая модель ещё установлена."""
-        model_id = self._settings().default_model
-        if model_id is None:
+        model_id = self._state()["default_model"]
+        if not isinstance(model_id, str):
             return None
         try:
             self.models.get(model_id)
@@ -304,18 +320,18 @@ class Onboarding:
         """Мастер пройден: с выбранной моделью или пропуском (модель выберут позже)."""
         if model_id is not None:
             self._require(model_id)
-        current = self._settings()
-        app_settings.save(
-            self.data_dir,
-            replace(current, onboarding_done=True, default_model=model_id or current.default_model),
-        )
+        current = self._state()["default_model"]
+        self._save_state(onboarding_done=True, default_model=model_id or current)
         return self.state()
 
     def remember(self, model_id: str) -> None:
         """Последний явный выбор модели — модель новых чатов после перезапуска."""
-        current = self._settings()
-        if current.default_model != model_id:
-            app_settings.save(self.data_dir, replace(current, default_model=model_id))
+        if self._state()["default_model"] != model_id:
+            self._save_state(default_model=model_id)
+
+    def _stored_path(self, path: Path) -> str:
+        """Внутри папки приложения — относительный путь (переживает смену буквы диска)."""
+        return _relative_to(path, self.app_dir) or str(path)
 
     def _require(self, model_id: str) -> None:
         try:
@@ -337,7 +353,7 @@ class Onboarding:
         if not path.is_file():
             raise ChatError("import.not_a_file", path=str(path))
         for existing in self.models.all():
-            if existing.path == str(path):
+            if resolve_model(existing, self.app_dir).path == str(path):
                 return model_json(existing)
         try:
             header = read_gguf_header(path)
@@ -368,7 +384,7 @@ class Onboarding:
                 model_id,
                 "local",
                 header["architecture"],
-                str(path),
+                self._stored_path(path),
                 time.time(),
                 quant=header["quant"],
                 bytes=size,
@@ -376,6 +392,15 @@ class Onboarding:
             )
         )
         return model_json(model)
+
+
+def _relative_to(path: Path, root: Path | None) -> str | None:
+    if root is None:
+        return None
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return None
 
 
 def model_json(m: Model) -> dict[str, Any]:

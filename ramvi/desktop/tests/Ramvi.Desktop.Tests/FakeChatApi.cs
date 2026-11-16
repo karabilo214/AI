@@ -169,6 +169,45 @@ internal sealed class FakeChatApi : IChatApi
         return Task.FromResult(model);
     }
 
+    public AppSettings AppSettings { get; set; } = new("data", "models", "ru", 11435, false);
+
+    public List<SettingsUpdate> SettingsUpdates { get; } = [];
+
+    public ApiException? SettingsError { get; set; }
+
+    public Task<SettingsInfo> SettingsAsync(CancellationToken cancel = default) => Task.FromResult(Info(null));
+
+    public Task<SettingsInfo> SaveSettingsAsync(SettingsUpdate update, CancellationToken cancel = default)
+    {
+        SettingsUpdates.Add(update);
+        if (SettingsError is { } error)
+        {
+            SettingsError = null;
+            return Task.FromException<SettingsInfo>(error);
+        }
+
+        var before = AppSettings;
+        AppSettings = new AppSettings(
+            update.DataDir ?? before.DataDir, update.ModelsDir ?? before.ModelsDir, update.Language ?? before.Language,
+            update.ApiPort ?? before.ApiPort, update.NetworkAccess ?? before.NetworkAccess);
+        var restart = new List<string>();
+        if (AppSettings.DataDir != before.DataDir)
+        {
+            restart.Add("data_dir");
+        }
+
+        if (AppSettings.Language != before.Language)
+        {
+            restart.Add("language");
+        }
+
+        return Task.FromResult(Info(restart));
+    }
+
+    private SettingsInfo Info(IReadOnlyList<string>? restart) =>
+        new(AppSettings, new SettingsFolders("/app/" + AppSettings.DataDir, "/app/" + AppSettings.ModelsDir), "/app/data",
+            ["ru", "en"], restart);
+
     public static Dictionary<string, System.Text.Json.JsonElement> Json(params (string Name, object Value)[] values) =>
         values.ToDictionary(v => v.Name, v => JsonSerializer.SerializeToElement(v.Value, TestJson.Default.Object));
 

@@ -12,10 +12,12 @@
 поэтому `ensure` сразу отдаёт код причины, не дожидаясь лимита перезапусков.
 """
 
+import os
 import re
 import threading
 import time
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -84,13 +86,27 @@ class EngineTarget(Target, Protocol):
     def api_key(self) -> str: ...
 
 
+TOKENIZER_ENV = "RAMVI_TOKENIZER"
+
+
+def resolve_model(model: Model, root: Path | None) -> Model:
+    """Абсолютный путь модели: относительный — от папки приложения (PORT-01: смена
+    буквы диска), без неё — от текущей папки, как разрешил бы движок."""
+    path = Path(model.path)
+    if path.is_absolute():
+        return model
+    return replace(model, path=str(((root or Path.cwd()) / path).resolve()))
+
+
 def default_engine(model: Model) -> EngineTarget:
     """Настоящий движок для записи модели (тяжёлые импорты только при запуске)."""
     from ramvi_engine.engine_process import EngineProcess
     from ramvi_engine.model_loader import ModelConfig
     from ramvi_engine.planning.automatic import PlanningOptions
 
-    return EngineProcess(ModelConfig(model.path, planning=PlanningOptions()))
+    # 3.9: в комплекте токенизатор лежит рядом (runtime/tokenizers), без кеша Hugging Face.
+    tokenizer = os.environ.get(TOKENIZER_ENV) or ModelConfig.tokenizer
+    return EngineProcess(ModelConfig(model.path, tokenizer=tokenizer, planning=PlanningOptions()))
 
 
 class EngineManager:
@@ -103,8 +119,10 @@ class EngineManager:
         policy: Callable[[], RestartPolicy] = RestartPolicy,
         interval: float = 1.0,
         request_timeout: float = 600.0,
+        model_root: Path | None = None,
     ) -> None:
         self.models, self.run_dir = models, Path(run_dir)
+        self.model_root = model_root
         self._make_engine, self._policy, self._interval = make_engine, policy, interval
         self.request_timeout = request_timeout
         self._lock = threading.RLock()
@@ -141,7 +159,7 @@ class EngineManager:
         params: dict[str, Any] = {"model_id": model_id or "", "detail": detail}
         if model_id is not None:
             try:
-                params["path"] = str(Path(self.models.get(model_id).path).resolve())
+                params["path"] = resolve_model(self.models.get(model_id), self.model_root).path
             except NotFound:
                 pass
         return params
@@ -167,7 +185,7 @@ class EngineManager:
                 if state == "ready":
                     return
             try:
-                model = self.models.get(model_id)
+                model = resolve_model(self.models.get(model_id), self.model_root)
             except NotFound:
                 raise EngineError("engine.model_not_found", model_id=model_id) from None
             self._stop_locked()

@@ -40,6 +40,20 @@ public sealed class ServiceHostTests : IDisposable
     }
 
     [Fact]
+    public async Task App_dir_is_passed_to_service()
+    {
+        var options = Service("""
+            import json, sys
+            print(json.dumps({"event": "error", "code": "args", "params": {"argv": " ".join(sys.argv[1:])}}), flush=True)
+            """) with { AppDir = "/my app" };
+
+        var error = await Assert.ThrowsAsync<ServiceStartException>(
+            () => ServiceHost.StartAsync(options, TimeSpan.FromSeconds(30)));
+
+        Assert.EndsWith("--app-dir /my app", error.Parameters["argv"]?.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Crash_without_ready_reports_stderr()
     {
         var options = Service("import sys\nsys.stderr.write('ModuleNotFoundError: boom\\n')\nsys.exit(1)\n");
