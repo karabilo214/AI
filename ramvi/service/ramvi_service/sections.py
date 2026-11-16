@@ -12,12 +12,17 @@
 
 import json
 import re
+import time
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from ramvi_storage.migrations import Migration
+
 from ramvi_service.chat import ChatError
 from ramvi_service.contracts.modules import Manifest
+from ramvi_service.module_data import load_migrations
 from ramvi_service.modules.host import ModuleHost
 
 VIEWS = ("chat", "agent", "character")  # виды, которые умеет показывать оболочка
@@ -79,12 +84,12 @@ class SectionRegistry:
         self._sections: dict[str, Section] = {s.id: s for s in CORE}
         self.problems: list[dict[str, str]] = []  # модули, которые не удалось установить
 
-    def install(self, manifest: Manifest) -> Section | None:
-        """Зарегистрировать модуль в Host; процесс модуля не запускается."""
+    def install(self, manifest: Manifest, sql: Sequence[Migration] = ()) -> Section | None:
+        """Зарегистрировать модуль в Host (с его SQL-миграциями, 3.12); процесс не запускается."""
         section = section_of(manifest)
         if section is not None and section.id in self._sections:
             raise ValueError(f"раздел {section.id} уже есть")
-        self.host.register(manifest)
+        self.host.register(manifest, approved_permissions=manifest.permissions, sql_migrations=sql)
         if section is not None:
             self._sections[section.id] = section
         return section
@@ -95,7 +100,7 @@ class SectionRegistry:
             return
         for path in sorted(modules_dir.glob("*/manifest.json")):
             try:
-                self.install(load_manifest(path))
+                self.install(load_manifest(path), load_migrations(path.parent / "migrations"))
             except Exception as error:  # один сломанный модуль не мешает остальным
                 self.problems.append(
                     {"path": str(path), "error": f"{type(error).__name__}: {error}"}
@@ -108,6 +113,10 @@ class SectionRegistry:
         state = status["state"]
         # registered — установлен, но не загружен (загрузится при первом открытии).
         return {"state": "available" if state == "registered" else state, "error": status["error"]}
+
+    def remove(self, module_id: str) -> None:
+        """Убрать раздел удалённого модуля."""
+        self._sections = {k: v for k, v in self._sections.items() if v.module_id != module_id}
 
     def list(self) -> list[dict[str, Any]]:
         sections = sorted(self._sections.values(), key=lambda s: (s.order, s.id))
@@ -128,3 +137,45 @@ class SectionRegistry:
             except Exception:  # noqa: S110 — состояние и текст ошибки уже в статусе Host
                 pass
         return {**asdict(section), **self._state(section)}
+
+
+class ModuleDataApi:
+    """3.12: данные модулей для экрана приложения — список, экспорт, сброс, удаление."""
+
+    def __init__(self, registry: SectionRegistry, exports: Path) -> None:
+        self.registry, self.exports = registry, exports
+
+    def list(self) -> list[dict[str, Any]]:
+        host = self.registry.host
+        return [
+            {
+                "module_id": module_id,
+                "state": status["state"],
+                "version": status["version"],
+                "data_bytes": host.data_bytes(module_id),
+            }
+            for module_id, status in sorted(host.status().items())
+        ]
+
+    def _require(self, module_id: str) -> None:
+        if module_id not in self.registry.host.status():
+            raise ChatError("module.not_found", module_id=module_id)
+
+    def export(self, module_id: str) -> dict[str, Any]:
+        self._require(module_id)
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        return self.registry.host.export_data(module_id, self.exports / f"{module_id}-{stamp}.zip")
+
+    def reset(self, module_id: str) -> dict[str, Any]:
+        """Остановить модуль и стереть только его данные; Core и другие модули не трогаются."""
+        self._require(module_id)
+        host = self.registry.host
+        if host.status(module_id)[module_id]["worker"] is not None:
+            host.dispose(module_id)
+        return dict(host.reset_data(module_id)[module_id])
+
+    def uninstall(self, module_id: str, purge: bool) -> dict[str, Any]:
+        self._require(module_id)
+        self.registry.host.uninstall(module_id, purge_data=purge)
+        self.registry.remove(module_id)
+        return {"module_id": module_id, "purged": purge}

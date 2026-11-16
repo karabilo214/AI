@@ -29,6 +29,23 @@ class FixtureModule:
     def checkpoint(self) -> dict[str, Any]:
         return {"value": self.state}
 
+    # 3.12: своя база модуля через Scoped Services (ошибки запроса модуль ловит сам).
+    def db_write(self, text: str) -> dict[str, Any]:
+        return dict(
+            self.services.call(
+                "data.execute", {"sql": "INSERT INTO notes(text) VALUES (?)", "params": [text]}
+            )
+        )
+
+    def db_read(self) -> dict[str, Any]:
+        return dict(self.services.call("data.query", {"sql": "SELECT text FROM notes ORDER BY id"}))
+
+    def db_raw(self, sql: str, write: bool = False) -> dict[str, Any]:
+        try:
+            return dict(self.services.call("data.execute" if write else "data.query", {"sql": sql}))
+        except Exception as error:  # отказ — ответ модулю, а не падение модуля
+            return {"error": f"{type(error).__name__}: {error}"}
+
     def value(self) -> dict[str, Any]:
         return {"value": self.state}
 

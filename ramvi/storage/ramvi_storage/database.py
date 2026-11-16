@@ -44,6 +44,11 @@ class Database:
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
 
+    def set_authorizer(self, callback: Any) -> None:
+        """Проверка каждого действия SQL (sqlite3 authorizer); None — снять (3.12)."""
+        with self._lock:
+            self._conn.set_authorizer(callback)
+
     def close(self) -> None:
         with self._lock:
             self._conn.close()

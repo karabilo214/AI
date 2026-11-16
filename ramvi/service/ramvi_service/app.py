@@ -33,7 +33,7 @@ from ramvi_service.engines import (
 from ramvi_service.modules.host import ModuleHost
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.resources import SharedLLM
-from ramvi_service.sections import SectionRegistry
+from ramvi_service.sections import ModuleDataApi, SectionRegistry
 from ramvi_service.supervisor import RestartPolicy
 from ramvi_service.ui_api import UIServer
 
@@ -92,6 +92,7 @@ def build(
         onboarding=onboarding,
         config=None if app_dir is None else AppConfig(app_dir, data_dir),
         sections=sections,
+        module_data=ModuleDataApi(sections, data_dir / "exports"),
     )
     return server, engines
 

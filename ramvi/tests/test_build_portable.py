@@ -18,6 +18,12 @@ sys.modules["build_portable"] = bp
 spec.loader.exec_module(bp)
 
 
+needs_jsonschema = pytest.mark.skipif(
+    bp.find_distribution("jsonschema") is None,
+    reason="в лёгком окружении нет jsonschema для замыкания",
+)
+
+
 @pytest.fixture
 def inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     shell = tmp_path / "pub"
@@ -46,6 +52,7 @@ def inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     return shell, embed, tok
 
 
+@needs_jsonschema
 def test_layout_closure_and_manifest(tmp_path: Path, inputs: tuple[Path, Path, Path]) -> None:
     shell, embed, tok = inputs
     out = tmp_path / "RAMVI"
@@ -86,6 +93,7 @@ def test_layout_closure_and_manifest(tmp_path: Path, inputs: tuple[Path, Path, P
     assert saved["total_bytes"] > 0 and len(saved["code_sha256"]) == 64
 
 
+@needs_jsonschema
 def test_built_folder_imports_with_only_its_site_packages(
     tmp_path: Path, inputs: tuple[Path, Path, Path]
 ) -> None:
@@ -113,6 +121,7 @@ def test_built_folder_imports_with_only_its_site_packages(
     assert result.stdout.strip().startswith(str(site))
 
 
+@needs_jsonschema
 def test_refuses_existing_folder_and_bad_inputs(
     tmp_path: Path, inputs: tuple[Path, Path, Path]
 ) -> None:
@@ -130,6 +139,7 @@ def test_refuses_existing_folder_and_bad_inputs(
         bp.build(tmp_path / "c", shell, embed, empty, roots=("jsonschema",))
 
 
+@needs_jsonschema
 def test_markers_exclude_other_platforms() -> None:
     """Зависимости с маркером чужой платформы не попадают (например, nvidia-* для Linux у torch)."""
     found = bp.closure(("jsonschema",))

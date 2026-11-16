@@ -354,7 +354,7 @@ assert not any(name in sys.modules for name in ['torch','numpy','triton','ramvi_
         env={
             **os.environ,
             "PYTHONPATH": os.pathsep.join(
-                [str(project / "ramvi/service"), str(project / "ramvi/engine")]
+                [str(project / f"ramvi/{part}") for part in ("service", "engine", "storage")]
             ),
         },
         timeout=10,

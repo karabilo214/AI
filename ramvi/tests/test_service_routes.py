@@ -21,6 +21,8 @@ METHODS = {
     "settings.set",
     "data.get",
     "data.set",
+    "data.query",
+    "data.execute",
     "secrets.get",
     "secrets.set",
     "secrets.delete",

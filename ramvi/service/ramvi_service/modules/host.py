@@ -6,14 +6,17 @@ import shutil
 import tempfile
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ramvi_storage.migrations import Migration
+
 from ramvi_service.context import ContextProvider, GrantStore
 from ramvi_service.contracts.modules import Authority, Manifest, Owner
 from ramvi_service.events import EventBus
+from ramvi_service.module_data import DB_FILE, ModuleDatabase, export_namespace
 from ramvi_service.modules.controller import ProcessModuleWorker, WorkerController
 from ramvi_service.resources import ResourceBroker, SharedLLM
 from ramvi_service.scoped import MemorySecrets, ScopedData, ScopedSecrets, SecretBackend
@@ -29,6 +32,7 @@ class Entry:
     owner: Owner | None = None
     services: ScopedServices | None = None
     worker: WorkerController | None = None
+    database: Any = None  # 3.12: ModuleDatabase, пока модуль запущен
     application_grants: set[tuple[str, str]] = field(default_factory=set)
     lock: Any = field(default_factory=threading.RLock, repr=False)
 
@@ -81,6 +85,7 @@ class ModuleHost:
         )
         self._entries: dict[str, Entry] = {}
         self._migrations: dict[str, dict[int, Callable[[ScopedData], None]]] = {}
+        self._sql: dict[str, list[Migration]] = {}
         self._lock = threading.RLock()
 
     def register(
@@ -89,6 +94,7 @@ class ModuleHost:
         *,
         approved_permissions: tuple[str, ...] = (),
         migrations: dict[int, Callable[[ScopedData], None]] | None = None,
+        sql_migrations: Sequence[Migration] = (),
     ) -> None:
         with self._lock:
             if manifest.module_id in self._entries:
@@ -97,11 +103,13 @@ class ModuleHost:
                 raise ValueError("одобрение не запрошенного разрешения")
             self._entries[manifest.module_id] = Entry(copy.deepcopy(manifest), approved_permissions)
             self._migrations[manifest.module_id] = dict(migrations or {})
+            self._sql[manifest.module_id] = list(sql_migrations)
             try:
                 self._check_graph()
             except Exception:
                 self._entries.pop(manifest.module_id)
                 self._migrations.pop(manifest.module_id)
+                self._sql.pop(manifest.module_id)
                 raise
 
     def _check_graph(self) -> None:
@@ -159,6 +167,9 @@ class ModuleHost:
                 self.grants.release_owner(entry.owner)
                 self.authority.revoke(entry.owner)
             entry.services, entry.owner = None, None
+            if entry.database is not None:
+                entry.database.close()
+                entry.database = None
 
     def _stop(self, entry: Entry) -> None:
         try:
@@ -200,6 +211,10 @@ class ModuleHost:
                 raise RuntimeError("несовместимая версия зависимости " + dependency)
         data = ScopedData(self.root, entry.manifest.module_id)
         data.migrate(entry.manifest.data_schema, self._migrations[entry.manifest.module_id])
+        sql = self._sql[entry.manifest.module_id]
+        if sql or data.path(DB_FILE).exists():
+            # Таблицы объявляет модуль; при сбое миграции база откатывается целиком (3.12).
+            entry.database = ModuleDatabase(data, sql).open()
         owner = self.authority.issue(entry.manifest.module_id, self.principal_id, uuid.uuid4().hex)
         scope = ScopedServices(
             owner,
@@ -212,6 +227,7 @@ class ModuleHost:
             self.llm,
             self.context,
             timeout=self.timeout,
+            database=entry.database,
         )
         entry.owner, entry.services = owner, scope
         for permission in set(entry.approved) & set(entry.manifest.permissions):
@@ -383,6 +399,8 @@ class ModuleHost:
             was_active, was_suspended = entry.state == "active", entry.state == "suspended"
             previous, old_migrations = entry.manifest, self._migrations[identifier]
             self.deactivate(identifier)
+            if entry.database is not None:  # копия пространства — с закрытой базой
+                entry.database.close()
             data = ScopedData(self.root, identifier)
             if any(p.is_symlink() for p in data.root.rglob("*")):
                 raise PermissionError("update namespace с symlink запрещён")
@@ -416,11 +434,41 @@ class ModuleHost:
                     raise
             return self.status(identifier)
 
+    def export_data(self, identifier: str, target: Path) -> dict[str, Any]:
+        """ZIP данных модуля (JSON + согласованная копия базы); модуль может работать."""
+        entry = self._entry(identifier)
+        with entry.lock:
+            data = ScopedData(self.root, identifier)
+            database = entry.database
+            meta = {
+                "module_id": identifier,
+                "version": entry.manifest.version,
+                "data_schema": data.schema_version,
+                "sql_schema": database.schema_version if database is not None else None,
+            }
+            return export_namespace(data, database, Path(target), meta)
+
+    def reset_data(self, identifier: str) -> dict[str, Any]:
+        """Стереть данные модуля, не трогая другие модули и Core; модуль должен быть остановлен."""
+        entry = self._entry(identifier)
+        with entry.lock:
+            if entry.worker is not None:
+                raise RuntimeError("остановите модуль перед сбросом данных")
+            ScopedData(self.root, identifier).reset()
+            entry.error = None
+            return self.status(identifier)
+
+    def data_bytes(self, identifier: str) -> int:
+        self._entry(identifier)
+        root = ScopedData(self.root, identifier).root
+        return sum(p.stat().st_size for p in root.rglob("*") if p.is_file() and not p.is_symlink())
+
     def uninstall(self, identifier: str, *, purge_data: bool = False) -> None:
         self.dispose(identifier)
         with self._lock:
             self._entries.pop(identifier)
             self._migrations.pop(identifier)
+            self._sql.pop(identifier, None)
         self.events.unregister_module(identifier)
         if purge_data:
             ScopedData(self.root, identifier).reset()

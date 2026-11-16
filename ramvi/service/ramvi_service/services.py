@@ -103,7 +103,9 @@ class ScopedServices:
         llm: SharedLLM | None = None,
         context: ContextProvider | None = None,
         timeout: float = 30,
+        database: Any = None,
     ) -> None:
+        self.database = database  # 3.12: своя база модуля (ModuleDatabase) или None
         self.owner, self.authority, self.grants, self.data, self.secrets = (
             owner,
             authority,
@@ -167,6 +169,18 @@ class ScopedServices:
     def _data_set(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.data.write_json(payload["path"], payload["value"])
         return {"ok": True}
+
+    @handler("data.query", permission="data")
+    def _db_query(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.database is None:
+            raise RuntimeError("у модуля нет своей базы (нет миграций)")
+        return dict(self.database.query(payload["sql"], payload.get("params")))
+
+    @handler("data.execute", permission="data")
+    def _db_execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.database is None:
+            raise RuntimeError("у модуля нет своей базы (нет миграций)")
+        return dict(self.database.execute(payload["sql"], payload.get("params")))
 
     @handler("secrets.get", permission="secrets")
     def _secrets_get(self, payload: dict[str, Any]) -> dict[str, Any]:

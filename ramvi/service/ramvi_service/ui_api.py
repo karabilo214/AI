@@ -19,7 +19,7 @@ from typing import Any
 from ramvi_service.app_config import AppConfig
 from ramvi_service.chat import ChatError, ChatService, Generation
 from ramvi_service.onboarding import Onboarding
-from ramvi_service.sections import SectionRegistry
+from ramvi_service.sections import ModuleDataApi, SectionRegistry
 
 MAX_BODY = 2 * 2**20
 PREFIX = "/ui/v1"
@@ -37,6 +37,7 @@ class UIServer:
         onboarding: Onboarding | None = None,
         config: AppConfig | None = None,
         sections: SectionRegistry | None = None,
+        module_data: ModuleDataApi | None = None,
     ) -> None:
         if len(token) < 16:
             raise ValueError("слишком короткий ключ интерфейса")
@@ -45,6 +46,7 @@ class UIServer:
         self.onboarding = onboarding
         self.config = config
         self.sections = sections
+        self.module_data = module_data
         self._server = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
         self._server.daemon_threads = True
         self._thread: threading.Thread | None = None
@@ -85,6 +87,8 @@ class UIServer:
             created = chat.create(model_id)
             self._remember(model_id)
             return {"chat": created}
+        if path == "/modules" or path.startswith("/modules/"):
+            return self._modules_route(method, path, body)
         if path == "/sections" or path.startswith("/sections/"):
             return self._sections_route(method, path)
         if path == "/settings":
@@ -150,6 +154,26 @@ class UIServer:
         if method == "POST" and match:
             return {"section": registry.open(match.group(1))}
         raise ChatError("api.not_found")
+
+    def _modules_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
+        """3.12: данные модулей — список, экспорт, сброс, удаление."""
+        api = self.module_data
+        if api is None:
+            raise ChatError("api.not_found")
+        if method == "GET" and path == "/modules":
+            return {"modules": api.list()}
+        match = re.fullmatch(r"/modules/([a-z][a-z0-9_]{0,63})/(export|reset|uninstall)", path)
+        if method != "POST" or match is None:
+            raise ChatError("api.not_found")
+        module_id, action = match.groups()
+        if action == "export":
+            return {"export": api.export(module_id)}
+        if action == "reset":
+            return {"module": api.reset(module_id)}
+        purge = body.get("purge", False)
+        if not isinstance(purge, bool):
+            raise ChatError("api.bad_request", field="purge")
+        return {"uninstalled": api.uninstall(module_id, purge)}
 
     def _remember(self, model_id: str | None) -> None:
         if model_id is not None and self.onboarding is not None:
