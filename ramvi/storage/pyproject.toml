@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools==84.2.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ramvi-storage"
+version = "0.1.0"
+description = "Локальное хранилище RAMVI: SQLite (WAL), миграции, репозитории"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ramvi_storage*"]
+namespaces = false

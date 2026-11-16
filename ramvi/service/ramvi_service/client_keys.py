@@ -2,33 +2,22 @@
 
 Хранится только SHA-256 ключа; сам ключ показывается один раз при создании.
 У каждого ключа имя, права, last_seen, счётчик запросов; отзыв — навсегда.
-SQLite (WAL) — до общего хранилища 3.2 таблица живёт в своём файле.
+Таблица `client_keys` — в общем хранилище ядра (`ramvi_storage`, пункт 3.2).
 """
 
 import hashlib
 import hmac
 import secrets
-import sqlite3
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ramvi_storage import CORE_MIGRATIONS, CORE_OWNER, Database, migrate
+
 PREFIX = "ramvi-"
 PERMISSIONS = frozenset({"chat", "models", "agent"})
-
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS client_keys (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    key_hash TEXT NOT NULL UNIQUE,
-    permissions TEXT NOT NULL,
-    created REAL NOT NULL,
-    last_seen REAL,
-    requests INTEGER NOT NULL DEFAULT 0,
-    revoked REAL
-)
-"""
 
 
 @dataclass(frozen=True)
@@ -46,15 +35,22 @@ def _hash(key: str) -> str:
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
+_COLUMNS = "id, client_name, permissions, created_at, last_seen, requests, revoked_at"
+
+
 class KeyStore:
-    def __init__(self, path: str | Path):
+    """Ключи в общей базе. Путь — открыть отдельную базу (схема ядра доводится до текущей)."""
+
+    def __init__(self, store: str | Path | Database):
         self._lock = threading.Lock()
-        self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
-        self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.execute(_SCHEMA)
+        self._owned = not isinstance(store, Database)
+        self._db = store if isinstance(store, Database) else Database(store)
+        if self._owned:
+            migrate(self._db, CORE_OWNER, CORE_MIGRATIONS)
 
     def close(self) -> None:
-        self._db.close()
+        if self._owned:
+            self._db.close()
 
     def create(self, name: str, permissions: set[str] | frozenset[str]) -> tuple[ClientKey, str]:
         """Вернуть запись и ключ. Ключ больше нигде не сохраняется и не показывается."""
@@ -66,30 +62,31 @@ class KeyStore:
             raise ValueError(f"права из {sorted(PERMISSIONS)}, получено {sorted(permissions)}")
         key = PREFIX + secrets.token_urlsafe(32)
         key_id = secrets.token_hex(6)
-        with self._lock:
+        with self._lock, self._db.transaction():
             self._db.execute(
-                "INSERT INTO client_keys (id, name, key_hash, permissions, created) VALUES (?,?,?,?,?)",
+                "INSERT INTO client_keys (id, client_name, secret_hash, permissions, created_at)"
+                " VALUES (?,?,?,?,?)",
                 (key_id, name, _hash(key), ",".join(sorted(permissions)), time.time()),
             )
         return self.get(key_id), key
 
     def get(self, key_id: str) -> ClientKey:
-        row = self._db.execute(
-            "SELECT id, name, permissions, created, last_seen, requests, revoked FROM client_keys WHERE id=?",
-            (key_id,),
-        ).fetchone()
+        row = self._db.one(f"SELECT {_COLUMNS} FROM client_keys WHERE id=?", (key_id,))
         if row is None:
             raise KeyError(key_id)
-        return ClientKey(row[0], row[1], frozenset(row[2].split(",")), *row[3:])
+        return ClientKey(
+            row[0], row[1], frozenset(row[2].split(",")), row[3], row[4], row[5], row[6]
+        )
 
     def list(self) -> list[ClientKey]:
-        ids = [r[0] for r in self._db.execute("SELECT id FROM client_keys ORDER BY created")]
+        ids = [r[0] for r in self._db.all("SELECT id FROM client_keys ORDER BY created_at, id")]
         return [self.get(i) for i in ids]
 
     def revoke(self, key_id: str) -> None:
-        with self._lock:
+        with self._lock, self._db.transaction():
             cur = self._db.execute(
-                "UPDATE client_keys SET revoked=? WHERE id=? AND revoked IS NULL", (time.time(), key_id)
+                "UPDATE client_keys SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
+                (time.time(), key_id),
             )
         if cur.rowcount == 0:
             self.get(key_id)  # KeyError, если такого нет; повторный отзыв — без ошибки
@@ -99,21 +96,29 @@ class KeyStore:
         if not key or not key.startswith(PREFIX):
             return None
         digest = _hash(key)
-        row = self._db.execute(
-            "SELECT id, key_hash, permissions, revoked FROM client_keys WHERE key_hash=?", (digest,)
-        ).fetchone()
+        row = self._db.one(
+            "SELECT id, secret_hash, permissions, revoked_at FROM client_keys WHERE secret_hash=?",
+            (digest,),
+        )
         if row is None or not hmac.compare_digest(row[1], digest) or row[3] is not None:
             return None
         if permission is not None and permission not in row[2].split(","):
             return None
-        with self._lock:
+        with self._lock, self._db.transaction():
             self._db.execute(
-                "UPDATE client_keys SET last_seen=?, requests=requests+1 WHERE id=?", (time.time(), row[0])
+                "UPDATE client_keys SET last_seen=?, requests=requests+1 WHERE id=?",
+                (time.time(), row[0]),
             )
         return self.get(row[0])
 
 
-_CHAT_ROUTES = ("/api/chat", "/api/generate", "/v1/chat/completions", "/v1/completions", "/v1/messages")
+_CHAT_ROUTES = (
+    "/api/chat",
+    "/api/generate",
+    "/v1/chat/completions",
+    "/v1/completions",
+    "/v1/messages",
+)
 
 
 def permission_for(path: str) -> str:
@@ -122,6 +127,6 @@ def permission_for(path: str) -> str:
     return "chat" if route in _CHAT_ROUTES else "models"
 
 
-def checker(store: KeyStore):
+def checker(store: KeyStore) -> Callable[[str | None, str], bool]:
     """Функция для App(api_key=...): ключ действителен и имеет право на маршрут."""
     return lambda token, path: store.verify(token, permission_for(path)) is not None

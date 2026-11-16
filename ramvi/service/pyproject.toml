@@ -7,7 +7,7 @@ name = "ramvi-service"
 version = "0.1.0"
 description = "Лёгкие контракты и координация модулей RAMVI"
 requires-python = ">=3.12"
-dependencies = ["ramvi-engine>=0.1.0"]
+dependencies = ["ramvi-engine>=0.1.0", "ramvi-storage>=0.1.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
