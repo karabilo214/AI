@@ -65,6 +65,12 @@ class WithoutImports(ast.NodeTransformer):
             }
         ):
             return None
+        if (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "add_argument"
+        ):  # текст справки не влияет на вычисления
+            node.value.keywords = [k for k in node.value.keywords if k.arg != "help"]
         self.generic_visit(node)
         return node
 

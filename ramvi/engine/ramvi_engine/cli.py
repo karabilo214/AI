@@ -35,26 +35,28 @@ def main() -> None:
     from ramvi_engine.console import configure_output
     configure_output()
     ap = argparse.ArgumentParser(prog="ramvi-engine")
-    ap.add_argument("cmd", choices=["serve", "chat", "plan", "capabilities"])
-    ap.add_argument("--model")
+    ap.add_argument("cmd", choices=["serve", "chat", "plan", "capabilities"],
+                    help="serve — API-сервер, chat — диалог в консоли, plan — план размещения без загрузки, capabilities — возможности движка")
+    ap.add_argument("--model", help="модель: папка HF, файл GGUF или имя модели Ollama")
     ap.add_argument("--draft", default=None, help="маленькая модель той же семьи для угадывания вперёд")
     ap.add_argument("--k", type=int, default=0, help="сколько слов угадывать за раз (0 — подстраивать на ходу)")
     ap.add_argument("--maxt", type=int, default=2048, help="наибольшая длина текста")
     ap.add_argument("--no-cpu", action="store_true", help="не считать слои на процессоре")
     ap.add_argument("--resident", type=int, default=None, help="сколько слоёв держать в видеокарте (по умолчанию — сколько влезет)")
     ap.add_argument("--tokenizer", default="Qwen3-8B", help="токенизатор (для моделей GGUF): папка или имя в кэше HF")
-    ap.add_argument("--port", type=int, default=11435)
+    ap.add_argument("--port", type=int, default=11435, help="порт API-сервера")
     ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 — доступ по сети")
     ap.add_argument("--api-key", default=os.environ.get("RAMVI_API_KEY"), help="ключ доступа (Authorization: Bearer ... или x-api-key)")
     ap.add_argument("--force-greedy", action="store_true",
                     help="всегда жадный выбор (агенты часто шлют температуру > 0; угадывание точное только при жадном)")
-    ap.add_argument("--plan-mode", choices=["auto", "manual", "legacy"], default="auto")
-    ap.add_argument("--reserve-gib", type=float, default=None)
-    ap.add_argument("--max-batch", type=int, choices=[1, 2, 4, 8, 16], default=None)
-    ap.add_argument("--draft-policy", choices=["auto", "on", "off"], default="auto")
-    ap.add_argument("--prefill", choices=["auto", "legacy", "blocked"], default="auto")
-    ap.add_argument("--no-paging", action="store_true")
-    ap.add_argument("--load-attempts", type=int, choices=range(1, 17), default=4)
+    ap.add_argument("--plan-mode", choices=["auto", "manual", "legacy"], default="auto",
+                    help="план размещения: auto — сам по памяти, manual — по --resident, legacy — прежний план этапа 1")
+    ap.add_argument("--reserve-gib", type=float, default=None, help="запас видеопамяти в ГиБ, который план не занимает")
+    ap.add_argument("--max-batch", type=int, choices=[1, 2, 4, 8, 16], default=None, help="наибольший размер пачки при проверке угаданных слов")
+    ap.add_argument("--draft-policy", choices=["auto", "on", "off"], default="auto", help="угадывание маленькой моделью: auto — по замеру, on — всегда, off — никогда")
+    ap.add_argument("--prefill", choices=["auto", "legacy", "blocked"], default="auto", help="способ обработки запроса до первого слова: auto, legacy (прежний) или blocked (блоками)")
+    ap.add_argument("--no-paging", action="store_true", help="не подгружать слои по шине во время генерации")
+    ap.add_argument("--load-attempts", type=int, choices=range(1, 17), default=4, help="сколько попыток загрузки с уменьшением плана при нехватке памяти")
     a = ap.parse_args()
     if a.cmd == "capabilities":
         import json
@@ -75,9 +77,7 @@ def main() -> None:
         print(json.dumps(preview_plan(config), ensure_ascii=False, indent=2))
         return
     import torch
-    from transformers import AutoTokenizer
 
-    from ramvi_engine.formats.model import find_model
     torch.set_grad_enabled(False)
     gguf = is_gguf_model(a.model)
     if a.cmd == "plan":
