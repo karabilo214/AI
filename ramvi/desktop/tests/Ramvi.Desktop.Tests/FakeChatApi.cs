@@ -169,6 +169,22 @@ internal sealed class FakeChatApi : IChatApi
         return Task.FromResult(model);
     }
 
+    public List<SectionInfo> Sections { get; } = [new("chat", "section.chat", "chat", 10, "chat", null, "ready", null)];
+
+    public Dictionary<string, SectionInfo> OpenResults { get; } = [];
+
+    public Task<IReadOnlyList<SectionInfo>> SectionsAsync(CancellationToken cancel = default) =>
+        Task.FromResult<IReadOnlyList<SectionInfo>>([.. Sections]);
+
+    public Task<SectionInfo> OpenSectionAsync(string sectionId, CancellationToken cancel = default)
+    {
+        Calls.Add($"open {sectionId}");
+        var info = OpenResults.TryGetValue(sectionId, out var result)
+            ? result
+            : Sections.Single(s => s.Id == sectionId) with { State = "active" };
+        return Task.FromResult(info);
+    }
+
     public AppSettings AppSettings { get; set; } = new("data", "models", "ru", 11435, false);
 
     public List<SettingsUpdate> SettingsUpdates { get; } = [];

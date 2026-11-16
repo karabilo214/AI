@@ -19,6 +19,7 @@ from typing import Any
 from ramvi_service.app_config import AppConfig
 from ramvi_service.chat import ChatError, ChatService, Generation
 from ramvi_service.onboarding import Onboarding
+from ramvi_service.sections import SectionRegistry
 
 MAX_BODY = 2 * 2**20
 PREFIX = "/ui/v1"
@@ -35,6 +36,7 @@ class UIServer:
         engine_status: Callable[[], dict[str, Any]] | None = None,
         onboarding: Onboarding | None = None,
         config: AppConfig | None = None,
+        sections: SectionRegistry | None = None,
     ) -> None:
         if len(token) < 16:
             raise ValueError("слишком короткий ключ интерфейса")
@@ -42,6 +44,7 @@ class UIServer:
         self._engine_status = engine_status or (lambda: {"state": "stopped"})
         self.onboarding = onboarding
         self.config = config
+        self.sections = sections
         self._server = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
         self._server.daemon_threads = True
         self._thread: threading.Thread | None = None
@@ -82,6 +85,8 @@ class UIServer:
             created = chat.create(model_id)
             self._remember(model_id)
             return {"chat": created}
+        if path == "/sections" or path.startswith("/sections/"):
+            return self._sections_route(method, path)
         if path == "/settings":
             if self.config is None:
                 raise ChatError("api.not_found")
@@ -132,6 +137,18 @@ class UIServer:
             return onboarding.complete(_optional_str(body, "model_id"))
         if method == "POST" and path == "/models/import":
             return {"model": onboarding.import_model(_required_str(body, "path"))}
+        raise ChatError("api.not_found")
+
+    def _sections_route(self, method: str, path: str) -> Any:
+        """3.11: разделы интерфейса; модуль загружается при первом открытии раздела."""
+        registry = self.sections
+        if registry is None:
+            raise ChatError("api.not_found")
+        if method == "GET" and path == "/sections":
+            return {"sections": registry.list()}
+        match = re.fullmatch(r"/sections/([a-z][a-z0-9_]{0,63})/open", path)
+        if method == "POST" and match:
+            return {"section": registry.open(match.group(1))}
         raise ChatError("api.not_found")
 
     def _remember(self, model_id: str | None) -> None:

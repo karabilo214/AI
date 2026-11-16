@@ -159,4 +159,38 @@ public sealed class MainWindowTests
         Assert.Empty(Localizer.Current.Missing);
         window.Close();
     }
+
+    [AvaloniaFact]
+    public async Task Section_rail_switches_between_chat_and_module()
+    {
+        Localizer.Current = Localizer.Load("ru");
+        var api = new FakeChatApi();
+        api.Sections.Add(new Api.SectionInfo("agent", "section.agent", "agent", 20, "agent", "agent", "available", null));
+        api.AddChat("Диалог", "model-a", Msg("user", "вопрос"), Msg("assistant", "ответ"));
+        var model = new MainViewModel(api);
+        var window = new MainWindow { DataContext = model };
+        window.Show();
+        await model.InitializeAsync();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(window.FindControl<Border>("SectionRail")!.IsVisible);
+        Assert.True(window.FindControl<DockPanel>("ChatPanel")!.IsVisible);
+        Assert.False(window.FindControl<Border>("ModuleSection")!.IsVisible);
+
+        window.FindControl<ListBox>("SectionList")!.SelectedIndex = 1;
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(window.FindControl<DockPanel>("ChatPanel")!.IsVisible);
+        Assert.True(window.FindControl<Border>("ModuleSection")!.IsVisible);
+        Assert.Equal("Агент", window.FindControl<TextBlock>("ModuleTitle")!.Text);
+        Assert.Equal("Работает", window.FindControl<TextBlock>("ModuleState")!.Text);
+
+        window.FindControl<ListBox>("SectionList")!.SelectedIndex = 0;
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(window.FindControl<DockPanel>("ChatPanel")!.IsVisible);
+        var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.Contains("ответ", texts);
+        Assert.Empty(Localizer.Current.Missing);
+        window.Close();
+    }
 }

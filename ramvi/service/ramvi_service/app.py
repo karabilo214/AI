@@ -30,8 +30,10 @@ from ramvi_service.engines import (
     SwitchableProvider,
     default_engine,
 )
+from ramvi_service.modules.host import ModuleHost
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.resources import SharedLLM
+from ramvi_service.sections import SectionRegistry
 from ramvi_service.supervisor import RestartPolicy
 from ramvi_service.ui_api import UIServer
 
@@ -78,6 +80,10 @@ def build(
     chat = ChatService(
         db, llm, default_model=lambda: engines.model_id or onboarding.default_model()
     )
+    host = ModuleHost(data_dir, llm=llm)
+    sections = SectionRegistry(host)
+    if root is not None:
+        sections.discover(root / "modules")  # процессы модулей не запускаются (3.11)
     server = UIServer(
         chat,
         token,
@@ -85,6 +91,7 @@ def build(
         engine_status=engines.status,
         onboarding=onboarding,
         config=None if app_dir is None else AppConfig(app_dir, data_dir),
+        sections=sections,
     )
     return server, engines
 
@@ -144,6 +151,8 @@ def main(argv: list[str] | None = None) -> None:
         pass
     finally:
         server.close()
+        if server.sections is not None:
+            server.sections.host.close()  # остановить процессы открытых модулей
         engines.stop()
     sys.exit(0)
 

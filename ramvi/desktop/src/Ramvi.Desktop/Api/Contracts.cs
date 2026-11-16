@@ -75,6 +75,14 @@ public sealed record SettingsUpdate(
     string? DataDir = null, string? ModelsDir = null, string? Language = null, int? ApiPort = null,
     bool? NetworkAccess = null);
 
+/// <summary>3.11: раздел интерфейса (встроенный или модуля) и его состояние.</summary>
+public sealed record SectionInfo(
+    string Id, string TitleKey, string Icon, int Order, string View, string? ModuleId, string State, string? Error);
+
+internal sealed record SectionsResponse(IReadOnlyList<SectionInfo> Sections);
+
+internal sealed record SectionResponse(SectionInfo Section);
+
 internal sealed record ImportRequest(string Path);
 
 internal sealed record ImportResponse(ModelInfo Model);
@@ -115,5 +123,7 @@ internal sealed record StopResponse(bool Stopped);
 [JsonSerializable(typeof(ImportRequest))]
 [JsonSerializable(typeof(ImportResponse))]
 [JsonSerializable(typeof(SettingsInfo))]
+[JsonSerializable(typeof(SectionsResponse))]
+[JsonSerializable(typeof(SectionResponse))]
 [JsonSerializable(typeof(SettingsUpdate))]
 internal sealed partial class ApiJson : JsonSerializerContext;

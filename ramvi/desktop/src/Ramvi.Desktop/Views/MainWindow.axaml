@@ -8,10 +8,35 @@
         Title="{l:T app.title}"
         Width="1100" Height="720" MinWidth="720" MinHeight="480"
         DragDrop.AllowDrop="True">
-  <Grid ColumnDefinitions="260,*">
+  <Grid ColumnDefinitions="Auto,260,*">
+
+    <!-- Разделы (3.11): видны, только если их больше одного -->
+    <Border x:Name="SectionRail" Grid.Column="0" IsVisible="{Binding Sections.HasMany}"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
+      <ListBox x:Name="SectionList" Width="120" Background="Transparent"
+               ItemsSource="{Binding Sections.Items}" SelectedItem="{Binding Sections.Selected}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:SectionItem">
+            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Border>
+
+    <!-- Раздел модуля (Agent/Character): вид создаётся при первом открытии и хранится -->
+    <Border x:Name="ModuleSection" Grid.Column="1" Grid.ColumnSpan="2" IsVisible="{Binding !Sections.IsChatSelected}">
+      <StackPanel Margin="24" Spacing="8" DataContext="{Binding Sections.Current}" x:DataType="vm:ModuleSectionViewModel">
+        <TextBlock x:Name="ModuleTitle" FontSize="22" FontWeight="SemiBold" Text="{Binding Title, FallbackValue=''}" />
+        <TextBlock x:Name="ModuleState" Text="{Binding State, FallbackValue=''}" />
+        <TextBlock x:Name="ModuleError" Classes="error" TextWrapping="Wrap" Text="{Binding Error, FallbackValue=''}"
+                   IsVisible="{Binding HasError, FallbackValue=False}" />
+        <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="{Binding Placeholder, FallbackValue=''}" />
+      </StackPanel>
+    </Border>
 
     <!-- Список диалогов -->
-    <DockPanel Grid.Column="0" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+    <DockPanel Grid.Column="1" IsVisible="{Binding Sections.IsChatSelected}"
+               Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
       <Button x:Name="NewChatButton" DockPanel.Dock="Top" Margin="12" HorizontalAlignment="Stretch"
               Content="{l:T chat.new}" Command="{Binding NewChatCommand}" />
       <Button x:Name="SettingsButton" DockPanel.Dock="Bottom" Margin="12" HorizontalAlignment="Stretch"
@@ -37,7 +62,7 @@
     </DockPanel>
 
     <!-- Диалог -->
-    <DockPanel Grid.Column="1">
+    <DockPanel x:Name="ChatPanel" Grid.Column="2" IsVisible="{Binding Sections.IsChatSelected}">
       <!-- Верхняя полоса: модель, очистка -->
       <Grid DockPanel.Dock="Top" Margin="12,8" ColumnDefinitions="Auto,*,Auto,Auto">
         <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Text="{l:T chat.model}" />
@@ -164,7 +189,7 @@
     </DockPanel>
 
     <!-- Настройки (3.7): поверх окна -->
-    <Border x:Name="SettingsPanel" Grid.ColumnSpan="2" ZIndex="9" IsVisible="{Binding Settings.IsOpen}"
+    <Border x:Name="SettingsPanel" Grid.ColumnSpan="3" ZIndex="9" IsVisible="{Binding Settings.IsOpen}"
             Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
       <ScrollViewer>
         <StackPanel MaxWidth="640" Margin="24" Spacing="10" HorizontalAlignment="Center">
@@ -218,7 +243,7 @@
     </Border>
 
     <!-- Мастер первого запуска (UI-01, 3.6): поверх всего окна -->
-    <Border x:Name="Onboarding" Grid.ColumnSpan="2" ZIndex="10" IsVisible="{Binding Onboarding.IsOpen}"
+    <Border x:Name="Onboarding" Grid.ColumnSpan="3" ZIndex="10" IsVisible="{Binding Onboarding.IsOpen}"
             Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
       <ScrollViewer>
         <StackPanel MaxWidth="640" Margin="24" Spacing="12" HorizontalAlignment="Center">

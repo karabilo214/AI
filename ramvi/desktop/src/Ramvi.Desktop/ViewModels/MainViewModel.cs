@@ -60,6 +60,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Func<string, Task>? chooseDataDir = null)
     {
         _connect = connect;
+        Sections = new SectionsViewModel(() => _api);
         _pickFolder = pickFolder;
         _chooseDataDir = chooseDataDir;
         Settings = new SettingsViewModel(
@@ -153,6 +154,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Мастер первого запуска (3.6).</summary>
     public OnboardingViewModel Onboarding { get; }
+
+    /// <summary>Разделы интерфейса (3.11).</summary>
+    public SectionsViewModel Sections { get; }
 
     /// <summary>Экран настроек (3.7).</summary>
     public SettingsViewModel Settings { get; }
@@ -288,6 +292,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             await ReloadChatsAsync().ConfigureAwait(true);
             var onboarding = await _api.OnboardingAsync().ConfigureAwait(true);
+            await Sections.LoadAsync().ConfigureAwait(true);
             SelectedChat = Chats.FirstOrDefault();
             if (SelectedChat is null)
             {

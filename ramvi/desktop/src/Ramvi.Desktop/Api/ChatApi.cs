@@ -56,6 +56,12 @@ public interface IChatApi
     Task<SettingsInfo> SettingsAsync(CancellationToken cancel = default);
 
     Task<SettingsInfo> SaveSettingsAsync(SettingsUpdate update, CancellationToken cancel = default);
+
+    /// <summary>3.11: разделы интерфейса.</summary>
+    Task<IReadOnlyList<SectionInfo>> SectionsAsync(CancellationToken cancel = default);
+
+    /// <summary>Открыть раздел: модуль загружается при первом открытии.</summary>
+    Task<SectionInfo> OpenSectionAsync(string sectionId, CancellationToken cancel = default);
 }
 
 /// <summary>HTTP-клиент `ramvi_service.ui_api`: только loopback, ключ в заголовке.</summary>
@@ -136,6 +142,13 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     public Task<OnboardingState> CompleteOnboardingAsync(string? modelId, CancellationToken cancel = default) =>
         PostAsync("onboarding", new ModelRequest(modelId), ApiJson.Default.ModelRequest,
             ApiJson.Default.OnboardingState, cancel);
+
+    public async Task<IReadOnlyList<SectionInfo>> SectionsAsync(CancellationToken cancel = default) =>
+        (await GetAsync("sections", ApiJson.Default.SectionsResponse, cancel).ConfigureAwait(false)).Sections;
+
+    public async Task<SectionInfo> OpenSectionAsync(string sectionId, CancellationToken cancel = default) =>
+        (await PostAsync($"sections/{Id(sectionId)}/open", new ModelRequest(null), ApiJson.Default.ModelRequest,
+            ApiJson.Default.SectionResponse, cancel).ConfigureAwait(false)).Section;
 
     public Task<SettingsInfo> SettingsAsync(CancellationToken cancel = default) =>
         GetAsync("settings", ApiJson.Default.SettingsInfo, cancel);
