@@ -43,6 +43,19 @@ internal sealed class FakeChatApi : IChatApi
     public Task<ServiceStatus> StatusAsync(CancellationToken cancel = default) =>
         Task.FromResult(new ServiceStatus(new EngineStatus(null, null, "stopped"), Limits));
 
+    /// <summary>Что «найдёт» просмотр папки моделей: модели добавляются в список.</summary>
+    public List<ModelInfo> FolderModels { get; } = [];
+
+    public int Scans { get; private set; }
+
+    public Task<ScanResult> ScanModelsAsync(CancellationToken cancel = default)
+    {
+        Scans++;
+        var added = FolderModels.Where(m => Models.All(x => x.Id != m.Id)).ToList();
+        Models.AddRange(added);
+        return Task.FromResult(new ScanResult("/app/models", [.. added.Select(m => m.Id)], [], [.. Models]));
+    }
+
     public Task<IReadOnlyList<ModelInfo>> ModelsAsync(CancellationToken cancel = default) =>
         Task.FromResult<IReadOnlyList<ModelInfo>>(Models);
 

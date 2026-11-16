@@ -22,6 +22,9 @@ public interface IChatApi
 
     Task<IReadOnlyList<ModelInfo>> ModelsAsync(CancellationToken cancel = default);
 
+    /// <summary>Просмотреть папку моделей из настроек и подключить найденные модели на месте.</summary>
+    Task<ScanResult> ScanModelsAsync(CancellationToken cancel = default);
+
     Task<IReadOnlyList<ChatInfo>> ChatsAsync(CancellationToken cancel = default);
 
     Task<ChatInfo> CreateChatAsync(string? modelId, CancellationToken cancel = default);
@@ -86,6 +89,9 @@ public sealed class ChatApiClient : IChatApi, IDisposable
 
     public async Task<IReadOnlyList<ModelInfo>> ModelsAsync(CancellationToken cancel = default) =>
         (await GetAsync("models", ApiJson.Default.ModelsResponse, cancel).ConfigureAwait(false)).Models;
+
+    public Task<ScanResult> ScanModelsAsync(CancellationToken cancel = default) =>
+        PostAsync("models/scan", new ModelRequest(null), ApiJson.Default.ModelRequest, ApiJson.Default.ScanResult, cancel);
 
     public async Task<IReadOnlyList<ChatInfo>> ChatsAsync(CancellationToken cancel = default) =>
         (await GetAsync("chats", ApiJson.Default.ChatsResponse, cancel).ConfigureAwait(false)).Chats;

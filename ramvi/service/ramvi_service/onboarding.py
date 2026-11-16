@@ -393,6 +393,35 @@ class Onboarding:
         )
         return model_json(model)
 
+    def scan_models_dir(self) -> dict[str, Any]:
+        """«Обновить список»: подключить на месте модели из папки моделей настроек (3.7).
+
+        Папку выбрал пользователь — это согласие подключить лежащие в ней модели, как выбор
+        файла при импорте. Расширение не важно: у Ollama файлы `blobs/sha256-…` без `.gguf`;
+        решает заголовок GGUF и поддерживаемая архитектура. Если указана сама папка моделей
+        Ollama, смотрится и её `blobs`. Ничего не копируется; уже подключённые не дублируются.
+        """
+        root = self.app_dir or self.data_dir
+        folder = app_settings.load(root).resolve(root, "models_dir")
+        folders = [folder, folder / "blobs"]
+        before = {m.id for m in self.models.all()}
+        added: list[str] = []
+        skipped: list[dict[str, str]] = []
+        for current in folders:
+            if not current.is_dir():
+                continue
+            for path in sorted(p for p in current.iterdir() if p.is_file()):
+                if not _looks_like_gguf(path):
+                    continue
+                try:
+                    model = self.import_model(str(path.resolve()))
+                except ChatError as error:
+                    skipped.append({"path": str(path), "code": error.code})
+                    continue
+                if model["id"] not in before and model["id"] not in added:
+                    added.append(model["id"])
+        return {"folder": str(folder), "added": added, "skipped": skipped}
+
 
 def _relative_to(path: Path, root: Path | None) -> str | None:
     if root is None:
@@ -401,6 +430,14 @@ def _relative_to(path: Path, root: Path | None) -> str | None:
         return path.relative_to(root).as_posix()
     except ValueError:
         return None
+
+
+def _looks_like_gguf(path: Path) -> bool:
+    try:
+        with path.open("rb") as file:
+            return file.read(4) == b"GGUF"
+    except OSError:
+        return False
 
 
 def model_json(m: Model) -> dict[str, Any]:

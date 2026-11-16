@@ -51,7 +51,7 @@
     <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
     <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-raised}" />
     <Setter Property="CornerRadius" Value="20" />
-    <Setter Property="Margin" Value="16" />
+    <Setter Property="Margin" Value="16,4,16,16" />
   </Style>
   <Style Selector="Border.card">
     <Setter Property="Background" Value="{DynamicResource ramvi-background}" />

@@ -364,3 +364,51 @@ def test_ollama_blob_gets_readable_id(onboarding: Onboarding, tmp_path: Path) ->
     assert onboarding.import_model(str(blob))["id"] == "qwen3-0.6b-q4_k_m"
     plain = write_gguf(tmp_path / "sha256-short.gguf")  # не хеш — имя файла как есть
     assert onboarding.import_model(str(plain))["id"] == "sha256-short"
+
+
+def test_scan_models_dir_imports_ollama_blobs_in_place(tmp_path: Path) -> None:
+    """«Обновить список»: файлы без .gguf (Ollama blobs) подключаются по заголовку, на месте."""
+    from ramvi_service import settings as st
+
+    app, data = tmp_path / "app", tmp_path / "app" / "data"
+    app.mkdir()
+    ollama = tmp_path / "ollama" / "models"
+    blobs = ollama / "blobs"
+    blobs.mkdir(parents=True)
+    model_file = write_gguf(blobs / ("sha256-" + "a" * 64), name="Qwen3 14B")
+    write_gguf(blobs / ("sha256-" + "b" * 64), architecture="llama", name="Llama")
+    (blobs / ("sha256-" + "c" * 64)).write_text('{"license": "text"}')  # не модель
+    st.save(app, st.Settings(models_dir=str(ollama)))  # указана сама папка Ollama
+    with open_core(data) as db:
+        onboarding = Onboarding(
+            data, Models(db), hardware=lambda _: profile(), backends=lambda: CUDA, app_dir=app
+        )
+        found = onboarding.scan_models_dir()
+
+        assert found["added"] == ["qwen3-14b-q4_k_m"]
+        assert found["folder"] == str(ollama)
+        assert [s["code"] for s in found["skipped"]] == ["import.unsupported_architecture"]
+        assert onboarding.models.get("qwen3-14b-q4_k_m").path == str(model_file.resolve())
+        assert onboarding.scan_models_dir()["added"] == []  # повтор не дублирует
+        assert [m.id for m in onboarding.models.all()] == ["qwen3-14b-q4_k_m"]
+        assert sorted(p.name for p in blobs.iterdir())[0].startswith("sha256-a")  # не скопирован
+
+
+def test_scan_route_any_extension_in_own_folder(tmp_path: Path) -> None:
+    """POST /models/scan: своя папка, файл с любым расширением; ответ — новые и весь список."""
+    from ramvi_service import settings as st
+
+    data, folder = tmp_path / "data", tmp_path / "mine"
+    folder.mkdir()
+    write_gguf(folder / "qwen-file.bin", name="Qwen3 8B")
+    add_models(data, "model-a")
+    st.save(data, st.Settings(models_dir=str(folder)))  # без папки приложения настройки в data
+    server, engines, client = start(data)
+    try:
+        found = client.ok("POST", "/models/scan", {})
+        assert found["added"] == ["qwen-file"] and found["skipped"] == []
+        assert sorted(m["id"] for m in found["models"]) == ["model-a", "qwen-file"]
+        assert client.ok("POST", "/models/scan", {})["added"] == []
+    finally:
+        server.close()
+        engines.stop()

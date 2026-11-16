@@ -21,6 +21,7 @@ public sealed class SettingsViewModel : ObservableObject
     private readonly Func<string?, Task<string?>> _pickFolder;
     private readonly Func<Task> _restart;
     private readonly Action<string>? _applyTheme;
+    private readonly Func<Task>? _openOnboarding;
     private ThemeOption? _theme;
     private AppSettings? _saved;
     private bool _isOpen;
@@ -35,10 +36,22 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _restartNeeded;
 
     public SettingsViewModel(
-        Func<IChatApi> api, Func<string?, Task<string?>> pickFolder, Func<Task> restart, Action<string>? applyTheme = null)
+        Func<IChatApi> api,
+        Func<string?, Task<string?>> pickFolder,
+        Func<Task> restart,
+        Action<string>? applyTheme = null,
+        Func<Task>? openOnboarding = null)
     {
         _api = api;
         _applyTheme = applyTheme;
+        _openOnboarding = openOnboarding;
+        OpenOnboardingCommand = new Command(
+            async () =>
+            {
+                IsOpen = false;
+                await _openOnboarding!().ConfigureAwait(true);
+            },
+            () => _openOnboarding is not null);
         Themes = [.. ThemeCodes.Select(code => new ThemeOption(code, L[$"settings.theme.{code}"]))];
         _pickFolder = pickFolder;
         _restart = restart;
@@ -65,6 +78,9 @@ public sealed class SettingsViewModel : ObservableObject
     public Command BrowseModelsDirCommand { get; }
 
     public Command RestartCommand { get; }
+
+    /// <summary>Снова открыть мастер первого запуска: проверка компьютера и подключение модели.</summary>
+    public Command OpenOnboardingCommand { get; }
 
     public List<LanguageOption> Languages { get; } = [];
 

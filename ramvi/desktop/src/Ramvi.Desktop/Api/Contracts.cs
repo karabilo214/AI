@@ -88,6 +88,13 @@ internal sealed record ImportRequest(string Path);
 
 internal sealed record ImportResponse(ModelInfo Model);
 
+/// <summary>Пропущенный при просмотре папки файл: путь и код причины.</summary>
+public sealed record ScanSkip(string Path, string Code);
+
+/// <summary>«Обновить список»: папка моделей просмотрена, новые модели подключены на месте.</summary>
+public sealed record ScanResult(
+    string Folder, IReadOnlyList<string> Added, IReadOnlyList<ScanSkip> Skipped, IReadOnlyList<ModelInfo> Models);
+
 internal sealed record ChatsResponse(IReadOnlyList<ChatInfo> Chats);
 
 internal sealed record ChatResponse(ChatInfo Chat);
@@ -123,6 +130,7 @@ internal sealed record StopResponse(bool Stopped);
 [JsonSerializable(typeof(OnboardingState))]
 [JsonSerializable(typeof(ImportRequest))]
 [JsonSerializable(typeof(ImportResponse))]
+[JsonSerializable(typeof(ScanResult))]
 [JsonSerializable(typeof(SettingsInfo))]
 [JsonSerializable(typeof(SectionsResponse))]
 [JsonSerializable(typeof(SectionResponse))]

@@ -98,7 +98,7 @@ class UIServer:
                 return self.config.get()
             if method == "POST":
                 return self.config.update(body)
-        if path in ("/system", "/onboarding", "/models/import"):
+        if path in ("/system", "/onboarding", "/models/import", "/models/scan"):
             return self._onboarding_route(method, path, body)
         match = re.fullmatch(f"/chats/{_ID}(/[a-z]+)?", path)
         if match is None:
@@ -141,6 +141,8 @@ class UIServer:
             return onboarding.complete(_optional_str(body, "model_id"))
         if method == "POST" and path == "/models/import":
             return {"model": onboarding.import_model(_required_str(body, "path"))}
+        if method == "POST" and path == "/models/scan":
+            return {**onboarding.scan_models_dir(), "models": self.chat.models()}
         raise ChatError("api.not_found")
 
     def _sections_route(self, method: str, path: str) -> Any:

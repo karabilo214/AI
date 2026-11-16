@@ -74,7 +74,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             () => _api,
             pickFolder ?? (_ => Task.FromResult<string?>(null)),
             restartApp ?? (() => Task.CompletedTask),
-            applyTheme);
+            applyTheme,
+            () => Onboarding!.OpenAsync(SelectedModel?.Id));
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -807,12 +808,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return Task.CompletedTask;
     }
 
-    /// <summary>Перечитать список моделей (модель могли добавить, пока окно открыто).</summary>
+    /// <summary>
+    /// «Обновить список»: сервис просматривает папку моделей из настроек и подключает новые
+    /// модели на месте, затем список перечитывается (модель могли добавить, пока окно открыто).
+    /// </summary>
     private async Task RefreshModelsAsync()
     {
         try
         {
-            var models = await _api.ModelsAsync().ConfigureAwait(true);
+            var scan = await _api.ScanModelsAsync().ConfigureAwait(true);
+            var models = scan.Models;
             var selected = SelectedChat?.ModelId ?? SelectedModel?.Id;
             Models.Clear();
             foreach (var model in models)
@@ -824,6 +829,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (_problem?.State == UiState.NoModel && Models.Count > 0)
             {
                 SetProblem(null);
+            }
+
+            if (_problem is null)
+            {
+                SetStatus(L.Format(
+                    "models.scanned",
+                    ("added", scan.Added.Count), ("skipped", scan.Skipped.Count), ("folder", scan.Folder)));
             }
 
             UpdateState();

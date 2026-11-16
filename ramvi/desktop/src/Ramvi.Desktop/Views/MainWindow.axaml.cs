@@ -43,14 +43,17 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Выбрать файл модели GGUF; путь на диске или null (отмена, не локальный файл).</summary>
+    /// <summary>
+    /// Выбрать файл модели; путь на диске или null (отмена, не локальный файл).
+    /// Без фильтра по расширению: у Ollama модели лежат в `blobs` как `sha256-…` без `.gguf`,
+    /// и фильтр их скрывал. Формат проверяет сервис по заголовку файла.
+    /// </summary>
     public async Task<string?> PickModelFileAsync()
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = Localization.Localizer.Current["onboarding.pick_title"],
             AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType("GGUF") { Patterns = ["*.gguf"] }],
         }).ConfigureAwait(true);
         return files.Count == 1 ? files[0].TryGetLocalPath() : null;
     }

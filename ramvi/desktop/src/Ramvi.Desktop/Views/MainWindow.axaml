@@ -3,14 +3,28 @@
         xmlns:l="using:Ramvi.Desktop.Localization"
         xmlns:vm="using:Ramvi.Desktop.ViewModels"
         xmlns:api="using:Ramvi.Desktop.Api"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
         x:Class="Ramvi.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="{l:T app.title}"
         Icon="avares://RAMVI/Assets/ramvi-emblem.png"
         Width="1180" Height="760" MinWidth="760" MinHeight="500"
+        ExtendClientAreaToDecorationsHint="True"
         DragDrop.AllowDrop="True">
+  <Grid RowDefinitions="Auto,*">
+  <!--
+    Полоса заголовка в фоне приложения (3.16, вариант 1): окно расширено в область заголовка,
+    кнопки «свернуть/развернуть/закрыть» остаются системными, высота — системная.
+    Роль TitleBar: перетаскивание, двойной щелчок и прилипание к краям делает система.
+  -->
+  <Border x:Name="TitleBar" Grid.Row="0" Background="Transparent"
+          Height="{Binding $parent[Window].WindowDecorationMargin.Top}"
+          chrome:WindowDecorationProperties.ElementRole="TitleBar">
+    <TextBlock Classes="caption" HorizontalAlignment="Center" VerticalAlignment="Center"
+               IsHitTestVisible="False" Text="{l:T app.title}" />
+  </Border>
   <!-- Раскладка по иллюстрации ТЗ «Главный экран»: меню слева, чат справа (3.16, неоморфизм) -->
-  <Grid ColumnDefinitions="288,*">
+  <Grid Grid.Row="1" ColumnDefinitions="288,*">
 
     <!-- Меню: логотип, разделы, диалоги, настройки -->
     <Border Grid.Column="0" Classes="sidebar">
@@ -77,7 +91,7 @@
     </Border>
 
     <!-- Раздел модуля (Agent/Character): вид создаётся при первом открытии и хранится -->
-    <Border x:Name="ModuleSection" Grid.Column="1" Classes="card" Margin="8,16,16,16"
+    <Border x:Name="ModuleSection" Grid.Column="1" Classes="card" Margin="8,4,16,16"
             IsVisible="{Binding !Sections.IsChatSelected}">
       <StackPanel Margin="28" Spacing="8" DataContext="{Binding Sections.Current}" x:DataType="vm:ModuleSectionViewModel">
         <TextBlock x:Name="ModuleTitle" Classes="title" Text="{Binding Title, FallbackValue=''}" />
@@ -89,7 +103,7 @@
     </Border>
 
     <!-- Диалог -->
-    <DockPanel x:Name="ChatPanel" Grid.Column="1" Margin="8,16,16,16" IsVisible="{Binding Sections.IsChatSelected}">
+    <DockPanel x:Name="ChatPanel" Grid.Column="1" Margin="8,4,16,16" IsVisible="{Binding Sections.IsChatSelected}">
       <!-- Верхняя полоса: модель; справа значки «Очистить» и «Удалить» с подсказками -->
       <Grid DockPanel.Dock="Top" Margin="0,0,0,8" ColumnDefinitions="Auto,*,Auto,Auto">
         <Border Classes="chip" Margin="4">
@@ -281,6 +295,11 @@
                       Command="{Binding Settings.BrowseModelsDirCommand}" />
             </Grid>
 
+            <TextBlock Classes="heading" Text="{l:T settings.onboarding}" />
+            <Button x:Name="OpenOnboardingButton" HorizontalAlignment="Left" Content="{l:T settings.onboarding_open}"
+                    Command="{Binding Settings.OpenOnboardingCommand}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.onboarding_note}" />
+
             <TextBlock Classes="heading" Text="{l:T settings.language}" />
             <ComboBox x:Name="LanguageBox" MinWidth="200" ItemsSource="{Binding Settings.Languages}"
                       SelectedItem="{Binding Settings.Language}">
@@ -391,5 +410,6 @@
         </Border>
       </ScrollViewer>
     </Border>
+  </Grid>
   </Grid>
 </Window>

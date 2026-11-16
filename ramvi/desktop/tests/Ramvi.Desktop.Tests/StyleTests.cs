@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
@@ -136,6 +137,21 @@ public sealed class StyleTests
 
     [AvaloniaFact]
     public void App_name_is_ramvi_for_mac_menu() => Assert.Equal("RAMVI", Application.Current!.Name);
+
+    [AvaloniaFact]
+    public async Task Title_bar_is_part_of_window_with_system_buttons()
+    {
+        var (window, _, _) = await OpenAsync(new FakeChatApi());
+
+        // Окно расширено в область заголовка; наша полоса — роль TitleBar (перетаскивание,
+        // двойной щелчок и прилипание делает система), кнопки окна остаются системными.
+        Assert.True(window.ExtendClientAreaToDecorationsHint);
+        var bar = window.FindControl<Border>("TitleBar")!;
+        Assert.Equal(WindowDecorationsElementRole.TitleBar, Avalonia.Controls.Chrome.WindowDecorationProperties.GetElementRole(bar));
+        Assert.Equal(window.WindowDecorationMargin.Top, bar.Height);
+        Assert.Equal(Grid.GetRow(bar) + 1, Grid.GetRow(window.FindControl<Border>("Onboarding")!.Parent as Control ?? bar));
+        window.Close();
+    }
 
     [AvaloniaFact]
     public void Theme_setting_maps_to_variant()
@@ -408,6 +424,53 @@ public sealed class StyleTests
     }
 
     [AvaloniaFact]
+    public async Task Wizard_can_be_opened_again_from_settings()
+    {
+        var api = new FakeChatApi();
+        var (window, model, _) = await OpenAsync(api);
+        Assert.False(model.Onboarding.IsOpen); // мастер уже пройден
+
+        await model.Settings.OpenAsync();
+        Pump();
+        var button = window.FindControl<Button>("OpenOnboardingButton")!;
+        Assert.True(button.IsEffectivelyVisible);
+        Assert.Equal("Запустить мастер", button.Content);
+        await model.Settings.OpenOnboardingCommand.RunAsync();
+        Pump();
+
+        Assert.False(model.Settings.IsOpen);
+        Assert.True(window.FindControl<Border>("Onboarding")!.IsVisible);
+        Assert.Contains("system", api.Calls); // проверка компьютера запущена заново
+        model.Onboarding.NextCommand.Execute(null);
+        Pump();
+        Assert.True(window.FindControl<Button>("ImportButton")!.IsEffectivelyVisible); // и можно подключить модель
+        Assert.Empty(Localizer.Current.Missing);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Refresh_list_scans_models_folder()
+    {
+        var api = new FakeChatApi();
+        api.Models.Clear(); // моделей нет: плашка «Нет модели» с «Обновить список»
+        api.FolderModels.Add(new ModelInfo("qwen3-14b-q4_k_m", "qwen3", "Q4_K_M", 1));
+        var (window, model, _) = await OpenAsync(api);
+        Assert.Equal(UiState.NoModel, model.State);
+        var refresh = window.FindControl<Border>("StateBanner")!.GetVisualDescendants().OfType<Button>()
+            .Single(b => Equals(b.Content, "Обновить список"));
+
+        refresh.Command!.Execute(refresh.CommandParameter);
+        await UntilAsync(() => model.Models.Count == 1, "модель из папки");
+
+        Assert.Equal(1, api.Scans);
+        Assert.Equal("qwen3-14b-q4_k_m", model.SelectedModel?.Id);
+        Assert.Equal(UiState.Ready, model.State);
+        Assert.Contains("новых 1", model.Status, StringComparison.Ordinal);
+        Assert.Empty(Localizer.Current.Missing);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Settings_file_theme_is_read_before_service()
     {
         var dir = Directory.CreateTempSubdirectory("ramvi-theme-");
@@ -486,7 +549,7 @@ public sealed class StyleTests
                 frame.Save(Path.Combine(folder, $"{name}-{variant.Key}.png"), new PngBitmapEncoderOptions());
             }
 
-            Assert.Equal(Token("background", variant), Pixel(frame, 4, 4));
+            Assert.Equal(Token("background", variant), Pixel(frame, frame.PixelSize.Width - 2, frame.PixelSize.Height - 2));
         }
     }
 
