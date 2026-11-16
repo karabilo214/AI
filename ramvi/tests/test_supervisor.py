@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -58,6 +59,18 @@ def engine(command: str = ENGINE) -> EngineProcess:
 
 
 def alive(pid: int) -> bool:
+    """Жив ли процесс. На Windows os.kill(pid, 0) не проверка, а завершение процесса."""
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel.OpenProcess(0x00100000 | 0x1000, False, pid)  # SYNCHRONIZE | QUERY_LIMITED
+        if not handle:
+            return False
+        try:
+            return bool(kernel.WaitForSingleObject(handle, 0) == 0x102)  # WAIT_TIMEOUT
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -288,8 +301,11 @@ def test_engine_exits_by_itself_when_service_is_killed(tmp_path: Path) -> None:
         service.kill()  # аварийная смерть сервиса: никакого stop()
         service.wait(5)
         assert gone(pid, 10), "движок остался сиротой"
-        # Мягкий путь: serve_forever прерван, finally выполнился (а не os._exit по сроку).
-        assert (tmp_path / "mark").read_text() == "graceful"
+        if sys.platform != "win32":
+            # Мягкий путь: serve_forever прерван, finally выполнился (а не os._exit по сроку).
+            assert (tmp_path / "mark").read_text() == "graceful"
+        # На Windows движок лежит в Job-объекте сервиса (KILL_ON_JOB_CLOSE): смерть
+        # сервиса завершает его сразу, без мягкого пути. Сирот нет и там.
         found = discover(tmp_path, "engine")
         assert found is not None and not found["live"] and found["state"] == "ready"
         # Новый владелец занимает имя после аварии прежнего.
@@ -377,6 +393,40 @@ def test_parent_watch_exits_on_stdin_eof(mode: str) -> None:
         assert time.monotonic() - start < 3
         assert child.stderr is not None
         assert ("soft" in child.stderr.read()) is (mode == "soft")
+    finally:
+        child.kill()
+        child.wait(5)
+
+
+SPAWN = """import subprocess,sys,time
+from ramvi_engine.processes import ParentWatch
+ParentWatch(grace=0.2).start();time.sleep(0.5)
+t=time.monotonic();subprocess.run([sys.executable,'-c','pass'],check=True,timeout=60)
+print('spawned',round(time.monotonic()-t,2),flush=True);time.sleep(60)
+"""
+
+
+def test_parent_watch_does_not_block_child_processes() -> None:
+    """Регрессия Windows: висящее чтение stdin сторожем блокировало запуск подпроцессов
+    (настоящий движок замирал при импорте torch/triton)."""
+    child = subprocess.Popen(
+        [sys.executable, "-u", "-c", SPAWN],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT / "engine")},
+    )
+    lines: list[str] = []
+    reader = threading.Thread(
+        target=lambda: lines.append(child.stdout.readline() if child.stdout else "")
+    )
+    reader.start()
+    try:
+        reader.join(30)
+        assert lines and lines[0].startswith("spawned"), "подпроцесс не запустился за 30 с"
+        assert child.stdin is not None
+        child.stdin.close()
+        assert child.wait(10) == 0  # сторож по-прежнему видит закрытие канала
     finally:
         child.kill()
         child.wait(5)

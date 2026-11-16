@@ -17,6 +17,7 @@ from ramvi_service.engines import EngineManager
 from ramvi_service.ui_api import UIServer
 from ramvi_storage.repositories import Model, Models
 from ramvi_storage.schema import open_core
+from test_supervisor import alive
 
 ROOT = Path(__file__).resolve().parents[1]
 FAKE = ROOT / "tests" / "fixtures" / "fake_engine.py"
@@ -114,13 +115,13 @@ def test_send_streams_reasoning_and_text_and_persists(
     assert events[0]["type"] == "user" and events[0]["message"]["content"].startswith("Привет")
     assert {"type": "status", "state": "loading", "model_id": "model-a"} in events
     assert text_of(events, "reasoning") == "думаю ещё"
-    assert text_of(events, "text") == "[model-a] echo: Привет, как дела? files=0"
+    assert text_of(events, "text") == "[model-a.gguf] echo: Привет, как дела? files=0"
     done = events[-1]
     assert done["type"] == "done" and done["finish"] == "stop" and done["error"] is None
     assert done["message"]["reasoning"] == "думаю ещё"
     messages = client.ok("GET", f"/chats/{chat['id']}/messages")["messages"]
     assert [m["role"] for m in messages] == ["user", "assistant"]
-    assert messages[1]["content"] == "[model-a] echo: Привет, как дела? files=0"
+    assert messages[1]["content"] == "[model-a.gguf] echo: Привет, как дела? files=0"
     assert messages[1]["token_usage"] == {"completion_tokens": 4}
     chats = client.ok("GET", "/chats")["chats"]
     assert chats[0]["title"] == "Привет, как дела?" and not chats[0]["generating"]
@@ -188,7 +189,7 @@ def test_switch_model_without_restarting_service(
     )
     events = client.events(f"/chats/{chat_id}/send", {"text": "два"})
     assert {"type": "status", "state": "loading", "model_id": "model-b"} in events
-    assert text_of(events, "text").startswith("[model-b] echo: два")
+    assert text_of(events, "text").startswith("[model-b.gguf] echo: два")
     assert engines.model_id == "model-b"
     assert engines._supervisor.status()["target"]["pid"] != pid_a  # type: ignore[union-attr]
     status, error = client.request("POST", f"/chats/{chat_id}/model", {"model_id": "нет"})
@@ -312,7 +313,7 @@ def test_engine_crash_is_restarted_and_next_answer_works(
         assert time.monotonic() < deadline
         time.sleep(0.05)
     events = client.events(f"/chats/{chat_id}/send", {"text": "два"})
-    assert events[-1]["finish"] == "stop" and text_of(events, "text").startswith("[model-a]")
+    assert events[-1]["finish"] == "stop" and text_of(events, "text").startswith("[model-a.gguf]")
     assert engines.provider().base_url != url  # новый порт после перезапуска
 
 
@@ -334,8 +335,8 @@ def test_two_chats_share_one_engine_queue(service: tuple[UIServer, EngineManager
     for t in threads:
         t.join(30)
     # Смена модели ждёт конца чужого ответа: оба ответа полные и от своей модели.
-    assert text_of(results[a], "text") == "[model-a] echo: из A files=0", results[b][-1]
-    assert text_of(results[b], "text") == "[model-b] echo: из B files=0", results[b][-1]
+    assert text_of(results[a], "text") == "[model-a.gguf] echo: из A files=0", results[b][-1]
+    assert text_of(results[b], "text") == "[model-b.gguf] echo: из B files=0", results[b][-1]
     assert results[a][-1]["finish"] == results[b][-1]["finish"] == "stop"
 
 
@@ -374,11 +375,7 @@ def test_service_process_starts_and_exits_with_shell(tmp_path: Path) -> None:
         process.stdin.close()  # оболочка закрылась
         assert process.wait(15) == 0
         deadline = time.monotonic() + 10
-        while True:
-            try:
-                os.kill(engine_pid, 0)
-            except ProcessLookupError:
-                break
+        while alive(engine_pid):
             assert time.monotonic() < deadline, "движок пережил сервис"
             time.sleep(0.05)
         assert json.loads((tmp_path / "run" / "engine.json").read_text())["state"] == "stopped"

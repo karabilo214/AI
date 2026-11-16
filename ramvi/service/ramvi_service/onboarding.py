@@ -33,7 +33,8 @@ from ramvi_service.hardware import HardwareProfile, collect
 
 GIB_MB = 1024
 DISK_LOW_MB = 2 * GIB_MB  # меньше — история и база ещё влезут, модель уже нет
-SUPPORTED_ARCHITECTURES = ("qwen3",)  # GGUF-движок: ramvi_engine.core.gengine
+# Как в ramvi_engine.model_loader: qwen3 — core.gengine, qwen3moe — core.moe.
+SUPPORTED_ARCHITECTURES = ("qwen3", "qwen3moe")
 
 # llama.cpp LLAMA_FTYPE: общий тип квантования файла (general.file_type).
 FILE_TYPES = {
@@ -355,6 +356,9 @@ class Onboarding:
                 supported=", ".join(SUPPORTED_ARCHITECTURES),
             )
         base = _slug(path.stem)
+        if re.fullmatch(r"sha256-[0-9a-f]{16,}", path.stem) and header["name"]:
+            # Файл Ollama называется хешем: имя и квантование берутся из заголовка.
+            base = _slug(" ".join(filter(None, (header["name"], header["quant"]))))
         taken = {m.id for m in self.models.all()}
         model_id, n = base, 2
         while model_id in taken:

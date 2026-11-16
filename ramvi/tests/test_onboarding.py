@@ -226,7 +226,7 @@ def test_import_errors(onboarding: Onboarding, tmp_path: Path) -> None:
     assert code_of(lambda: onboarding.import_model(str(text)))[0] == "import.not_gguf"
     code, params = code_of(lambda: onboarding.import_model(str(llama)))
     assert code == "import.unsupported_architecture"
-    assert params["architecture"] == "llama" and params["supported"] == "qwen3"
+    assert params["architecture"] == "llama" and params["supported"] == "qwen3, qwen3moe"
     assert onboarding.models.all() == []
 
 
@@ -334,3 +334,32 @@ def test_every_onboarding_code_has_texts_in_both_languages() -> None:
     for language in ("ru", "en"):
         catalog = json.loads((root / "i18n" / f"{language}.json").read_text(encoding="utf-8"))
         assert sorted(codes - catalog.keys()) == [], language
+
+
+def test_import_accepts_moe_like_engine(onboarding: Onboarding, tmp_path: Path) -> None:
+    """Движок грузит qwen3moe (model_loader → core.moe) — импорт тоже должен принять."""
+    model = onboarding.import_model(
+        str(write_gguf(tmp_path / "qwen3-30b.gguf", architecture="qwen3moe"))
+    )
+    assert model["architecture"] == "qwen3moe"
+
+
+def test_supported_architectures_match_engine_loader() -> None:
+    import re
+
+    from ramvi_service.onboarding import SUPPORTED_ARCHITECTURES
+
+    root = Path(__file__).resolve().parents[1]
+    loader = (root / "engine" / "ramvi_engine" / "model_loader.py").read_text(encoding="utf-8")
+    match = re.search(r"if architecture not in \(([^)]*)\)", loader)
+    assert match is not None, "проверка архитектур в model_loader изменилась"
+    engine = tuple(re.findall(r'"([a-z0-9_]+)"', match.group(1)))
+    assert SUPPORTED_ARCHITECTURES == engine
+
+
+def test_ollama_blob_gets_readable_id(onboarding: Onboarding, tmp_path: Path) -> None:
+    """Файлы Ollama называются хешем — id из заголовка (как на ASUS: sha256-7f40…)."""
+    blob = write_gguf(tmp_path / ("sha256-" + "7f4030143c1c4772" * 4), name="Qwen3 0.6B")
+    assert onboarding.import_model(str(blob))["id"] == "qwen3-0.6b-q4_k_m"
+    plain = write_gguf(tmp_path / "sha256-short.gguf")  # не хеш — имя файла как есть
+    assert onboarding.import_model(str(plain))["id"] == "sha256-short"

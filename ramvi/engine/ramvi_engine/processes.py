@@ -79,8 +79,12 @@ class ParentWatch:
     def _watch(self) -> None:
         try:
             fileno = self._stream.fileno()
-            while os.read(fileno, 4096):
-                pass  # Владелец ничего не пишет; данные просто игнорируются.
+            if sys.platform == "win32":
+                if not self._wait_windows(fileno):
+                    return  # stdin не канал (консоль, NUL): следить не за чем
+            else:
+                while os.read(fileno, 4096):
+                    pass  # Владелец ничего не пишет; данные просто игнорируются.
         except (OSError, ValueError):
             pass
         self.closed.set()
@@ -90,6 +94,43 @@ class ParentWatch:
             threading.Thread(target=callback, name="ramvi-parent-shutdown", daemon=True).start()
         time.sleep(self.grace)
         os._exit(0)
+
+    @staticmethod
+    def _wait_windows(fileno: int, interval: float = 0.5) -> bool:
+        """Ждать закрытия канала без висящего чтения; False — stdin не канал.
+
+        Висящий синхронный ReadFile на канале stdin блокирует на Windows другие
+        операции с этим дескриптором, в том числе его наследование при запуске
+        дочерних процессов: настоящий движок при импорте torch/triton замирал.
+        Поэтому канал опрашивается PeekNamedPipe и читается, только когда в нём
+        уже есть данные.
+        """
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.PeekNamedPipe.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.c_void_p,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        ]
+        kernel.GetFileType.argtypes = [wintypes.HANDLE]
+        handle = msvcrt.get_osfhandle(fileno)
+        if kernel.GetFileType(handle) != 3:  # FILE_TYPE_PIPE
+            return False
+        while True:
+            available = wintypes.DWORD()
+            if not kernel.PeekNamedPipe(handle, None, 0, None, ctypes.byref(available), None):
+                return True  # ERROR_BROKEN_PIPE: владелец закрыл канал
+            if available.value:
+                if not os.read(fileno, min(available.value, 4096)):
+                    return True
+            else:
+                time.sleep(interval)
 
 
 class ProcessSupervisor:

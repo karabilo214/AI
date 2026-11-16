@@ -83,11 +83,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/v1/chat/completions":
             self._json({"error": "not found"}, 404)
             return
+        served = os.path.basename(MODEL.rstrip("/\\")) or "fake"
+        if body.get("model") not in (None, served):  # как validate_capabilities движка
+            self._json({"error": {"message": f"загружена только модель {served}"}}, 400)
+            return
         question = body["messages"][-1]["content"]
         words = (
             ["word"] * 400
             if "LONG" in question
-            else [f"[{body['model']}]", "echo:", question.split("\n")[0][:40]]
+            else [f"[{served}]", "echo:", question.split("\n")[0][:40]]
         )
         words.append(f"files={question.count('<file name=')}")
         request_id = self.headers.get("X-Request-ID", "")

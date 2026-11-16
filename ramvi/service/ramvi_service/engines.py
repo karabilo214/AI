@@ -66,6 +66,15 @@ def classify_failure(lines: list[str]) -> tuple[str, str] | None:
     return None
 
 
+def served_name(path: str) -> str:
+    """Имя, под которым движок обслуживает модель (поле `model` запроса).
+
+    Как в `ramvi_engine.cli`: последняя часть пути. Движок отвергает запрос
+    с другим именем, а id модели в базе с ним не совпадает (импорт, slug).
+    """
+    return path.rstrip("/\\").replace("\\", "/").rsplit("/", 1)[-1]
+
+
 class EngineTarget(Target, Protocol):
     """То, что нужно менеджеру от движка сверх `Target`: адрес и ключ."""
 
@@ -106,6 +115,7 @@ class EngineManager:
         self._loading: str | None = None
         self._problem: tuple[str, str] | None = None
         self._problem_model: str | None = None
+        self._served_name: str | None = None
 
     @property
     def model_id(self) -> str | None:
@@ -163,6 +173,7 @@ class EngineManager:
             self._stop_locked()
             self._loading = model_id
             self._problem, self._problem_model = None, model_id
+            self._served_name = served_name(model.path)
             engine = self._make_engine(model)
             supervisor = Supervisor(
                 engine,
@@ -223,7 +234,7 @@ class EngineManager:
             if self._provider is None or self._provider.base_url != url:
                 self._provider = LocalEngineProvider(
                     url,
-                    self._model_id,
+                    self._served_name or self._model_id,
                     api_key=engine.api_key,
                     timeout=self.request_timeout,
                 )
