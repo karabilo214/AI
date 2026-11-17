@@ -13,6 +13,7 @@
   "api.too_large": "The request is larger than {limit} bytes",
   "api.unauthorized": "No access to the service",
   "app.title": "RAMVI",
+  "catalog.unavailable": "The {provider} catalog is unavailable right now — showing the last saved copy",
   "chat.attach": "Attach file",
   "chat.attach_hint": "Attach file (text files can also be dragged into the window)",
   "chat.attachment_invalid": "Invalid attachment",

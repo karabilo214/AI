@@ -13,6 +13,7 @@
   "api.too_large": "Запрос больше {limit} байт",
   "api.unauthorized": "Нет доступа к сервису",
   "app.title": "RAMVI",
+  "catalog.unavailable": "Каталог {provider} сейчас недоступен — показана последняя сохранённая копия",
   "chat.attach": "Прикрепить файл",
   "chat.attach_hint": "Прикрепить файл (текстовые файлы можно также перетащить в окно)",
   "chat.attachment_invalid": "Неверное вложение",

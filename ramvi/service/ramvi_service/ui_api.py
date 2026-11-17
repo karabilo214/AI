@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from ramvi_service.app_config import AppConfig
+from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatError, ChatService, Generation
 from ramvi_service.i18n import to_json
 from ramvi_service.model_control import ModelControl
@@ -41,6 +42,7 @@ class UIServer:
         sections: SectionRegistry | None = None,
         module_data: ModuleDataApi | None = None,
         model_control: ModelControl | None = None,
+        catalog: Catalog | None = None,
     ) -> None:
         if len(token) < 16:
             raise ValueError("UI token is too short")
@@ -52,6 +54,7 @@ class UIServer:
         self.onboarding = onboarding
         self.config = config
         self.sections = sections
+        self.catalog = catalog
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
         self._server = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
@@ -112,6 +115,8 @@ class UIServer:
                 return self.config.get()
             if method == "POST":
                 return self.config.update(body)
+        if path in ("/catalog", "/catalog/refresh"):
+            return self._catalog_route(method, path)
         if path in ("/system", "/onboarding", "/models/import", "/models/scan"):
             return self._onboarding_route(method, path, body)
         match = re.fullmatch(f"/chats/{_ID}(/[a-z]+)?", path)
@@ -171,6 +176,17 @@ class UIServer:
             return {"model": onboarding.import_model(_required_str(body, "path"))}
         if method == "POST" and path == "/models/scan":
             return {**onboarding.scan_models_dir(), "models": self.chat.models()}
+        raise ChatError("api.not_found")
+
+    def _catalog_route(self, method: str, path: str) -> Any:
+        """4.2: каталог — локальная копия без сети; обновление — по явному запросу."""
+        catalog = self.catalog
+        if catalog is None:
+            raise ChatError("api.not_found")
+        if method == "GET" and path == "/catalog":
+            return catalog.view()
+        if method == "POST" and path == "/catalog/refresh":
+            return catalog.refresh()
         raise ChatError("api.not_found")
 
     def _sections_route(self, method: str, path: str) -> Any:
