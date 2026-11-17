@@ -163,3 +163,11 @@ def test_api_recommendations_follow_profile(tmp_path: Path) -> None:
     finally:
         app.stop()
         files.close()
+
+
+def test_unstable_control_run_lowers_the_rating() -> None:
+    unstable = item("8B", 8, (50, 59))
+    unstable["compat"]["control"] = {"stable": False}
+    result = rank([unstable, item("4B", 4, (81, 95))], "balanced")
+    assert result["best"]["name"] == "4B"
+    assert [a["name"] for a in result["alternatives"]] == ["8B"]

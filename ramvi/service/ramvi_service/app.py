@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from ramvi_engine.processes import ParentWatch
-from ramvi_storage.repositories import Model, Models
+from ramvi_storage.repositories import Model, Models, NotFound
 from ramvi_storage.schema import open_core
 
 from ramvi_service import settings as app_settings
@@ -27,6 +27,7 @@ from ramvi_service.app_config import AppConfig, check_folder
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatService
 from ramvi_service.contracts.modules import Authority
+from ramvi_service.control_run import ControlRun
 from ramvi_service.download_manager import DownloadManager, register_downloaded
 from ramvi_service.engines import (
     EngineManager,
@@ -59,6 +60,7 @@ def build(
     app_dir: Path | None = None,
     catalog: Catalog | None = None,
     download_options: dict[str, Any] | None = None,
+    auto_control: bool | None = None,
 ) -> tuple[UIServer, EngineManager]:
     """Собрать сервис; `engine_command` — только для проверок без модели."""
     db = open_core(data_dir)
@@ -66,11 +68,15 @@ def build(
     if engine_command is not None:
         command = list(engine_command)
 
-        def make_engine(model: Model, draft: Model | None = None, maxt: int = 2048) -> EngineTarget:
+        def make_engine(
+            model: Model, draft: Model | None = None, maxt: int = 2048, resident: int | None = None
+        ) -> EngineTarget:
             from ramvi_engine.engine_process import EngineProcess
             from ramvi_engine.model_loader import ModelConfig
 
             extra = ["--maxt", str(maxt)] + ([] if draft is None else ["--draft", draft.path])
+            if resident is not None:
+                extra += ["--resident", str(resident)]
             return EngineProcess(
                 ModelConfig(model.path),
                 command=[*command, "--model", model.path, *extra],
@@ -117,19 +123,39 @@ def build(
         module_data=ModuleDataApi(sections, data_dir / "exports"),
         catalog=catalog,
     )
-    server.downloads = DownloadManager(
-        db,
-        catalog,
-        onboarding.models_folder,
-        register_downloaded(onboarding.import_model, Models(db), catalog),
-        **(download_options or {}),
-    )
 
     def hardware() -> Any:  # диск — папка моделей, куда пойдут скачанные файлы
         folder = onboarding.models_folder()
         return collect(folder if folder.is_dir() else data_dir)
 
-    server.fit = ModelFit(catalog.headers, hardware, profile=task)
+    fit = ModelFit(catalog.headers, hardware, profile=task)
+    runs = ControlRun(
+        engines, llm, Models(db), fit.hardware_profile, lambda: task().effective_context
+    )
+
+    def local_result(model_id: str, hw: Any, context: int) -> Any:
+        try:
+            return runs.latest(Models(db).get(model_id), hw, context)
+        except NotFound:
+            return None
+
+    fit.local_result = local_result
+    engines.resident_for = runs.resident_for  # безопасный план после отката (4.7)
+
+    def after_download(model_id: str) -> None:
+        nvidia = any(g.vendor == "NVIDIA" for g in fit.hardware_profile().gpus)
+        if auto_control if auto_control is not None else nvidia:
+            runs.start(model_id)
+
+    server.downloads = DownloadManager(
+        db,
+        catalog,
+        onboarding.models_folder,
+        register_downloaded(onboarding.import_model, Models(db), catalog),
+        on_installed=after_download,
+        **(download_options or {}),
+    )
+    server.fit, server.control = fit, runs
     server.app_dir = root
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).

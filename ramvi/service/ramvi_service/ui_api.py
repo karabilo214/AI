@@ -20,6 +20,7 @@ from typing import Any
 from ramvi_service.app_config import AppConfig
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatError, ChatService, Generation
+from ramvi_service.control_run import ControlRun
 from ramvi_service.download_manager import DownloadManager
 from ramvi_service.engines import resolve_model
 from ramvi_service.i18n import to_json
@@ -62,6 +63,7 @@ class UIServer:
         self.catalog = catalog
         self.downloads: DownloadManager | None = None
         self.fit: ModelFit | None = None  # 4.4: статусы совместимости
+        self.control: ControlRun | None = None  # 4.7: контрольный прогон
         self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
@@ -129,6 +131,9 @@ class UIServer:
             return self._recommendations()
         if path in ("/catalog", "/catalog/refresh"):
             return self._catalog_route(method, path)
+        control = re.fullmatch(r"/models/([A-Za-z0-9][A-Za-z0-9._-]{0,127})/control", path)
+        if control is not None:
+            return self._control_route(method, control.group(1))
         if path in ("/system", "/onboarding", "/models/import", "/models/scan"):
             return self._onboarding_route(method, path, body)
         match = re.fullmatch(f"/chats/{_ID}(/[a-z]+)?", path)
@@ -216,6 +221,18 @@ class UIServer:
         action = {"pause": downloads.pause, "resume": downloads.resume, "cancel": downloads.cancel}
         return {"download": action[match.group(2)](match.group(1))}
 
+    def _control_route(self, method: str, model_id: str) -> Any:
+        """4.7: запустить контрольный прогон модели (POST) или узнать его состояние (GET)."""
+        if self.control is None:
+            raise ChatError("api.not_found")
+        if not self.chat.has_model(model_id):
+            raise ChatError("chat.model_not_found", model_id=model_id)
+        if method == "POST":
+            return {"control": self.control.start(model_id)}
+        if method == "GET":
+            return {"control": self.control.status(model_id)}
+        raise ChatError("api.not_found")
+
     def _recommendations(self) -> dict[str, Any]:
         """4.6: лучшая модель для профиля, причина и альтернативы (каталог + установленные)."""
         if self.fit is None or self.catalog is None:
@@ -246,7 +263,7 @@ class UIServer:
             return models
         for item in models:
             stored = resolve_model(self.chat.models_repo.get(item["id"]), self.app_dir)
-            item["compat"] = self.fit.for_file(stored.path, item["id"])
+            item["compat"] = self.fit.for_file(stored.path, item["id"], item["id"])
         return models
 
     def _sections_route(self, method: str, path: str) -> Any:

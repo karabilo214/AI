@@ -101,7 +101,9 @@ def resolve_model(model: Model, root: Path | None) -> Model:
 DRAFT_RATIO = 8  # предсказатель хотя бы в 8 раз меньше основной модели
 
 
-def default_engine(model: Model, draft: Model | None = None, maxt: int = 2048) -> EngineTarget:
+def default_engine(
+    model: Model, draft: Model | None = None, maxt: int = 2048, resident: int | None = None
+) -> EngineTarget:
     """Настоящий движок для записи модели (тяжёлые импорты только при запуске)."""
     from ramvi_engine.engine_process import EngineProcess
     from ramvi_engine.model_loader import ModelConfig
@@ -115,6 +117,7 @@ def default_engine(model: Model, draft: Model | None = None, maxt: int = 2048) -
             draft=None if draft is None else draft.path,
             tokenizer=tokenizer,
             maxt=maxt,  # 4.5: контекст из профиля задачи
+            resident=resident,  # 4.7: безопасный план после нехватки памяти в контрольном прогоне
             planning=PlanningOptions(),
         )
     )
@@ -132,9 +135,11 @@ class EngineManager:
         request_timeout: float = 600.0,
         model_root: Path | None = None,
         context: Callable[[], int] = lambda: 2048,
+        resident_for: Callable[[Model, int], int | None] = lambda model, context: None,
     ) -> None:
         self.models, self.run_dir = models, Path(run_dir)
         self.context = context  # 4.5: контекст из профиля задачи при каждой загрузке
+        self.resident_for = resident_for  # 4.7: сохранённый безопасный план (или None)
         self.model_root = model_root
         self._make_engine, self._policy, self._interval = make_engine, policy, interval
         self.request_timeout = request_timeout
@@ -192,10 +197,13 @@ class EngineManager:
         if found is not None:
             self._problem = found
 
-    def ensure(self, model_id: str, *, timeout: float = 600.0) -> None:
-        """Движок с этой моделью готов; иначе EngineError с ключом причины."""
+    def ensure(self, model_id: str, *, timeout: float = 600.0, resident: int | None = None) -> None:
+        """Движок с этой моделью готов; иначе EngineError с ключом причины.
+
+        `resident` (4.7) — загрузить с этим числом слоёв в видеопамяти (безопасный план);
+        иначе — сохранённый безопасный план модели (`resident_for`), если он есть."""
         with self._lock:
-            if model_id == self._model_id and self._supervisor is not None:
+            if model_id == self._model_id and self._supervisor is not None and resident is None:
                 state = self._supervisor.status()["state"]
                 if state == "ready":
                     return
@@ -210,7 +218,13 @@ class EngineManager:
             try:
                 draft = self.draft_for(model)
                 self._draft_id = None if draft is None else draft.id
-                engine = self._make_engine(model, draft, maxt=self.context())
+                context = self.context()
+                if resident is None:
+                    resident = self.resident_for(model, context)
+                options: dict[str, Any] = {"maxt": context}
+                if resident is not None:
+                    options["resident"] = resident
+                engine = self._make_engine(model, draft, **options)
                 supervisor = Supervisor(
                     engine,
                     self.run_dir,
@@ -276,6 +290,14 @@ class EngineManager:
             ):
                 return state
             time.sleep(0.02)
+
+    def engine_pid(self) -> int | None:
+        """PID процесса движка (4.7: page faults во время контрольного прогона)."""
+        with self._lock:
+            if self._supervisor is None:
+                return None
+            pid = self._supervisor.status().get("target", {}).get("pid")
+        return int(pid) if isinstance(pid, int) else None
 
     def provider(self) -> LocalEngineProvider:
         """Клиент текущего движка; пересоздаётся, если движок сменил адрес."""

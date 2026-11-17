@@ -65,10 +65,12 @@ class DownloadManager:
         *,
         retries: tuple[float, ...] = RETRIES,
         limit_bps: int | None = None,
+        on_installed: Callable[[str], Any] | None = None,
     ) -> None:
         self.repo, self.models = Downloads(db), Models(db)
         self.catalog, self.models_dir, self.register = catalog, models_dir, register
         self.retries, self.limit_bps = retries, limit_bps
+        self.on_installed = on_installed  # 4.7: контрольный прогон после скачивания
         self._cv = threading.Condition()
         self._job: tuple[str, Download] | None = None
         self._wake = threading.Event()  # прерывает паузу между повторами
@@ -229,6 +231,8 @@ class DownloadManager:
             return
         self._installed[record.id] = model_id
         self._finish(record.id, "done")
+        if self.on_installed is not None:
+            self.on_installed(model_id)
 
     def _finish(
         self,

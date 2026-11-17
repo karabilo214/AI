@@ -22,6 +22,12 @@ from ramvi_engine.protocol import API_VERSION
 
 watch = ParentWatch.from_env()
 MODEL = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else ""
+# 4.7: план слоёв как у настоящего движка; --resident задаёт слоёв в «видеокарте».
+LAYERS = 40
+RESIDENT = int(sys.argv[sys.argv.index("--resident") + 1]) if "--resident" in sys.argv else 30
+MAXT = int(sys.argv[sys.argv.index("--maxt") + 1]) if "--maxt" in sys.argv else 2048
+KIND = os.path.splitext(os.path.basename(MODEL))[0].partition("model-")[2]
+requests_served = 0
 
 
 class NoMemoryPlan(RuntimeError):
@@ -98,6 +104,11 @@ class Handler(BaseHTTPRequestHandler):
         )
         words.append(f"files={question.count('<file name=')}")
         request_id = self.headers.get("X-Request-ID", "")
+        global requests_served
+        requests_served += 1
+        delay = DELAY
+        if KIND == "jitter":  # 4.7: нестабильно — каждый третий со второго в 5 раз медленнее
+            delay = DELAY * (5 if requests_served % 3 == 2 else 1)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Connection", "close")
@@ -108,13 +119,36 @@ class Handler(BaseHTTPRequestHandler):
         ]
         chunks += [{"content": (" " if i else "") + w} for i, w in enumerate(words)]
         try:
+            if KIND == "runtime-oom" and RESIDENT > 20:  # 4.7: нехватка VRAM уже при генерации
+                plan = {
+                    "counts": {"gpu": RESIDENT, "cpu": LAYERS - RESIDENT},
+                    "context_tokens": MAXT,
+                }
+                self._event(
+                    {
+                        "error": {"message": "CUDA out of memory. Tried to allocate 1 GiB"},
+                        "ramvi_metrics": {"plan": plan},
+                    }
+                )
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+                return
             for delta in chunks:
                 with lock:
                     if request_id in cancelled:
                         return
                 self._event({"choices": [{"delta": delta, "finish_reason": None}]})
-                time.sleep(DELAY)
-            self._event({"choices": [{"delta": {}, "finish_reason": "stop"}]})
+                time.sleep(delay)
+            metrics = {
+                "plan": {
+                    "counts": {"gpu": RESIDENT, "cpu": LAYERS - RESIDENT},
+                    "context_tokens": MAXT,
+                },
+                "memory": {"peak_ram_bytes": 2 * 2**30, "peak_vram_reserved_bytes": 6 * 2**30},
+            }
+            self._event(
+                {"choices": [{"delta": {}, "finish_reason": "stop"}], "ramvi_metrics": metrics}
+            )
             self._event({"choices": [], "usage": {"completion_tokens": len(words)}})
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()

@@ -162,6 +162,35 @@ def traffic(meta: GGUFMeta, route: list[str] | tuple[str, ...], paging: int = 0)
     return speed.Traffic(where["vram"], where["cpu"], where["bus"], paging, moe, len(route))
 
 
+def apply_control(verdict: dict[str, Any], result: dict[str, Any]) -> None:
+    """4.7: замер на этом ПК вместо оценки; нестабильный прогон — пометка и причина."""
+    low_high = result.get("tok_s_range")
+    if low_high:
+        low, high = speed.rounded(low_high[0]), speed.rounded(low_high[1])
+        verdict["speed"] = msg("compat.speed_here", low=f"{low:g}", high=f"{high:g}").json()
+        verdict["tok_s"] = {"low": low_high[0], "high": low_high[1], "measured": True}
+    stable = bool(result.get("stable"))
+    verdict["control"] = {
+        "stable": stable,
+        "tok_s": result.get("tok_s"),
+        "ttft_s": result.get("ttft_s"),
+        "peak_ram": result.get("peak_ram"),
+        "peak_vram": result.get("peak_vram"),
+        "page_faults": result.get("page_faults"),
+        "resident": result.get("resident"),
+        "rolled_back_from": result.get("rolled_back_from"),
+    }
+    if not stable:
+        verdict["reasons"].append(msg("compat.reason.unstable").json())
+    if result.get("rolled_back_from") is not None:
+        reason = msg(
+            "compat.reason.rolled_back",
+            before=result["rolled_back_from"],
+            after=result.get("resident"),
+        )
+        verdict["reasons"].append(reason.json())
+
+
 def _native_f16() -> bool:
     try:
         from ramvi_engine.cpu.native_check import native_cpu_available
@@ -182,13 +211,19 @@ class ModelFit:
         ttl: float = 30.0,
         native_f16: Callable[[], bool] = _native_f16,
         profile: Callable[[], TaskProfile] = TaskProfile,
+        local_result: Callable[[str, HardwareProfile, int], dict[str, Any] | None] | None = None,
     ) -> None:
         self.headers, self.hardware, self.ttl = headers, hardware, ttl
         self.profile = profile
+        self.local_result = local_result  # 4.7: замер контрольного прогона на этом ПК
         self._native = native_f16
         self._lock = threading.Lock()
         self._hw: tuple[float, HardwareProfile, bool] | None = None
         self._files: dict[tuple[str, int, int], GGUFMeta | None] = {}
+
+    def hardware_profile(self) -> HardwareProfile:
+        """Профиль железа из кэша (обновляется раз в `ttl` секунд)."""
+        return self._profile()[0]
 
     def _profile(self) -> tuple[HardwareProfile, bool]:
         with self._lock:
@@ -326,8 +361,11 @@ class ModelFit:
             capabilities=entry.get("capabilities", ()),
         )
 
-    def for_file(self, path: str | os.PathLike[str], name: str) -> dict[str, Any]:
-        """Установленная модель: заголовок из файла (кэш по пути, размеру и времени)."""
+    def for_file(
+        self, path: str | os.PathLike[str], name: str, model_id: str | None = None
+    ) -> dict[str, Any]:
+        """Установленная модель: заголовок из файла (кэш по пути, размеру и времени);
+        есть замер контрольного прогона на этом ПК (4.7) — скорость из него."""
         file = Path(path)
         try:
             stat = file.stat()
@@ -341,4 +379,9 @@ class ModelFit:
                 self._files[key] = None
         meta = self._files[key]
         arch = "" if meta is None else str(meta.meta.get("general.architecture", ""))
-        return self.verdict(meta, name, stat.st_size, True, engine_capabilities("gguf", arch))
+        verdict = self.verdict(meta, name, stat.st_size, True, engine_capabilities("gguf", arch))
+        if model_id is not None and self.local_result is not None and "context" in verdict:
+            found = self.local_result(model_id, self.hardware_profile(), verdict["context"])
+            if found is not None:
+                apply_control(verdict, found)
+        return verdict

@@ -245,5 +245,9 @@
   "recommend.vs.similar": "about the same",
   "recommend.none": "no suitable model: won't run on this PC — {not_runnable}, don't fit the task — {not_for_task}, no data — {unknown}",
   "recommend.reason.balanced": "largest of the ones that run fast: {size}, {speed}; {status}. There is no “smarter” rating — no verified quality measurements yet",
-  "recommend.reason.balanced_slow": "no fast option — largest of the readable ones: {size}, {speed}"
+  "recommend.reason.balanced_slow": "no fast option — largest of the readable ones: {size}, {speed}",
+  "compat.speed_here": "measured on this PC: {low}–{high} tokens/s",
+  "compat.reason.unstable": "the control run was unstable — speed varied a lot or there were errors",
+  "compat.reason.rolled_back": "the control run ran out of memory — layers in VRAM reduced from {before} to {after}",
+  "control.failed": "Control run failed ({detail})"
 }

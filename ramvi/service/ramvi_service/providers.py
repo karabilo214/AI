@@ -102,8 +102,13 @@ class LocalEngineProvider:
                 self._active_request = None
             self._operation.release()
 
-    def stream(self, request: dict[str, Any], cancel: threading.Event) -> Iterator[dict[str, Any]]:
-        """Читает SSE движка по мере генерации; отмена прерывает чтение сразу."""
+    def stream(
+        self, request: dict[str, Any], cancel: threading.Event, *, with_metrics: bool = False
+    ) -> Iterator[dict[str, Any]]:
+        """Читает SSE движка по мере генерации; отмена прерывает чтение сразу.
+
+        `with_metrics` (4.7, контрольный прогон): последний кусок `end` несёт и
+        `ramvi_metrics` движка (план слоёв, пики памяти), если движок их прислал."""
         if cancel.is_set():
             raise InterruptedError("request cancelled")
         if not self._operation.acquire(blocking=False):
@@ -143,6 +148,7 @@ class LocalEngineProvider:
             threading.Thread(target=watch, name="ramvi-stream-cancel", daemon=True).start()
             finish: str | None = None
             usage: dict[str, Any] | None = None
+            metrics: dict[str, Any] | None = None
             total = 0
             while True:
                 try:
@@ -167,6 +173,14 @@ class LocalEngineProvider:
                 event = json.loads(data)
                 if not isinstance(event, dict):
                     raise ValueError("Engine chunk must be an object")
+                if isinstance(event.get("ramvi_metrics"), dict):
+                    metrics = event["ramvi_metrics"]
+                if "error" in event and with_metrics:
+                    try:
+                        list(stream_chunks(event))
+                    except RuntimeError as error:  # 4.7: план движка в момент ошибки
+                        error.ramvi_metrics = metrics  # type: ignore[attr-defined]
+                        raise
                 for chunk in stream_chunks(event):
                     if chunk["type"] == "finish":
                         finish = chunk["finish_reason"]
@@ -175,7 +189,10 @@ class LocalEngineProvider:
                     else:
                         yield chunk
             completed = True
-            yield {"type": "end", "finish_reason": finish, "usage": usage}
+            end: dict[str, Any] = {"type": "end", "finish_reason": finish, "usage": usage}
+            if with_metrics:
+                end["metrics"] = metrics
+            yield end
         finally:
             done.set()
             if not completed and response is not None:

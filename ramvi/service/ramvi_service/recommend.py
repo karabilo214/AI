@@ -70,6 +70,11 @@ def _off_gpu(item: dict[str, Any]) -> int:
     return int((item["compat"].get("plan") or {}).get("off_gpu_bytes", 0))
 
 
+def _unstable(item: dict[str, Any]) -> bool:
+    """4.7: контрольный прогон был нестабилен — такая модель идёт после стабильных."""
+    return (item["compat"].get("control") or {}).get("stable") is False
+
+
 def _interactive(item: dict[str, Any], threshold: float = MIN_INTERACTIVE) -> bool:
     tok = item["compat"].get("tok_s")
     return bool(tok) and tok["high"] >= threshold
@@ -164,7 +169,8 @@ def rank(items: list[dict[str, Any]], priority: str, alternatives: int = 3) -> d
             "excluded": excluded,
         }
     ordered = sorted(
-        usable.values(), key=lambda i: (*ORDER[priority](i), not i["installed"], -_speed(i))
+        usable.values(),
+        key=lambda i: (_unstable(i), *ORDER[priority](i), not i["installed"], -_speed(i)),
     )
     best = ordered[0]
     return {

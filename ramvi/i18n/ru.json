@@ -245,5 +245,9 @@
   "recommend.vs.similar": "почти то же",
   "recommend.none": "подходящей модели нет: не запустятся на этом ПК — {not_runnable}, не подходят задаче — {not_for_task}, нет данных — {unknown}",
   "recommend.reason.balanced": "самая крупная из тех, что работают быстро: {size}, {speed}; {status}. Рейтинга «умнее» нет — проверенных измерений качества пока нет",
-  "recommend.reason.balanced_slow": "быстрых вариантов нет — самая крупная из пригодных для чтения: {size}, {speed}"
+  "recommend.reason.balanced_slow": "быстрых вариантов нет — самая крупная из пригодных для чтения: {size}, {speed}",
+  "compat.speed_here": "замер на этом ПК: {low}–{high} токенов/с",
+  "compat.reason.unstable": "контрольный прогон был нестабильным — скорость сильно менялась или были ошибки",
+  "compat.reason.rolled_back": "при контрольном прогоне не хватило памяти — слоёв в видеопамяти уменьшено с {before} до {after}",
+  "control.failed": "Контрольный прогон не удался ({detail})"
 }
