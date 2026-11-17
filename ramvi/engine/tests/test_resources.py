@@ -223,3 +223,19 @@ assert assess_candidates({'empty': ResourceEstimate()}, vram_available=0, ram_av
         timeout=15,
         check=True,
     )
+
+
+def test_wide_prefill_buffers_are_counted() -> None:
+    """B.6: при пачке 16 рабочие буферы слоя — на 64 слова, плюс входы тензорных блоков."""
+    from ramvi_engine.planning.resources import PREFILL_ROWS
+
+    d, h, hd, kv, ff = 256, 2, 128, 1, 512
+    qkv = (h + 2 * kv) * hd
+    inputs = sum(PREFILL_ROWS * (k * 6 + k // 32 * 4) for k in {d, h * hd, ff})
+    b8 = estimate_gguf(FakeGGUF(), ["gpu"] * 3, 23, batch=8)
+    b16 = estimate_gguf(FakeGGUF(), ["gpu"] * 3, 23, batch=16)
+    per_row = (2 * d + qkv + 2 * h * hd + 3 * ff) * 4
+    logits_row = 256 * 4  # словарь FakeGGUF — 256 строк выходной матрицы
+    wide = (PREFILL_ROWS - 16) * per_row
+    assert b16.persistent.vram - b8.persistent.vram == 8 * (per_row + logits_row) + wide
+    assert b8.persistent.vram >= inputs  # входы тензорных блоков считаются при любой пачке

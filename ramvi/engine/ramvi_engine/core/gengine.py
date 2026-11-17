@@ -39,6 +39,25 @@ def host_weights(raw, arena):
     return arena.put(b.cpu()), lay
 
 
+PREFILL_ROWS = 64  # B.6: самый широкий кусок чтения запроса (рабочие буферы слоя — на столько слов)
+
+
+def prefill_rows(batch: int) -> int:
+    """Кусок чтения запроса: 64 слова (RAMVI_PREFILL_ROWS=16/32/64 — для сравнения); план, урезавший
+    пачку после нехватки памяти (batch < 16), урезает и кусок."""
+    if batch < 16:
+        return batch
+    rows = int(env("RAMVI_PREFILL_ROWS", str(PREFILL_ROWS)))
+    if rows not in (16, 32, 64):
+        raise ValueError("RAMVI_PREFILL_ROWS должен быть 16, 32 или 64")
+    return rows
+
+
+def wide_ok(W: dict) -> bool:
+    """Широкий кусок — только если все матрицы слоя на тензорных блоках (Q4_K/Q6_K); иначе 16."""
+    return all(isinstance(W[n], dict) and W[n].get("t") in ("Q4_K", "Q6_K") for n in GM)
+
+
 class GGUFEngine(Engine):
     supports_mask = True
     multi = False  # 4.10: слои на нескольких картах (по умолчанию — одна)
@@ -143,11 +162,12 @@ class GGUFEngine(Engine):
             if self.stream_ids or self.hyb_ids:
                 mx = {n: max(self._pk(l)[n][0].numel() for l in self.stream_ids + self.hyb_ids) for n in GM}
                 self.cbuf = [{n: torch.empty(mx[n], dtype=torch.uint8, device=dev) for n in GM} for _ in range(2)]
-        f = lambda n: torch.zeros(16, n, device=dev)
+        f = lambda n: torch.zeros(PREFILL_ROWS, n, device=dev)  # B.6: чтение запроса кусками до 64 слов
         H, KV, HD = self.H, self.KV, self.HD
         self.QKV = (H + 2 * KV) * HD
         self.xb, self.hb, self.qkvb, self.qb, self.attb = f(self.D), f(self.D), f(self.QKV), f(H * HD), f(H * HD)
-        self.gub, self.mb, self.logits = f(2 * self.FF), f(self.FF), f(self.V)
+        self.gub, self.mb = f(2 * self.FF), f(self.FF)
+        self.logits = torch.zeros(16, self.V, device=dev)
         self.pos = torch.zeros(1, dtype=torch.long, device=dev)
         self._buffers()
         self.graphs, self.ctx = {}, []
@@ -178,7 +198,7 @@ class GGUFEngine(Engine):
         self.bufs = {0: main}
         for d in sorted(set(self.layer_dev) - {0}):
             device = self.devices[d]
-            f = lambda n: torch.zeros(16, n, device=device)
+            f = lambda n: torch.zeros(PREFILL_ROWS, n, device=device)
             self.bufs[d] = types.SimpleNamespace(
                 device=device, xb=f(self.D), hb=f(self.D), qkvb=f(self.QKV), qb=f(self.H * self.HD),
                 attb=f(self.H * self.HD), gub=f(2 * self.FF), mb=f(self.FF),
@@ -413,6 +433,7 @@ class GGUFEngine(Engine):
         from ramvi_engine.planning.automatic import batch_limit, prefill_enabled
         blocked = prefill_enabled(self, len(tokens), enabled) and not self.multi
         batch = batch_limit(self)
+        rows = prefill_rows(batch)
         self._active_routes = None
         n = len(tokens)
         self._set_phase("dN")
@@ -433,8 +454,9 @@ class GGUFEngine(Engine):
             if blocked:
                 layer(self, l, W, X, start, self.Kc[l], self.Vc[l], gguf=True)
             else:
-                for c in range(0, n, batch):
-                    T = min(batch, n - c)
+                step = rows if wide_ok(W) else batch
+                for c in range(0, n, step):
+                    T = min(step, n - c)
                     self._fill_pos(start + c)
                     self._batch_layer(l, Xd[c:c + T], T, W, self.Kc[l], self.Vc[l], None)
             if self.place[l] != "gpu":
