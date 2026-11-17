@@ -393,3 +393,53 @@ def test_manual_dense_runtime_does_not_silently_demote() -> None:
         namespace["process"](engine, [7], 0)
     assert not demoted
     assert engine.place == ["gpu"] and engine.ctx == []
+
+
+def test_hybrid_prefill_without_draft_and_fallback_to_cpu() -> None:
+    """B.6: без угадывателя слои вне видеокарты сначала пробуются «hyb» (длинный запрос — на
+    видеокарте); не помещается дополнительная RAM — тот же resident с обычными «cpu»."""
+
+    def by_route(ram_per_hyb: int) -> Any:
+        def estimate(route: list[str], use: bool, reserve: int) -> ResourceEstimate:
+            vram = 10 + 30 * route.count("gpu")
+            ram = ram_per_hyb * route.count("hyb")
+            return ResourceEstimate(weights=MemoryUsage(vram=vram, ram=ram))
+
+        return estimate
+
+    off = PlanningOptions(reserve_bytes=0, draft="off", max_batch=16)
+    plain = choose(
+        estimate=by_route(0),
+        vram_available=70,
+        draft_requested=False,
+        options=off,
+        cpu_fraction=1.0,
+    )
+    assert plain.placement == ("gpu", "gpu", "cpu")  # без флага — как раньше
+    hybrid = choose(
+        estimate=by_route(5),
+        vram_available=70,
+        draft_requested=False,
+        options=off,
+        cpu_fraction=1.0,
+        hybrid_prefill=True,
+    )
+    assert hybrid.placement == ("gpu", "gpu", "hyb") and not hybrid.draft_enabled
+    assert any("hyb without draft" in reason for reason in hybrid.reasons)
+    tight = choose(
+        estimate=by_route(500),
+        vram_available=70,
+        draft_requested=False,
+        options=off,
+        cpu_fraction=1.0,
+        hybrid_prefill=True,
+    )
+    assert tight.placement == ("gpu", "gpu", "cpu") and tight.resident == 2
+    whole = choose(
+        estimate=by_route(5),
+        vram_available=1000,
+        draft_requested=False,
+        options=off,
+        hybrid_prefill=True,
+    )
+    assert whole.placement == ("gpu", "gpu", "gpu")  # всё в видеокарте — гибрид не нужен

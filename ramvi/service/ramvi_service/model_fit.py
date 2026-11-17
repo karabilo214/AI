@@ -115,6 +115,7 @@ def plan(
             options=PlanningOptions(),
             cpu_fraction=fraction,
             draft_with_offload=not unquantized,
+            hybrid_prefill=not unquantized,  # B.6: как движок — длинный запрос на видеокарте
         )
     except NoMemoryPlan:
         route = placement(

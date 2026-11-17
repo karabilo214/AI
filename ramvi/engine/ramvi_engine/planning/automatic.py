@@ -146,7 +146,11 @@ def placement(
     cpu: bool,
     draft_enabled: bool,
     cpu_fraction: float = 0.58,
+    hybrid: bool | None = None,
 ) -> tuple[str, ...]:
+    """hybrid: слои процессора — «hyb» (по умолчанию — когда включён угадыватель)."""
+    if hybrid is None:
+        hybrid = draft_enabled
     if architecture not in ("qwen3", "qwen3moe") or model_format not in ("gguf", "safetensors"):
         raise NotImplementedError("unsupported model architecture/format")
     if isinstance(layers, bool) or not isinstance(layers, int) or layers < 1:
@@ -172,7 +176,7 @@ def placement(
         else:
             accumulator += cpu_fraction if cpu else 0.0
             if accumulator >= 1.0 - 1e-9:
-                result.append("hyb" if draft_enabled else "cpu")
+                result.append("hyb" if hybrid else "cpu")
                 accumulator -= 1.0
             else:
                 result.append("stream")
@@ -195,11 +199,18 @@ def choose_plan(
     cpu_fraction: float = 0.58,
     resident_cap: int | None = None,
     draft_with_offload: bool = True,
+    hybrid_prefill: bool = False,
 ) -> PlanningDecision:
-    """At most 2*(layers+1) candidates; fixed native buffers are still estimated at16.
+    """At most 2*(layers+1) candidates (3*(layers+1) with hybrid_prefill); fixed native
+    buffers are still estimated at16.
 
     3.18: draft_with_offload=False skips draft candidates that leave layers outside the GPU
     (with a draft those layers become "hyb" and every verification batch streams them).
+
+    B.6: hybrid_prefill=True — and without a draft, layers outside the GPU are first tried as
+    "hyb": a single step stays on the CPU, but a long prompt streams them over the bus and
+    computes them on the GPU (CPU layers dominated prefill time). If the extra pinned RAM and
+    GPU KV do not fit, the same resident count is tried with plain "cpu" layers.
 
     Draft is considered only if a name was supplied. No speed benefit is inferred.
     Mapped-file working-set deficit can be allowed explicitly; owned RAM cannot.
@@ -250,23 +261,37 @@ def choose_plan(
                 and resident < layers
             ):
                 continue
-            route = placement(
-                layers,
-                resident,
-                architecture=architecture,
-                model_format=model_format,
-                cpu=cpu,
-                draft_enabled=use_draft,
-                cpu_fraction=cpu_fraction,
-            )
-            resources = estimate(list(route), use_draft, reserve)
-            assessment = resources.assess(
-                vram_available=vram_available, ram_available=ram_available
-            )
-            attempts += 1
-            required = resources.required
-            fits_owned = required.vram <= vram_available and required.ram <= ram_available
-            fits = fits_owned and (options.allow_paging or assessment["estimated_fit"])
+            hybrids = [use_draft]
+            if (
+                hybrid_prefill
+                and not use_draft
+                and cpu
+                and resident < layers
+                and architecture == "qwen3"
+                and model_format == "gguf"
+            ):
+                hybrids = [True, False]
+            for hybrid in hybrids:
+                route = placement(
+                    layers,
+                    resident,
+                    architecture=architecture,
+                    model_format=model_format,
+                    cpu=cpu,
+                    draft_enabled=use_draft,
+                    cpu_fraction=cpu_fraction,
+                    hybrid=hybrid,
+                )
+                resources = estimate(list(route), use_draft, reserve)
+                assessment = resources.assess(
+                    vram_available=vram_available, ram_available=ram_available
+                )
+                attempts += 1
+                required = resources.required
+                fits_owned = required.vram <= vram_available and required.ram <= ram_available
+                fits = fits_owned and (options.allow_paging or assessment["estimated_fit"])
+                if manual or fits or hybrid is False or len(hybrids) == 1:
+                    break
             if manual or fits:
                 reasons = [
                     f"metadata_candidates_tested={attempts}",
@@ -276,6 +301,10 @@ def choose_plan(
                 if not assessment["estimated_fit"]:
                     reasons.append(
                         "file working set exceeds RAM or manual budget; paging/OOM possible"
+                    )
+                if "hyb" in route and not use_draft:
+                    reasons.append(
+                        "hyb without draft: long prompts compute offloaded layers on GPU"
                     )
                 if draft_requested and not use_draft:
                     reasons.append("draft disabled by policy, batch cap or available budget")

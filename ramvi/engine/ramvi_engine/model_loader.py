@@ -103,8 +103,12 @@ def _load_bundle_once(config: ModelConfig, decision: PlanningDecision | None = N
                 **({"vram_reserve": 0} if gguf_draft else {"cpu": False}),
             )
         gguf = is_gguf_model(config.model)
+        # B.6: план может выбрать «hyb» и без угадывателя — длинный запрос считает видеокарта.
+        planned_hybrid = decision is not None and "hyb" in decision.placement
         cpu: bool | str = (
-            False if not config.cpu else ("hybrid" if gguf and draft is not None else True)
+            False
+            if not config.cpu
+            else ("hybrid" if gguf and (draft is not None or planned_hybrid) else True)
         )
         engine_options: dict[str, Any] = {
             "maxt": config.maxt,
@@ -243,6 +247,7 @@ def _resolve_plan(
         resident_cap=resident_cap,
         cpu_fraction=cpu_fraction,
         draft_with_offload=not unquantized,
+        hybrid_prefill=model_format == "gguf" and not unquantized,
     )
 
 
