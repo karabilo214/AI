@@ -35,7 +35,7 @@ class Settings:
     theme: str = "system"
     # 4.5: профиль задачи (режим, приоритет, контекст; 0 — по режиму)
     task_mode: str = "chat"
-    task_priority: str = "speed"
+    task_priority: str = "balanced"
     task_context: int = 0
 
     @property

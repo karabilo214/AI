@@ -134,54 +134,6 @@ def test_speed_only_from_measurements() -> None:
     )
 
 
-def test_choose_fast_and_large_with_reasons() -> None:
-    cands = [
-        cand("0.6B", est(1), params_b=0.6, measured_tok_s=(60, 70)),
-        cand("4B", est(4), params_b=4, measured_tok_s=(40, 50)),
-        cand("14B", est(6.5, ram_gb=2), params_b=14, model_id="qwen3-14b-q4_k_m"),
-        cand("70B", est(7, ram_gb=30), params_b=70),
-    ]
-    fast = compat.choose(LAPTOP, cands, compat.FAST)
-    assert fast.best is not None
-    assert fast.best.name == "0.6B"
-    assert (
-        ru(fast.reason)
-        == "самая быстрая из запускаемых: рекомендуется, 0.6B, примерно 60–70 токенов/с"
-    )
-    assert [v.name for v, _ in fast.alternatives] == [
-        "4B",
-        "14B",
-    ]  # 70B не запустится — не альтернатива
-    assert (
-        ru(fast.alternatives[1][1])
-        == "медленно, 14B, примерно 7.8–9.1 токенов/с, крупнее, но медленнее"
-    )
-    large = compat.choose(LAPTOP, cands, compat.LARGE)
-    assert large.best is not None
-    assert (
-        large.best.name == "14B"
-        and "медленно" in ru(large.reason)
-        and "7.8–9.1" in ru(large.reason)
-    )
-    assert [v.name for v, _ in large.alternatives] == ["4B", "0.6B"]
-    assert "быстрее, но меньше" in ru(large.alternatives[0][1])
-    assert render(large.alternatives[0][1], EN).endswith("faster but smaller")
-
-
-def test_choose_nothing_runnable_explains() -> None:
-    c = compat.choose(LAPTOP, [cand("70B", est(7, ram_gb=30))])
-    assert c.best is None and c.alternatives == ()
-    assert ru(c.reason) == "ни одна модель не запустится на этом ПК (70B: Не хватает RAM)"
-    assert c.reason.json()["params"]["why"][0] == {
-        "code": "compat.choice.item",
-        "params": {"name": "70B", "status": {"code": "compat.no_ram", "params": {}}},
-    }
-    assert (
-        ru(compat.choose(LAPTOP, []).reason)
-        == "ни одна модель не запустится на этом ПК (список пуст)"
-    )
-
-
 def test_estimate_shown_when_no_measurement_and_measurement_wins() -> None:
     estimated = cand("8B", est(6), off_gpu_bytes=0, estimated_tok_s=(52.0, 62.0))
     speed = compat.assess(LAPTOP, estimated).speed

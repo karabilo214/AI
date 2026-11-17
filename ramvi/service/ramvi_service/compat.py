@@ -95,6 +95,16 @@ def _speed(hw: HardwareProfile, c: Candidate, status: str) -> Msg:
     return msg("compat.speed_range", low=f"{rng[0]:g}", high=f"{rng[1]:g}")
 
 
+def speed_range(hw: HardwareProfile, c: Candidate, status: str) -> tuple[float, float, bool] | None:
+    """(нижняя, верхняя, замер ли) ток/с: замер, иначе оценка; None — ничего нет."""
+    rng = _range(hw, c, status)
+    if rng is not None:
+        return rng[0], rng[1], True
+    if c.estimated_tok_s is not None:
+        return c.estimated_tok_s[0], c.estimated_tok_s[1], False
+    return None
+
+
 def assess(hw: HardwareProfile, c: Candidate) -> Verdict:
     v = _assess(hw, c)
     if v.status in (RECOMMENDED, SLOW):
@@ -159,73 +169,4 @@ def filter_models(
     return sorted((v for v in result if v.status in wanted), key=lambda v: ORDER.index(v.status))
 
 
-# --- 4.6 AUTO-04: выбор с объяснением ------------------------------------
-
-FAST, LARGE = "fast", "large"
-RUNNABLE = (RECOMMENDED, SLOW)
-
-
-@dataclass(frozen=True)
-class Choice:
-    best: Verdict | None
-    reason: Msg
-    alternatives: tuple[tuple[Verdict, Msg], ...]
-
-
-def _params(c: Candidate) -> float:
-    return c.params_b if c.params_b is not None else c.file_bytes / 1e9
-
-
-def _speed_mid(hw: HardwareProfile, c: Candidate, status: str) -> float | None:
-    rng = _range(hw, c, status)
-    return (rng[0] + rng[1]) / 2 if rng else None
-
-
-def choose(
-    hw: HardwareProfile, candidates: list[Candidate], prefer: str = FAST, alternatives: int = 3
-) -> Choice:
-    """Без общего рейтинга качества: порядок задаёт только выбор пользователя.
-
-    FAST: модель целиком в VRAM раньше «Медленно», затем измеренная скорость,
-    затем меньше параметров. LARGE: больше параметров среди запускаемых,
-    при равенстве — лучший статус.
-    """
-    if prefer not in (FAST, LARGE):
-        raise ValueError(f"prefer: {FAST!r} or {LARGE!r}")
-    rated = [(c, assess(hw, c)) for c in candidates]
-    ok = [(c, v) for c, v in rated if v.status in RUNNABLE]
-    if not ok:
-        why: Msg | list[Msg] = [
-            msg("compat.choice.item", name=v.name, status=msg(v.status)) for _, v in rated
-        ] or msg("compat.choice.empty")
-        return Choice(None, msg("compat.choice.none", why=why), ())
-
-    def key(item: tuple[Candidate, Verdict]) -> tuple[float, ...]:
-        c, v = item
-        status_rank = RUNNABLE.index(v.status)
-        speed = _speed_mid(hw, c, v.status)
-        if prefer == FAST:
-            return (status_rank, -(speed or 0.0), _params(c))
-        return (-_params(c), status_rank)
-
-    ok.sort(key=key)
-
-    def explain(c: Candidate, v: Verdict, first: Candidate | None) -> Msg:
-        size = (
-            msg("compat.size_params", params=f"{_params(c):g}")
-            if c.params_b is not None
-            else msg("compat.size_file", gb=f"{c.file_bytes / 1e9:.1f}")
-        )
-        parts = {"status": msg(v.status + ".inline"), "size": size, "speed": v.speed}
-        if first is None:
-            return msg("compat.explain", **parts)
-        if prefer == FAST:
-            relation = "larger_slower" if _params(c) > _params(first) else "slower"
-        else:
-            relation = "faster_smaller" if v.status == RECOMMENDED else "smaller"
-        return msg("compat.explain_vs", **parts, relation=msg("compat.relation." + relation))
-
-    best_c, best_v = ok[0]
-    lead = "compat.choice.fastest" if prefer == FAST else "compat.choice.largest"
-    alts = tuple((v, explain(c, v, best_c)) for c, v in ok[1 : 1 + alternatives])
-    return Choice(best_v, msg(lead, explain=explain(best_c, best_v, None)), alts)
+RUNNABLE = (RECOMMENDED, SLOW)  # 4.6: выбор — recommend.py

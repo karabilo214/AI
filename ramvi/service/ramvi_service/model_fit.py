@@ -16,6 +16,7 @@
 """
 
 import os
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -46,6 +47,15 @@ from ramvi_service.task_profile import TaskProfile
 MAXT = 2048  # контекст чата по умолчанию (ModelConfig.maxt)
 MIB = 1024 * 1024
 UNKNOWN = "compat.unknown"
+
+
+def size_billions(meta: GGUFMeta) -> float | None:
+    """Число параметров из `general.size_label` («14B», «0.6B», «30B-A3B» → 30)."""
+    match = re.match(r"\s*(\d+(?:\.\d+)?)\s*([BM])", str(meta.meta.get("general.size_label", "")))
+    if match is None:
+        return None
+    value = float(match.group(1))
+    return value / 1000 if match.group(2) == "M" else value
 
 
 def model_key(meta: GGUFMeta) -> str:
@@ -224,6 +234,11 @@ class ModelFit:
             estimated_tok_s=self._estimate(meta, layout, estimate, hw),
         )
         result = compat.assess(hw, candidate)
+        tok_s = (
+            compat.speed_range(hw, candidate, result.status)
+            if result.status in compat.RUNNABLE
+            else None
+        )
         need = estimate.required
         reasons = [r.json() for r in result.reasons]
         now = self._now(meta, hw, context, native, result.status)
@@ -240,6 +255,15 @@ class ModelFit:
             "context": context,
             "now": now,
             "task": self._task(meta, task, capabilities),
+            # 4.6: числа для ранжирования
+            "tok_s": None
+            if tok_s is None
+            else {"low": tok_s[0], "high": tok_s[1], "measured": tok_s[2]},
+            "model": {
+                "key": model_key(meta),
+                "size_b": size_billions(meta),
+                "quant": FILE_TYPES.get(meta.meta.get("general.file_type"), ""),  # type: ignore[arg-type]
+            },
         }
 
     @staticmethod

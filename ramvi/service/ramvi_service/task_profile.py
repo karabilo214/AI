@@ -12,7 +12,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-PRIORITIES = ("quality", "speed", "ram", "ttft")
+PRIORITIES = ("balanced", "quality", "speed", "ram", "ttft")
 MIN_CONTEXT, MAX_CONTEXT = 512, 131072
 
 
@@ -35,7 +35,7 @@ MODES: dict[str, Mode] = {
 @dataclass(frozen=True)
 class TaskProfile:
     mode: str = "chat"
-    priority: str = "speed"
+    priority: str = "balanced"
     context: int = 0  # 0 — по режиму
 
     @property
@@ -56,6 +56,13 @@ class TaskProfile:
         if bad_type or (self.context and not MIN_CONTEXT <= self.context <= MAX_CONTEXT):
             return "settings.bad_task_context", {"low": MIN_CONTEXT, "high": MAX_CONTEXT}
         return None
+
+    @property
+    def ranking(self) -> str:
+        """Приоритет ранжирования (4.6): режим «экономия» при «балансе» — экономия RAM."""
+        if self.mode == "economy" and self.priority == "balanced":
+            return "ram"
+        return self.priority
 
     def json(self) -> dict[str, Any]:
         return {

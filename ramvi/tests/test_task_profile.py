@@ -148,7 +148,7 @@ def test_api_profile_from_settings_rebuilds_recommendations(tmp_path: Path) -> N
         before = app.client.ok("GET", "/catalog")
         assert before["profile"] == {
             "mode": "chat",
-            "priority": "speed",
+            "priority": "balanced",
             "context": 2048,
             "needs": [],
         }

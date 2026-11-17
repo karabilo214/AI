@@ -26,6 +26,7 @@ from ramvi_service.i18n import to_json
 from ramvi_service.model_control import ModelControl
 from ramvi_service.model_fit import ModelFit
 from ramvi_service.onboarding import Onboarding
+from ramvi_service.recommend import rank
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
 
 MAX_BODY = 2 * 2**20
@@ -124,6 +125,8 @@ class UIServer:
                 return self.config.update(body)
         if path == "/downloads" or path.startswith("/downloads/"):
             return self._downloads_route(method, path, body)
+        if method == "GET" and path == "/recommendations":
+            return self._recommendations()
         if path in ("/catalog", "/catalog/refresh"):
             return self._catalog_route(method, path)
         if path in ("/system", "/onboarding", "/models/import", "/models/scan"):
@@ -212,6 +215,22 @@ class UIServer:
             raise ChatError("api.not_found")
         action = {"pause": downloads.pause, "resume": downloads.resume, "cancel": downloads.cancel}
         return {"download": action[match.group(2)](match.group(1))}
+
+    def _recommendations(self) -> dict[str, Any]:
+        """4.6: лучшая модель для профиля, причина и альтернативы (каталог + установленные)."""
+        if self.fit is None or self.catalog is None:
+            raise ChatError("api.not_found")
+        view = self._with_entry_fit(self.catalog.view())
+        items = [
+            {"id": e["id"], "name": e["name"], "installed": False, "compat": e["compat"]}
+            for e in view["entries"]
+        ]
+        items += [
+            {"id": m["id"], "name": m["id"], "installed": True, "compat": m["compat"]}
+            for m in self._with_fit(self.chat.models())
+        ]
+        profile = self.fit.profile()
+        return {"profile": profile.json(), **rank(items, profile.ranking)}
 
     def _with_entry_fit(self, view: dict[str, Any]) -> dict[str, Any]:
         """4.4: статус каждой записи каталога по сохранённому заголовку."""
