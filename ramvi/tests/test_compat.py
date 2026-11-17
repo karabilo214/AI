@@ -16,8 +16,8 @@ def ru(message: Msg | str) -> str:
 
 GB = 1024**3
 
-# Как ASUS: RTX 5060 8 ГБ + встроенная Radeon, 16 ГБ RAM.
-ASUS = HardwareProfile(
+# Как тестовый ноутбук: RTX 5060 8 ГБ + встроенная Radeon, 16 ГБ RAM.
+LAPTOP = HardwareProfile(
     os="Windows 11",
     arch="AMD64",
     cpu_name="Ryzen 7 260",
@@ -44,42 +44,62 @@ def cand(name: str, estimate: ResourceEstimate, size_gb: float = 5, **kw: Any) -
 
 
 def test_small_model_recommended() -> None:
-    assert compat.assess(ASUS, cand("4B", est(4))).status == compat.RECOMMENDED
+    assert compat.assess(LAPTOP, cand("4B", est(4))).status == compat.RECOMMENDED
 
 
 def test_14b_on_8gb_gpu_is_slow_not_unsuitable() -> None:
-    v = compat.assess(ASUS, cand("14B", est(6.5, ram_gb=2, mapped_gb=1), size_gb=9))
+    v = compat.assess(LAPTOP, cand("14B", est(6.5, ram_gb=2, mapped_gb=1), size_gb=9))
     assert v.status == compat.SLOW and v.reasons[0].code == "compat.reason.on_cpu"
     assert ru(v.reasons[0]) == "3072 МБ весов не помещаются в VRAM и считаются на CPU"
     assert render(v.reasons[0], EN) == "3072 MB of weights do not fit in VRAM and run on the CPU"
 
 
 def test_low_available_ram_is_note_not_failure() -> None:
-    v = compat.assess(ASUS, cand("14B", est(6.5, ram_gb=6, mapped_gb=3)))
+    v = compat.assess(LAPTOP, cand("14B", est(6.5, ram_gb=6, mapped_gb=3)))
     assert v.status == compat.SLOW and any("закройте" in ru(r) for r in v.reasons)
 
 
 def test_not_enough_ram_disk_format_gpu() -> None:
-    assert compat.assess(ASUS, cand("70B", est(7, ram_gb=30))).status == compat.NO_RAM
-    assert compat.assess(ASUS, cand("huge", est(4), size_gb=200)).status == compat.NO_DISK
+    assert compat.assess(LAPTOP, cand("70B", est(7, ram_gb=30))).status == compat.NO_RAM
+    assert compat.assess(LAPTOP, cand("huge", est(4), size_gb=200)).status == compat.NO_DISK
     assert (
-        compat.assess(ASUS, cand("huge", est(4), size_gb=200, downloaded=True)).status
+        compat.assess(LAPTOP, cand("huge", est(4), size_gb=200, downloaded=True)).status
         == compat.RECOMMENDED
     )
     assert (
-        compat.assess(ASUS, replace(cand("x", est(4)), file_format="onnx")).status
+        compat.assess(LAPTOP, replace(cand("x", est(4)), file_format="onnx")).status
         == compat.UNSUPPORTED
     )
     assert (
-        compat.assess(ASUS, cand("x", est(4), architecture_supported=False)).status
+        compat.assess(LAPTOP, cand("x", est(4), architecture_supported=False)).status
         == compat.UNSUPPORTED
     )
-    no_nvidia = replace(ASUS, gpus=(GPUInfo("Radeon 780M", "AMD"),))
+    no_nvidia = replace(LAPTOP, gpus=(GPUInfo("Radeon 780M", "AMD"),))
     assert compat.assess(no_nvidia, cand("4B", est(4))).status == compat.UNSUPPORTED
 
 
+def test_file_bigger_than_ram_is_slow_with_paging_not_no_ram() -> None:
+    """Веса из файла дочитываются с диска: qwen3-8b-f16 работал на 16 ГБ RAM (2,35 ток/с)."""
+    v = compat.assess(LAPTOP, cand("8B F16", est(6, ram_gb=0.5, mapped_gb=16), size_gb=16))
+    assert v.status == compat.SLOW
+    paging = next(r for r in v.reasons if r.code == "compat.reason.paging")
+    assert paging.params["mb"] == (int(0.5 * GB) + 16 * GB) // compat.MIB - 15652
+    assert not any(r.code == "compat.reason.ram_busy" for r in v.reasons)
+    # Собственная RAM движка больше всей памяти — по-прежнему «Не хватает RAM».
+    assert compat.assess(LAPTOP, cand("x", est(6, ram_gb=16))).status == compat.NO_RAM
+
+
+def test_layers_in_vram_are_recommended_even_with_file_embeddings() -> None:
+    """Входные эмбеддинги движок всегда читает из файла — это не «часть модели на CPU»."""
+    whole = cand("8B", est(6, mapped_gb=0.3), off_gpu_bytes=0)
+    assert compat.assess(LAPTOP, whole).status == compat.RECOMMENDED
+    part = cand("14B", est(7.5, ram_gb=1.5, mapped_gb=1.6), off_gpu_bytes=1400 * compat.MIB)
+    v = compat.assess(LAPTOP, part)
+    assert v.status == compat.SLOW and v.reasons[0].params["mb"] == 1400
+
+
 def test_plan_over_vram_flagged() -> None:
-    assert compat.assess(ASUS, cand("bad plan", est(12))).status == compat.NO_VRAM
+    assert compat.assess(LAPTOP, cand("bad plan", est(12))).status == compat.NO_VRAM
 
 
 def test_filter_order_and_size() -> None:
@@ -88,24 +108,28 @@ def test_filter_order_and_size() -> None:
         cand("14B", est(6.5, ram_gb=2), size_gb=9),
         cand("4B", est(4), size_gb=3),
     ]
-    assert [v.name for v in compat.filter_models(ASUS, cands)] == ["4B", "14B", "70B"]
-    assert [v.name for v in compat.filter_models(ASUS, cands, statuses=[compat.SLOW])] == ["14B"]
-    assert [v.name for v in compat.filter_models(ASUS, cands, max_file_bytes=4 * GB)] == ["4B"]
+    assert [v.name for v in compat.filter_models(LAPTOP, cands)] == ["4B", "14B", "70B"]
+    assert [v.name for v in compat.filter_models(LAPTOP, cands, statuses=[compat.SLOW])] == ["14B"]
+    assert [v.name for v in compat.filter_models(LAPTOP, cands, max_file_bytes=4 * GB)] == ["4B"]
 
 
 def test_speed_only_from_measurements() -> None:
-    v = compat.assess(ASUS, cand("Qwen3-14B", est(6.5, ram_gb=2), model_id="qwen3-14b"))
+    v = compat.assess(LAPTOP, cand("Qwen3-14B", est(6.5, ram_gb=2), model_id="qwen3-14b-q4_k_m"))
     assert v.status == compat.SLOW and ru(v.speed) == "примерно 7.8–9.1 токенов/с"
-    assert ru(compat.assess(ASUS, cand("4B", est(4), model_id="qwen3-4b")).speed) == "нет замера"
-    other_gpu = replace(ASUS, gpus=(GPUInfo("RTX 4090", "NVIDIA", 24564),))
+    assert ru(compat.assess(LAPTOP, cand("4B", est(4), model_id="qwen3-4b")).speed) == "нет замера"
+    other_gpu = replace(LAPTOP, gpus=(GPUInfo("RTX 4090", "NVIDIA", 24564),))
     assert (
-        ru(compat.assess(other_gpu, cand("14B", est(6.5, ram_gb=2), model_id="qwen3-14b")).speed)
+        ru(
+            compat.assess(
+                other_gpu, cand("14B", est(6.5, ram_gb=2), model_id="qwen3-14b-q4_k_m")
+            ).speed
+        )
         == "нет замера"
     )
     own = cand("4B", est(4), measured_tok_s=(50, 60))
-    assert ru(compat.assess(ASUS, own).speed) == "примерно 50–60 токенов/с"
+    assert ru(compat.assess(LAPTOP, own).speed) == "примерно 50–60 токенов/с"
     assert (
-        ru(compat.assess(ASUS, cand("70B", est(7, ram_gb=30), measured_tok_s=(2, 4))).speed)
+        ru(compat.assess(LAPTOP, cand("70B", est(7, ram_gb=30), measured_tok_s=(2, 4))).speed)
         == "нет замера"
     )
 
@@ -114,10 +138,10 @@ def test_choose_fast_and_large_with_reasons() -> None:
     cands = [
         cand("0.6B", est(1), params_b=0.6, measured_tok_s=(60, 70)),
         cand("4B", est(4), params_b=4, measured_tok_s=(40, 50)),
-        cand("14B", est(6.5, ram_gb=2), params_b=14, model_id="qwen3-14b"),
+        cand("14B", est(6.5, ram_gb=2), params_b=14, model_id="qwen3-14b-q4_k_m"),
         cand("70B", est(7, ram_gb=30), params_b=70),
     ]
-    fast = compat.choose(ASUS, cands, compat.FAST)
+    fast = compat.choose(LAPTOP, cands, compat.FAST)
     assert fast.best is not None
     assert fast.best.name == "0.6B"
     assert (
@@ -132,7 +156,7 @@ def test_choose_fast_and_large_with_reasons() -> None:
         ru(fast.alternatives[1][1])
         == "медленно, 14B, примерно 7.8–9.1 токенов/с, крупнее, но медленнее"
     )
-    large = compat.choose(ASUS, cands, compat.LARGE)
+    large = compat.choose(LAPTOP, cands, compat.LARGE)
     assert large.best is not None
     assert (
         large.best.name == "14B"
@@ -145,7 +169,7 @@ def test_choose_fast_and_large_with_reasons() -> None:
 
 
 def test_choose_nothing_runnable_explains() -> None:
-    c = compat.choose(ASUS, [cand("70B", est(7, ram_gb=30))])
+    c = compat.choose(LAPTOP, [cand("70B", est(7, ram_gb=30))])
     assert c.best is None and c.alternatives == ()
     assert ru(c.reason) == "ни одна модель не запустится на этом ПК (70B: Не хватает RAM)"
     assert c.reason.json()["params"]["why"][0] == {
@@ -153,6 +177,16 @@ def test_choose_nothing_runnable_explains() -> None:
         "params": {"name": "70B", "status": {"code": "compat.no_ram", "params": {}}},
     }
     assert (
-        ru(compat.choose(ASUS, []).reason)
+        ru(compat.choose(LAPTOP, []).reason)
         == "ни одна модель не запустится на этом ПК (список пуст)"
     )
+
+
+def test_estimate_shown_when_no_measurement_and_measurement_wins() -> None:
+    estimated = cand("8B", est(6), off_gpu_bytes=0, estimated_tok_s=(52.0, 62.0))
+    speed = compat.assess(LAPTOP, estimated).speed
+    assert speed.code == "compat.speed_estimate" and ru(speed) == "оценка ~52–62 токенов/с"
+    measured = cand(
+        "14B", est(7.5, ram_gb=1.5), model_id="qwen3-14b-q4_k_m", estimated_tok_s=(3.9, 7.7)
+    )
+    assert ru(compat.assess(LAPTOP, measured).speed) == "примерно 7.8–9.1 токенов/с"

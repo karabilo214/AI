@@ -8,6 +8,9 @@
 
 Копия — JSON (`<папка данных>/catalog/catalog.json`, ТЗ §10: «каталог моделей как
 JSON-cache»), запись атомарная: временный файл + os.replace.
+
+4.4: при обновлении для показываемых записей читается и заголовок GGUF (только
+начало файла, `headers.py`) — по нему считается статус совместимости без сети.
 """
 
 import json
@@ -15,13 +18,16 @@ import os
 import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 from ramvi_service.catalog.entry import CatalogEntry, problems
+from ramvi_service.catalog.headers import HeaderStore
 from ramvi_service.catalog.providers import HuggingFace, OllamaRegistry, Provider
 from ramvi_service.catalog.sources import HUGGINGFACE_REPOS, OLLAMA_TAGS
 from ramvi_service.catalog.support import unsupported_reason
+from ramvi_service.gguf_meta import NotGGUF
 from ramvi_service.i18n import msg
 
 SCHEMA = 1
@@ -42,8 +48,10 @@ class Catalog:
         providers: list[Provider] | None = None,
         *,
         clock: Callable[[], float] = time.time,
+        headers: HeaderStore | None = None,
     ) -> None:
         self.path = Path(data_dir) / "catalog" / "catalog.json"
+        self.headers = headers if headers is not None else HeaderStore(self.path.parent / "headers")
         self.providers = default_providers() if providers is None else list(providers)
         self.clock = clock
         self._lock = threading.Lock()
@@ -94,7 +102,21 @@ class Catalog:
                     )
                 stored[provider.name] = block
             self._save(stored)
+            self._fetch_headers()
         return self.view()
+
+    def _fetch_headers(self) -> None:
+        """Заголовки показываемых записей, которых ещё нет в копии; ошибка — без статуса."""
+        missing = [e for e in self.view()["entries"] if self.headers.cached(e["checksum"]) is None]
+
+        def one(entry: dict[str, Any]) -> None:
+            try:
+                self.headers.fetch(entry["url"], entry["checksum"], entry["bytes"])
+            except (OSError, NotGGUF):
+                pass  # статус останется «нет данных» до следующего обновления
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(one, missing))
 
     # --- показ ---------------------------------------------------------------------
 

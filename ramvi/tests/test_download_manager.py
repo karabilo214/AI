@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from ramvi_service.app import build
 from ramvi_service.catalog import Catalog, CatalogEntry
+from ramvi_service.catalog.headers import HeaderStore
 from test_chat import ENGINE, TOKEN, Client
 from test_onboarding import write_gguf
 
@@ -44,9 +45,10 @@ class FileServer:
                     return
                 header = self.headers.get("Range")
                 owner.ranges.append(header)
-                start = int(header.split("=")[1].rstrip("-")) if header else 0
+                first, _, last = (header or "bytes=0-").split("=")[1].partition("-")
+                start, end = int(first), int(last) + 1 if last else len(data)
                 self.send_response(206 if header else 200)
-                body = data[start:]
+                body = data[start:end]
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 drop = owner.drops > 0
@@ -111,15 +113,30 @@ def entry(base: str, path: str, data: bytes, quant: str = "Q4_K_M", **changes: A
     return CatalogEntry(**fields)
 
 
+def _no_network(url: str, size: int) -> bytes:
+    raise OSError("headers disabled in this test")
+
+
 class App:
     """Сервис с каталогом из тестового провайдера."""
 
-    def __init__(self, root: Path, entries: list[CatalogEntry], retries: tuple[float, ...]) -> None:
-        self.root, self.entries, self.retries = root, entries, retries
+    def __init__(
+        self,
+        root: Path,
+        entries: list[CatalogEntry],
+        retries: tuple[float, ...],
+        *,
+        headers: bool = False,
+    ) -> None:
+        self.root, self.entries, self.retries, self.headers = root, entries, retries, headers
         self.start()
 
     def start(self) -> None:
-        catalog = Catalog(self.root / "data", [Provider(self.entries)])
+        # Заголовки (4.4) читаются отдельными запросами — в тестах загрузок не мешают счётчикам.
+        store = HeaderStore(self.root / "data" / "catalog" / "headers", _no_network)
+        catalog = Catalog(
+            self.root / "data", [Provider(self.entries)], headers=None if self.headers else store
+        )
         catalog.refresh()
         self.server, self.engines = build(
             self.root / "data",

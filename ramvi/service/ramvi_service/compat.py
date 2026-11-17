@@ -1,7 +1,10 @@
 """4.4 MOD-03: статус совместимости модели с этим компьютером и фильтры.
 
 Неполное размещение в VRAM — не «неподходящая», а «Медленно»: движок
-считает остальные слои на CPU. Учитывается одна NVIDIA (самая большая):
+считает остальные слои на CPU. «Не хватает RAM» — только когда не помещается
+собственная RAM движка; веса, читаемые из файла (`mapped`), при нехватке RAM
+дочитываются с диска — это «Медленно» с причиной (так работают qwen3:30b и
+qwen3-8b-f16 на 16 ГБ RAM, планировщик движка тоже это допускает). Учитывается одна NVIDIA (самая большая):
 несколько карт движок пока не использует (пункт 4.10).
 
 3.14: статусы — ключи каталога `compat.*`, причины и объяснения — сообщения `Msg`
@@ -40,13 +43,20 @@ class Candidate:
     model_id: str = ""  # ключ для таблицы замеров, например "qwen3-14b"
     measured_tok_s: tuple[float, float] | None = None  # контрольный прогон на этом ПК (4.7)
     params_b: float | None = None  # число параметров, млрд; не оценка качества
+    # Байт весов слоёв вне видеокарты по плану; None — судить по estimate.weights.
+    # Таблица входных эмбеддингов движка всегда читается из файла и сюда не входит.
+    off_gpu_bytes: int | None = None
+    # Оценка по плану и пропускной способности памяти (speed.py); замер важнее.
+    estimated_tok_s: tuple[float, float] | None = None
 
 
 # Только реальные замеры: (подстрока имени NVIDIA, model_id, статус) -> (мин, макс) ток/с.
 MEASURED = {
     # ASUS RTX 5060 8 ГБ + 16 ГБ RAM, greedy, контекст 2048, 30 вопросов,
     # полные ряды этапов 1–2: 7.80–9.11 ток/с (docs/reports/STAGE2_ACCEPTANCE.md, CONTEXT.md).
-    ("RTX 5060", "qwen3-14b", SLOW): (7.8, 9.1),
+    # Ключ — `model_fit.model_key`: архитектура, размер и квант из заголовка GGUF.
+    # Замер с автоугадывателем qwen3:0.6b, как работает чат.
+    ("RTX 5060", "qwen3-14b-q4_k_m", SLOW): (7.8, 9.1),
 }
 
 
@@ -75,6 +85,9 @@ def _range(hw: HardwareProfile, c: Candidate, status: str) -> tuple[float, float
 
 def _speed(hw: HardwareProfile, c: Candidate, status: str) -> Msg:
     rng = _range(hw, c, status)
+    if rng is None and c.estimated_tok_s is not None:
+        low, high = c.estimated_tok_s
+        return msg("compat.speed_estimate", low=f"{low:g}", high=f"{high:g}")
     if rng is None:
         return msg("compat.speed_unknown")
     return msg("compat.speed_range", low=f"{rng[0]:g}", high=f"{rng[1]:g}")
@@ -101,22 +114,30 @@ def _assess(hw: HardwareProfile, c: Candidate) -> Verdict:
             reason = msg("compat.reason.disk", need_mb=need_mb, free_mb=hw.disk_free_mb)
             return Verdict(c.name, NO_DISK, (reason,))
     need = c.estimate.required
+    owned_mb = need.ram // MIB
     ram_need_mb = (need.ram + need.mapped) // MIB
-    if hw.ram_total_mb is not None and ram_need_mb > hw.ram_total_mb:
-        reason = msg("compat.reason.ram", need_mb=ram_need_mb, total_mb=hw.ram_total_mb)
+    if hw.ram_total_mb is not None and owned_mb > hw.ram_total_mb:
+        reason = msg("compat.reason.ram", need_mb=owned_mb, total_mb=hw.ram_total_mb)
         return Verdict(c.name, NO_RAM, (reason,))
     if need.vram // MIB > vram_mb:
         reason = msg("compat.reason.vram", need_mb=need.vram // MIB, total_mb=vram_mb)
         return Verdict(c.name, NO_VRAM, (reason,))
     reasons = []
-    if hw.ram_available_mb is not None and ram_need_mb > hw.ram_available_mb:
+    paging = hw.ram_total_mb is not None and ram_need_mb > hw.ram_total_mb
+    if paging:
+        assert hw.ram_total_mb is not None
+        reasons.append(msg("compat.reason.paging", mb=ram_need_mb - hw.ram_total_mb))
+    elif hw.ram_available_mb is not None and ram_need_mb > hw.ram_available_mb:
         reasons.append(
             msg("compat.reason.ram_busy", free_mb=hw.ram_available_mb, need_mb=ram_need_mb)
         )
     weights = c.estimate.weights
-    if weights.ram or weights.mapped:
-        on_cpu = (weights.ram + weights.mapped) // MIB
-        return Verdict(c.name, SLOW, (msg("compat.reason.on_cpu", mb=on_cpu), *reasons))
+    off_gpu = weights.ram + weights.mapped if c.off_gpu_bytes is None else c.off_gpu_bytes
+    if off_gpu:
+        reason = msg("compat.reason.on_cpu", mb=off_gpu // MIB)
+        return Verdict(c.name, SLOW, (reason, *reasons))
+    if paging:
+        return Verdict(c.name, SLOW, tuple(reasons))
     return Verdict(c.name, RECOMMENDED, (msg("compat.reason.in_vram"), *reasons))
 
 

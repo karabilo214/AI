@@ -33,8 +33,10 @@ from ramvi_service.engines import (
     SwitchableProvider,
     default_engine,
 )
+from ramvi_service.hardware import collect
 from ramvi_service.i18n import load_catalog, render
 from ramvi_service.model_control import ModelControl
+from ramvi_service.model_fit import ModelFit
 from ramvi_service.modules.host import ModuleHost
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.resources import SharedLLM
@@ -111,6 +113,13 @@ def build(
         register_downloaded(onboarding.import_model, Models(db), catalog),
         **(download_options or {}),
     )
+
+    def hardware() -> Any:  # диск — папка моделей, куда пойдут скачанные файлы
+        folder = onboarding.models_folder()
+        return collect(folder if folder.is_dir() else data_dir)
+
+    server.fit = ModelFit(catalog.headers, hardware)
+    server.app_dir = root
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
     server.on_close.append(db.close)

@@ -14,14 +14,17 @@ import threading
 from collections.abc import Callable
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 from ramvi_service.app_config import AppConfig
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatError, ChatService, Generation
 from ramvi_service.download_manager import DownloadManager
+from ramvi_service.engines import resolve_model
 from ramvi_service.i18n import to_json
 from ramvi_service.model_control import ModelControl
+from ramvi_service.model_fit import ModelFit
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
 
@@ -57,6 +60,8 @@ class UIServer:
         self.sections = sections
         self.catalog = catalog
         self.downloads: DownloadManager | None = None
+        self.fit: ModelFit | None = None  # 4.4: статусы совместимости
+        self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
         self._server = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
@@ -93,7 +98,7 @@ class UIServer:
         if method == "GET" and path == "/status":
             return {"engine": self._engine_status(), "limits": asdict(chat.limits)}
         if method == "GET" and path == "/models":
-            return {"models": chat.models()}
+            return {"models": self._with_fit(chat.models())}
         if method == "GET" and path == "/chats":
             return {"chats": chat.list_chats()}
         if method == "POST" and path == "/chats":
@@ -188,9 +193,9 @@ class UIServer:
         if catalog is None:
             raise ChatError("api.not_found")
         if method == "GET" and path == "/catalog":
-            return catalog.view()
+            return self._with_entry_fit(catalog.view())
         if method == "POST" and path == "/catalog/refresh":
-            return catalog.refresh()
+            return self._with_entry_fit(catalog.refresh())
         raise ChatError("api.not_found")
 
     def _downloads_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
@@ -207,6 +212,22 @@ class UIServer:
             raise ChatError("api.not_found")
         action = {"pause": downloads.pause, "resume": downloads.resume, "cancel": downloads.cancel}
         return {"download": action[match.group(2)](match.group(1))}
+
+    def _with_entry_fit(self, view: dict[str, Any]) -> dict[str, Any]:
+        """4.4: статус каждой записи каталога по сохранённому заголовку."""
+        if self.fit is not None:
+            for entry in view["entries"]:
+                entry["compat"] = self.fit.for_entry(entry)
+        return view
+
+    def _with_fit(self, models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """4.4: статус каждой установленной модели (заголовок из файла, без сети)."""
+        if self.fit is None:
+            return models
+        for item in models:
+            stored = resolve_model(self.chat.models_repo.get(item["id"]), self.app_dir)
+            item["compat"] = self.fit.for_file(stored.path, item["id"])
+        return models
 
     def _sections_route(self, method: str, path: str) -> Any:
         """3.11: разделы интерфейса; модуль загружается при первом открытии раздела."""
