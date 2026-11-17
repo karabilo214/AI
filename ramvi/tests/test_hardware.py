@@ -1,26 +1,25 @@
 import json
 import socket
+from pathlib import Path
+from typing import Any, NoReturn
 
 import pytest
-
 from ramvi_service import hardware
 
 
-def test_parse_nvidia_smi():
-    gpus = hardware.parse_nvidia_smi(
-        "NVIDIA GeForce RTX 4060 Laptop GPU, 8188, 7900, 560.94\n\n"
-    )
+def test_parse_nvidia_smi() -> None:
+    gpus = hardware.parse_nvidia_smi("NVIDIA GeForce RTX 4060 Laptop GPU, 8188, 7900, 560.94\n\n")
     assert gpus == (
         hardware.GPUInfo("NVIDIA GeForce RTX 4060 Laptop GPU", "NVIDIA", 8188, 7900, "560.94"),
     )
 
 
-def test_parse_meminfo():
+def test_parse_meminfo() -> None:
     text = "MemTotal:       32768000 kB\nMemFree: 100 kB\nMemAvailable:   16384000 kB\n"
     assert hardware.parse_meminfo(text) == (32000, 16000)
 
 
-def test_parse_cpuinfo_counts_physical_cores():
+def test_parse_cpuinfo_counts_physical_cores() -> None:
     block = "processor\t: {p}\nmodel name\t: Ryzen 7\nflags\t: sse4_2 avx avx2 fma\nphysical id\t: 0\ncore id\t: {c}\n\n"
     text = "".join(block.format(p=p, c=p // 2) for p in range(4))
     name, flags, physical = hardware.parse_cpuinfo(text)
@@ -29,8 +28,8 @@ def test_parse_cpuinfo_counts_physical_cores():
     assert physical == 2
 
 
-def test_collect_real_machine_no_network(monkeypatch, tmp_path):
-    def blocked(*args, **kwargs):
+def test_collect_real_machine_no_network(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def blocked(*args: Any, **kwargs: Any) -> NoReturn:
         raise AssertionError("профиль железа не должен открывать сеть")
 
     monkeypatch.setattr(socket, "socket", blocked)
@@ -46,14 +45,16 @@ def test_collect_real_machine_no_network(monkeypatch, tmp_path):
         assert gpu.name
 
 
-def test_missing_nvidia_smi_gives_no_gpus(monkeypatch):
-    monkeypatch.setattr(hardware.shutil, "which", lambda name: None)
+def test_missing_nvidia_smi_gives_no_gpus(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ramvi_service.hardware.shutil.which", lambda name: None)
     assert hardware._nvidia_gpus() == ()
 
 
-def test_parse_wmi_and_merge():
-    text = ('{"cpu":[{"NumberOfCores":8}],"gpu":[{"Name":"AMD Radeon 780M Graphics","DriverVersion":"32.0"},'
-            '{"Name":"NVIDIA GeForce RTX 5060 Laptop GPU","DriverVersion":"32.0.15"}]}')
+def test_parse_wmi_and_merge() -> None:
+    text = (
+        '{"cpu":[{"NumberOfCores":8}],"gpu":[{"Name":"AMD Radeon 780M Graphics","DriverVersion":"32.0"},'
+        '{"Name":"NVIDIA GeForce RTX 5060 Laptop GPU","DriverVersion":"32.0.15"}]}'
+    )
     cores, gpus = hardware.parse_wmi_json(text)
     assert cores == 8 and [g.vendor for g in gpus] == ["AMD", "NVIDIA"]
     nvidia = hardware.parse_nvidia_smi("NVIDIA GeForce RTX 5060 Laptop GPU, 8151, 7899, 616.92")
@@ -62,7 +63,7 @@ def test_parse_wmi_and_merge():
     assert hardware._merge_gpus((), gpus) == gpus
 
 
-def test_parse_system_profiler():
+def test_parse_system_profiler() -> None:
     text = '{"SPDisplaysDataType":[{"_name":"kHW_AppleM1ProItem","sppci_model":"Apple M1 Pro"}]}'
     assert hardware.parse_system_profiler(text) == (hardware.GPUInfo("Apple M1 Pro", "Apple"),)
 

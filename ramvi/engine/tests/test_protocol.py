@@ -107,13 +107,23 @@ def test_http_versions_headers_and_real_correlated_events() -> None:
 
 def test_callable_api_key_checks_each_client() -> None:
     seen: list[Any] = []
-    app = App(Engine(), Tokenizer(), "fixture", api_key=lambda t, path: seen.append((t, path)) or t == "good")
+
+    def api_key(t: Any, path: Any) -> bool:
+        seen.append((t, path))
+        return bool(t == "good")
+
+    app = App(Engine(), Tokenizer(), "fixture", api_key=api_key)
     server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(app))
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     try:
         codes = []
-        for headers in ({"Authorization": "Bearer good"}, {"x-api-key": "good"}, {"Authorization": "Bearer bad"}, {}):
+        for headers in (
+            {"Authorization": "Bearer good"},
+            {"x-api-key": "good"},
+            {"Authorization": "Bearer bad"},
+            {},
+        ):
             conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
             conn.request("GET", "/engine/versions", None, {"RAMVI-API-Version": "1.0", **headers})
             codes.append(conn.getresponse().status)

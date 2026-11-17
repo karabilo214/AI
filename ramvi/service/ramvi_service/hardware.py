@@ -46,9 +46,7 @@ class HardwareProfile:
 
 def _run(args: list[str], timeout: float = 5.0) -> str | None:
     try:
-        done = subprocess.run(
-            args, capture_output=True, text=True, timeout=timeout, check=False
-        )
+        done = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     return done.stdout if done.returncode == 0 else None
@@ -186,10 +184,7 @@ def _macos(info: dict[str, Any]) -> None:
         for line in vm.splitlines():
             key, _, value = line.partition(":")
             pages[key.strip()] = _int(value.strip().rstrip("."))
-        free = sum(
-            pages.get(k) or 0
-            for k in ("Pages free", "Pages inactive", "Pages speculative")
-        )
+        free = sum(pages.get(k) or 0 for k in ("Pages free", "Pages inactive", "Pages speculative"))
         info["ram_available_mb"] = free * page // MIB
     info["other_gpus"] = parse_system_profiler(
         _run(["system_profiler", "-json", "SPDisplaysDataType"], timeout=15) or ""
@@ -213,7 +208,7 @@ def _windows(info: dict[str, Any]) -> None:
             ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
         ]
 
-    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined,unused-ignore]
     status = MemoryStatus()
     status.dwLength = ctypes.sizeof(MemoryStatus)
     if kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
@@ -228,11 +223,12 @@ def _windows(info: dict[str, Any]) -> None:
     try:
         import winreg
 
-        key = winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE,
+        key = winreg.OpenKey(  # type: ignore[attr-defined,unused-ignore]
+            winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined,unused-ignore]
             r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
         )
-        info["cpu_name"] = str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
+        name = winreg.QueryValueEx(key, "ProcessorNameString")[0]  # type: ignore[attr-defined,unused-ignore]
+        info["cpu_name"] = str(name).strip()
     except OSError:
         pass
     out = _run(["powershell", "-NoProfile", "-Command", _WMI_PS], timeout=15)
@@ -249,8 +245,14 @@ _WMI_PS = (
 
 def _vendor(name: str) -> str:
     low = name.lower()
-    for key, vendor in (("nvidia", "NVIDIA"), ("geforce", "NVIDIA"), ("radeon", "AMD"),
-                        ("amd", "AMD"), ("intel", "Intel"), ("apple", "Apple")):
+    for key, vendor in (
+        ("nvidia", "NVIDIA"),
+        ("geforce", "NVIDIA"),
+        ("radeon", "AMD"),
+        ("amd", "AMD"),
+        ("intel", "Intel"),
+        ("apple", "Apple"),
+    ):
         if key in low:
             return vendor
     return "unknown"
@@ -323,6 +325,8 @@ def collect(disk_path: str | os.PathLike[str] | None = None) -> HardwareProfile:
             _windows(info)
     except Exception:  # профиль не должен ронять запуск
         pass
+    disk_total: int | None
+    disk_free: int | None
     try:
         usage = shutil.disk_usage(path)
         disk_total, disk_free = usage.total // MIB, usage.free // MIB

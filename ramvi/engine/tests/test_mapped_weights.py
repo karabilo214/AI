@@ -78,12 +78,18 @@ def test_owned_ram_now_below_file_size_for_offloaded_model() -> None:
 )
 def test_native_check(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
     features: dict[str, bool],
     platform: str,
     no_cpp: str | None,
     expected: bool,
 ) -> None:
     from ramvi_engine.cpu import native_check
+
+    # Библиотека не хранится в git (*.dll в .gitignore) — подставная папка пакета с файлом.
+    (tmp_path / "native").mkdir()
+    (tmp_path / "native" / "qmm.dll").write_bytes(b"")
+    monkeypatch.setattr(native_check, "__file__", str(tmp_path / "cpu" / "native_check.py"))
 
     if no_cpp is None:
         monkeypatch.delenv("RAMVI_NO_CPP", raising=False)

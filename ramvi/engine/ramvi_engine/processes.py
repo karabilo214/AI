@@ -109,7 +109,7 @@ class ParentWatch:
         import msvcrt
         from ctypes import wintypes
 
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
         kernel.PeekNamedPipe.argtypes = [
             wintypes.HANDLE,
             ctypes.c_void_p,
@@ -119,7 +119,7 @@ class ParentWatch:
             ctypes.c_void_p,
         ]
         kernel.GetFileType.argtypes = [wintypes.HANDLE]
-        handle = msvcrt.get_osfhandle(fileno)
+        handle = msvcrt.get_osfhandle(fileno)  # type: ignore[attr-defined,unused-ignore]
         if kernel.GetFileType(handle) != 3:  # FILE_TYPE_PIPE
             return False
         while True:
@@ -178,7 +178,7 @@ class ProcessSupervisor:
         import msvcrt
         from ctypes import wintypes
 
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
         kernel.PeekNamedPipe.argtypes = [
             wintypes.HANDLE,
             ctypes.c_void_p,
@@ -429,7 +429,7 @@ class _WindowsJob:
 
         if sys.platform != "win32":
             raise OSError("Windows Jobs require Windows")
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
         kernel.CreateJobObjectW.restype = wintypes.HANDLE
         kernel.SetInformationJobObject.argtypes = [
             wintypes.HANDLE,

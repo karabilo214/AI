@@ -9,10 +9,10 @@ from ramvi_engine.model_loader import ModelConfig
 from ramvi_service.supervisor import Supervisor, discover
 
 sup = Supervisor(EngineProcess(ModelConfig("Qwen3-0.6B")), Path(data_dir) / "run")
-sup.start()                                # сразу возвращает "starting", загрузка идёт в фоне
+sup.start()  # сразу возвращает "starting", загрузка идёт в фоне
 sup.wait("ready", "failed", timeout=300)
 ...
-sup.stop()                                 # останавливает только свой движок и освобождает имя
+sup.stop()  # останавливает только свой движок и освобождает имя
 
 discover(Path(data_dir) / "run", "engine")  # для интерфейса и других клиентов
 ```

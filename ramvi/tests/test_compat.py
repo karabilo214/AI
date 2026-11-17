@@ -1,15 +1,15 @@
 from dataclasses import replace
+from typing import Any
 
 from ramvi_engine.planning.resources import MemoryUsage, ResourceEstimate
-
 from ramvi_service import compat
 from ramvi_service.hardware import GPUInfo, HardwareProfile
-from ramvi_service.i18n import load_catalog, render
+from ramvi_service.i18n import Msg, load_catalog, render
 
 RU, EN = load_catalog("ru"), load_catalog("en")
 
 
-def ru(message):
+def ru(message: Msg | str) -> str:
     """Текст сообщения так, как его покажет оболочка на русском (3.14)."""
     return render(message, RU)
 
@@ -33,33 +33,33 @@ ASUS = HardwareProfile(
 )
 
 
-def est(vram_gb, ram_gb=0.0, mapped_gb=0.0):
+def est(vram_gb: float, ram_gb: float = 0.0, mapped_gb: float = 0.0) -> ResourceEstimate:
     return ResourceEstimate(
         weights=MemoryUsage(int(vram_gb * GB), int(ram_gb * GB), int(mapped_gb * GB))
     )
 
 
-def cand(name, estimate, size_gb=5, **kw):
+def cand(name: str, estimate: ResourceEstimate, size_gb: float = 5, **kw: Any) -> compat.Candidate:
     return compat.Candidate(name, "gguf", int(size_gb * GB), estimate, **kw)
 
 
-def test_small_model_recommended():
+def test_small_model_recommended() -> None:
     assert compat.assess(ASUS, cand("4B", est(4))).status == compat.RECOMMENDED
 
 
-def test_14b_on_8gb_gpu_is_slow_not_unsuitable():
+def test_14b_on_8gb_gpu_is_slow_not_unsuitable() -> None:
     v = compat.assess(ASUS, cand("14B", est(6.5, ram_gb=2, mapped_gb=1), size_gb=9))
     assert v.status == compat.SLOW and v.reasons[0].code == "compat.reason.on_cpu"
     assert ru(v.reasons[0]) == "3072 МБ весов не помещаются в VRAM и считаются на CPU"
     assert render(v.reasons[0], EN) == "3072 MB of weights do not fit in VRAM and run on the CPU"
 
 
-def test_low_available_ram_is_note_not_failure():
+def test_low_available_ram_is_note_not_failure() -> None:
     v = compat.assess(ASUS, cand("14B", est(6.5, ram_gb=6, mapped_gb=3)))
     assert v.status == compat.SLOW and any("закройте" in ru(r) for r in v.reasons)
 
 
-def test_not_enough_ram_disk_format_gpu():
+def test_not_enough_ram_disk_format_gpu() -> None:
     assert compat.assess(ASUS, cand("70B", est(7, ram_gb=30))).status == compat.NO_RAM
     assert compat.assess(ASUS, cand("huge", est(4), size_gb=200)).status == compat.NO_DISK
     assert (
@@ -78,11 +78,11 @@ def test_not_enough_ram_disk_format_gpu():
     assert compat.assess(no_nvidia, cand("4B", est(4))).status == compat.UNSUPPORTED
 
 
-def test_plan_over_vram_flagged():
+def test_plan_over_vram_flagged() -> None:
     assert compat.assess(ASUS, cand("bad plan", est(12))).status == compat.NO_VRAM
 
 
-def test_filter_order_and_size():
+def test_filter_order_and_size() -> None:
     cands = [
         cand("70B", est(7, ram_gb=30)),
         cand("14B", est(6.5, ram_gb=2), size_gb=9),
@@ -93,7 +93,7 @@ def test_filter_order_and_size():
     assert [v.name for v in compat.filter_models(ASUS, cands, max_file_bytes=4 * GB)] == ["4B"]
 
 
-def test_speed_only_from_measurements():
+def test_speed_only_from_measurements() -> None:
     v = compat.assess(ASUS, cand("Qwen3-14B", est(6.5, ram_gb=2), model_id="qwen3-14b"))
     assert v.status == compat.SLOW and ru(v.speed) == "примерно 7.8–9.1 токенов/с"
     assert ru(compat.assess(ASUS, cand("4B", est(4), model_id="qwen3-4b")).speed) == "нет замера"
@@ -110,7 +110,7 @@ def test_speed_only_from_measurements():
     )
 
 
-def test_choose_fast_and_large_with_reasons():
+def test_choose_fast_and_large_with_reasons() -> None:
     cands = [
         cand("0.6B", est(1), params_b=0.6, measured_tok_s=(60, 70)),
         cand("4B", est(4), params_b=4, measured_tok_s=(40, 50)),
@@ -118,6 +118,7 @@ def test_choose_fast_and_large_with_reasons():
         cand("70B", est(7, ram_gb=30), params_b=70),
     ]
     fast = compat.choose(ASUS, cands, compat.FAST)
+    assert fast.best is not None
     assert fast.best.name == "0.6B"
     assert (
         ru(fast.reason)
@@ -132,6 +133,7 @@ def test_choose_fast_and_large_with_reasons():
         == "медленно, 14B, примерно 7.8–9.1 токенов/с, крупнее, но медленнее"
     )
     large = compat.choose(ASUS, cands, compat.LARGE)
+    assert large.best is not None
     assert (
         large.best.name == "14B"
         and "медленно" in ru(large.reason)
@@ -142,7 +144,7 @@ def test_choose_fast_and_large_with_reasons():
     assert render(large.alternatives[0][1], EN).endswith("faster but smaller")
 
 
-def test_choose_nothing_runnable_explains():
+def test_choose_nothing_runnable_explains() -> None:
     c = compat.choose(ASUS, [cand("70B", est(7, ram_gb=30))])
     assert c.best is None and c.alternatives == ()
     assert ru(c.reason) == "ни одна модель не запустится на этом ПК (70B: Не хватает RAM)"

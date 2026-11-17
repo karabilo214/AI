@@ -286,7 +286,9 @@ class ScopedServices:
     @handler("llm.complete", permission="llm", active=True)
     def _llm_complete(self, payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(payload.get("request"), dict) and payload["request"].get("stream"):
-            raise NotImplementedError("llm.complete returns one response; use llm.stream for a stream")
+            raise NotImplementedError(
+                "llm.complete returns one response; use llm.stream for a stream"
+            )
         llm, request, rights = self._llm_request(payload)
         cancel = self.grants.watch(self.owner, rights) if rights else threading.Event()
         try:
