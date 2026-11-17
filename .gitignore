@@ -5,25 +5,9 @@ __pycache__/
 .idea/
 .DS_Store
 *.zip
-# у anm свой git (ветка e3-continual)
-anm/
-# сохранённые мозги: восстанавливаются переобучением до бита (brain_store.py)
-human_brain/data/
-# результаты опытов в git не отправляются
-results*/
-evolve_results*/
-evolve_addition_results/
 log_*.txt
 *.log
-simple_counter/*.json
 # рабочие заметки с описанием машин — только локально
 CONTEXT.md
 CLAUDE.md
 AGENTS.md
-# отчёты о мозгах (результаты) — только локально
-human_brain/docs/report_*.md
-# данные wikitext (скачиваются) — не в git
-llm_opt/data/
-
-# Локальный архив исходного пакета с данными и бинарниками
-/archive/llm_app_local_*/
