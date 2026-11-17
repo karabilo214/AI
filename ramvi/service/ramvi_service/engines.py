@@ -136,10 +136,12 @@ class EngineManager:
         model_root: Path | None = None,
         context: Callable[[], int] = lambda: 2048,
         resident_for: Callable[[Model, int], int | None] = lambda model, context: None,
+        preflight: Callable[[Model], tuple[str, str] | None] = lambda model: None,
     ) -> None:
         self.models, self.run_dir = models, Path(run_dir)
         self.context = context  # 4.5: контекст из профиля задачи при каждой загрузке
         self.resident_for = resident_for  # 4.7: сохранённый безопасный план (или None)
+        self.preflight = preflight  # 4.8: не запускать то, что точно не поместится
         self.model_root = model_root
         self._make_engine, self._policy, self._interval = make_engine, policy, interval
         self.request_timeout = request_timeout
@@ -211,6 +213,10 @@ class EngineManager:
                 model = resolve_model(self.models.get(model_id), self.model_root)
             except NotFound:
                 raise EngineError("engine.model_not_found", model_id=model_id) from None
+            refused = self.preflight(model)  # до остановки текущей: рабочая модель остаётся
+            if refused is not None:
+                code, detail = refused
+                raise EngineError(code, model_id=model_id, detail=detail, path=model.path)
             self._stop_locked()
             self._loading = model_id
             self._problem, self._problem_model = None, model_id

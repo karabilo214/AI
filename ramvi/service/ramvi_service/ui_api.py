@@ -23,6 +23,7 @@ from ramvi_service.chat import ChatError, ChatService, Generation
 from ramvi_service.control_run import ControlRun
 from ramvi_service.download_manager import DownloadManager
 from ramvi_service.engines import resolve_model
+from ramvi_service.guard import Guard
 from ramvi_service.i18n import to_json
 from ramvi_service.model_control import ModelControl
 from ramvi_service.model_fit import ModelFit
@@ -64,6 +65,7 @@ class UIServer:
         self.downloads: DownloadManager | None = None
         self.fit: ModelFit | None = None  # 4.4: статусы совместимости
         self.control: ControlRun | None = None  # 4.7: контрольный прогон
+        self.guard: Guard | None = None  # 4.8: подсказки при нехватке памяти
         self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
@@ -99,7 +101,7 @@ class UIServer:
         """JSON-ответ или Generation для потока."""
         chat = self.chat
         if method == "GET" and path == "/status":
-            return {"engine": self._engine_status(), "limits": asdict(chat.limits)}
+            return {"engine": self._status(), "limits": asdict(chat.limits)}
         if method == "GET" and path == "/models":
             return {"models": self._with_fit(chat.models())}
         if method == "GET" and path == "/chats":
@@ -174,9 +176,9 @@ class UIServer:
             if not self.chat.has_model(model_id):
                 raise ChatError("chat.model_not_found", model_id=model_id)
             started = control.load(model_id)
-            return {"started": started, "engine": self._engine_status()}
+            return {"started": started, "engine": self._status()}
         unloaded = control.unload()
-        return {"unloaded": unloaded, "engine": self._engine_status()}
+        return {"unloaded": unloaded, "engine": self._status()}
 
     def _onboarding_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
         """3.6: мастер первого запуска."""
@@ -220,6 +222,17 @@ class UIServer:
             raise ChatError("api.not_found")
         action = {"pause": downloads.pause, "resume": downloads.resume, "cancel": downloads.cancel}
         return {"download": action[match.group(2)](match.group(1))}
+
+    def _status(self) -> dict[str, Any]:
+        """Статус движка; при нехватке памяти — проверенные подсказки, что сделать (4.8)."""
+        status = self._engine_status()
+        problem = status.get("problem")
+        if self.guard is not None and isinstance(problem, dict):
+            if problem.get("code") == "engine.no_memory" and "suggestions" not in problem:
+                model_id = (problem.get("params") or {}).get("model_id")
+                if model_id:
+                    problem["suggestions"] = self.guard.suggestions(model_id)
+        return status
 
     def _control_route(self, method: str, model_id: str) -> Any:
         """4.7: запустить контрольный прогон модели (POST) или узнать его состояние (GET)."""

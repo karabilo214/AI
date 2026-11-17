@@ -238,11 +238,13 @@ class ModelFit:
         file_bytes: int,
         downloaded: bool,
         capabilities: tuple[str, ...] | list[str] = (),
+        task: TaskProfile | None = None,
     ) -> dict[str, Any]:
+        """Статус модели; `task` — другой профиль вместо сохранённого (4.8: «а если…»)."""
         if meta is None:
             return {"status": UNKNOWN, "reasons": [msg("compat.reason.no_header").json()]}
         hw, native = self._profile()
-        task = self.profile()
+        task = task or self.profile()
         context = task.effective_context
         arch = str(meta.meta.get("general.architecture", ""))
         try:
@@ -362,7 +364,11 @@ class ModelFit:
         )
 
     def for_file(
-        self, path: str | os.PathLike[str], name: str, model_id: str | None = None
+        self,
+        path: str | os.PathLike[str],
+        name: str,
+        model_id: str | None = None,
+        task: TaskProfile | None = None,
     ) -> dict[str, Any]:
         """Установленная модель: заголовок из файла (кэш по пути, размеру и времени);
         есть замер контрольного прогона на этом ПК (4.7) — скорость из него."""
@@ -379,7 +385,8 @@ class ModelFit:
                 self._files[key] = None
         meta = self._files[key]
         arch = "" if meta is None else str(meta.meta.get("general.architecture", ""))
-        verdict = self.verdict(meta, name, stat.st_size, True, engine_capabilities("gguf", arch))
+        caps = engine_capabilities("gguf", arch)
+        verdict = self.verdict(meta, name, stat.st_size, True, caps, task=task)
         if model_id is not None and self.local_result is not None and "context" in verdict:
             found = self.local_result(model_id, self.hardware_profile(), verdict["context"])
             if found is not None:

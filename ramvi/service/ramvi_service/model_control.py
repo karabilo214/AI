@@ -114,6 +114,9 @@ class ModelControl:
             pending, error = self._pending, self._error
         if status["loading"] is None and pending is not None:
             status["loading"] = pending[0]
-        if status["problem"] is None and error is not None and status["state"] != "ready":
-            status["problem"] = error
+        if status["problem"] is None and error is not None:
+            failed = (error.get("params") or {}).get("model_id")
+            # 4.8: отказ новой модели виден и тогда, когда прежняя продолжает работать.
+            if status["state"] != "ready" or (failed and failed != status["model_id"]):
+                status["problem"] = error
         return status

@@ -249,5 +249,9 @@
   "compat.speed_here": "measured on this PC: {low}–{high} tokens/s",
   "compat.reason.unstable": "the control run was unstable — speed varied a lot or there were errors",
   "compat.reason.rolled_back": "the control run ran out of memory — layers in VRAM reduced from {before} to {after}",
-  "control.failed": "Control run failed ({detail})"
+  "control.failed": "Control run failed ({detail})",
+  "guard.reduce_context": "reduce the context to {context} tokens — then the model fits in free memory",
+  "guard.economy_mode": "switch on the “save resources” mode (short context)",
+  "guard.smaller_model": "use the {model_id} model — it fits in free memory",
+  "guard.close_programs": "close other programs — memory is busy now, but this PC could handle it"
 }

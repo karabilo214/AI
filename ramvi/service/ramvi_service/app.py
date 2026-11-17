@@ -35,6 +35,7 @@ from ramvi_service.engines import (
     SwitchableProvider,
     default_engine,
 )
+from ramvi_service.guard import Guard
 from ramvi_service.hardware import collect
 from ramvi_service.i18n import load_catalog, render
 from ramvi_service.model_control import ModelControl
@@ -141,6 +142,8 @@ def build(
 
     fit.local_result = local_result
     engines.resident_for = runs.resident_for  # безопасный план после отката (4.7)
+    guard = Guard(fit, Models(db), root, task)
+    engines.preflight = guard.preflight  # невыполнимый план — сразу понятная ошибка (4.8)
 
     def after_download(model_id: str) -> None:
         nvidia = any(g.vendor == "NVIDIA" for g in fit.hardware_profile().gpus)
@@ -155,7 +158,7 @@ def build(
         on_installed=after_download,
         **(download_options or {}),
     )
-    server.fit, server.control = fit, runs
+    server.fit, server.control, server.guard = fit, runs, guard
     server.app_dir = root
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
