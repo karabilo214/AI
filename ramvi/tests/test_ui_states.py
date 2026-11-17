@@ -198,7 +198,7 @@ def run_service(data_dir: Path) -> subprocess.CompletedProcess[str]:
 
 def test_data_dir_that_is_a_file_reports_no_access(tmp_path: Path) -> None:
     blocker = tmp_path / "data"
-    blocker.write_text("не папка")
+    blocker.write_text("не папка", encoding="utf-8")
 
     result = run_service(blocker / "inner")
 

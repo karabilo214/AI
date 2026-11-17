@@ -1,6 +1,7 @@
 """3.9 (PORT-01): переносимая папка — относительные пути переживают перенос и смену буквы диска."""
 
 import shutil
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -85,3 +86,14 @@ def test_bundled_tokenizer_from_environment(
     engine = default_engine(model)
     assert engine.config.tokenizer == str(tmp_path / "runtime" / "tokenizers" / "Qwen3-8B")  # type: ignore[attr-defined]
     assert "--tokenizer" in engine._arguments()  # type: ignore[attr-defined]
+
+
+def test_close_releases_database_file(tmp_path: Path) -> None:
+    """После close файл базы не держится (на Windows иначе папку не перенести)."""
+    app = tmp_path / "RAMVI"
+    app.mkdir()
+    server, engines, _ = start(app)
+    server.close()
+    engines.stop()
+    with pytest.raises(sqlite3.ProgrammingError):  # соединение закрыто
+        server.chat.models_repo.db.one("SELECT 1")

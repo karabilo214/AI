@@ -98,6 +98,9 @@ def build(
         sections=sections,
         module_data=ModuleDataApi(sections, data_dir / "exports"),
     )
+    server.on_close.append(
+        db.close
+    )  # иначе файл базы открыт и после close (Windows не даст перенести)
     return server, engines
 
 

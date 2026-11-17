@@ -52,6 +52,7 @@ class UIServer:
         self.onboarding = onboarding
         self.config = config
         self.sections = sections
+        self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
         self._server = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
         self._server.daemon_threads = True
@@ -76,6 +77,8 @@ class UIServer:
             self._server.shutdown()
             self._thread.join(5)
         self._server.server_close()
+        while self.on_close:
+            self.on_close.pop()()
 
     # --- маршруты ------------------------------------------------------------------
 

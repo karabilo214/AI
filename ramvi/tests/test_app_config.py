@@ -106,7 +106,7 @@ def test_invalid_values_change_nothing(config: AppConfig) -> None:
 
 def test_folder_without_access_is_reported(config: AppConfig, tmp_path: Path) -> None:
     blocker = tmp_path / "file"
-    blocker.write_text("не папка")
+    blocker.write_text("не папка", encoding="utf-8")
 
     code, params = code_of(lambda: config.update({"models_dir": str(blocker / "models")}))
 

@@ -141,13 +141,13 @@ def used_keys(root: Path = ROOT) -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
     for path, line, text, doc in python_strings(root):
         if not doc and _is_key(text, namespaces):
-            found.append((text, f"{path.relative_to(root)}:{line}"))
+            found.append((text, f"{path.relative_to(root).as_posix()}:{line}"))
     for path, line, text in csharp_strings(root):
         if _is_key(text, namespaces):
-            found.append((text, f"{path.relative_to(root)}:{line}"))
+            found.append((text, f"{path.relative_to(root).as_posix()}:{line}"))
     for path, line, text in xaml_lines(root):
         for match in XAML_KEY.finditer(text):
-            found.append((match.group(1), f"{path.relative_to(root)}:{line}"))
+            found.append((match.group(1), f"{path.relative_to(root).as_posix()}:{line}"))
     return found
 
 
@@ -163,17 +163,17 @@ def hardcoded_texts(root: Path = ROOT) -> list[str]:
     for path, line, text, doc in python_strings(root):
         if not doc and CYRILLIC.search(text):
             errors.append(
-                f"{path.relative_to(root)}:{line}: user text outside the catalog: {text[:60]!r}"
+                f"{path.relative_to(root).as_posix()}:{line}: user text outside the catalog: {text[:60]!r}"
             )
     for path, line, text in csharp_strings(root):
         if CYRILLIC.search(text):
             errors.append(
-                f"{path.relative_to(root)}:{line}: user text outside the catalog: {text[:60]!r}"
+                f"{path.relative_to(root).as_posix()}:{line}: user text outside the catalog: {text[:60]!r}"
             )
     for path, line, text in xaml_lines(root):
         if CYRILLIC.search(text):
             errors.append(
-                f"{path.relative_to(root)}:{line}: user text outside the catalog: {text.strip()[:60]!r}"
+                f"{path.relative_to(root).as_posix()}:{line}: user text outside the catalog: {text.strip()[:60]!r}"
             )
     return errors
 
