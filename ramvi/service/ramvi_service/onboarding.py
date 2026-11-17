@@ -394,6 +394,11 @@ class Onboarding:
         )
         return model_json(model)
 
+    def models_folder(self) -> Path:
+        """Папка моделей из настроек (3.7): сюда же кладёт файлы загрузчик (4.3)."""
+        root = self.app_dir or self.data_dir
+        return app_settings.load(root).resolve(root, "models_dir")
+
     def scan_models_dir(self) -> dict[str, Any]:
         """«Обновить список»: подключить на месте модели из папки моделей настроек (3.7).
 
@@ -402,8 +407,7 @@ class Onboarding:
         решает заголовок GGUF и поддерживаемая архитектура. Если указана сама папка моделей
         Ollama, смотрится и её `blobs`. Ничего не копируется; уже подключённые не дублируются.
         """
-        root = self.app_dir or self.data_dir
-        folder = app_settings.load(root).resolve(root, "models_dir")
+        folder = self.models_folder()
         folders = [folder, folder / "blobs"]
         before = {m.id for m in self.models.all()}
         added: list[str] = []

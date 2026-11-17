@@ -19,6 +19,7 @@ from typing import Any
 from ramvi_service.app_config import AppConfig
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatError, ChatService, Generation
+from ramvi_service.download_manager import DownloadManager
 from ramvi_service.i18n import to_json
 from ramvi_service.model_control import ModelControl
 from ramvi_service.onboarding import Onboarding
@@ -55,6 +56,7 @@ class UIServer:
         self.config = config
         self.sections = sections
         self.catalog = catalog
+        self.downloads: DownloadManager | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
         self._server = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
@@ -115,6 +117,8 @@ class UIServer:
                 return self.config.get()
             if method == "POST":
                 return self.config.update(body)
+        if path == "/downloads" or path.startswith("/downloads/"):
+            return self._downloads_route(method, path, body)
         if path in ("/catalog", "/catalog/refresh"):
             return self._catalog_route(method, path)
         if path in ("/system", "/onboarding", "/models/import", "/models/scan"):
@@ -189,6 +193,21 @@ class UIServer:
             return catalog.refresh()
         raise ChatError("api.not_found")
 
+    def _downloads_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
+        """4.3: загрузки по записи каталога — очередь, пауза, продолжение, отмена."""
+        downloads = self.downloads
+        if downloads is None:
+            raise ChatError("api.not_found")
+        if method == "GET" and path == "/downloads":
+            return {"downloads": downloads.list()}
+        if method == "POST" and path == "/downloads":
+            return {"download": downloads.start(_required_str(body, "entry_id"))}
+        match = re.fullmatch(f"/downloads/{_ID}/(pause|resume|cancel)", path)
+        if method != "POST" or match is None:
+            raise ChatError("api.not_found")
+        action = {"pause": downloads.pause, "resume": downloads.resume, "cancel": downloads.cancel}
+        return {"download": action[match.group(2)](match.group(1))}
+
     def _sections_route(self, method: str, path: str) -> Any:
         """3.11: разделы интерфейса; модуль загружается при первом открытии раздела."""
         registry = self.sections
@@ -244,6 +263,8 @@ _STATUS = {
     "api.not_found": 404,
     "chat.not_found": 404,
     "chat.model_not_found": 404,
+    "download.not_found": 404,
+    "download.unknown_entry": 404,
     "chat.busy": 409,
     "api.unauthorized": 401,
     "api.forbidden": 403,

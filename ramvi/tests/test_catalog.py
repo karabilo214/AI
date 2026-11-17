@@ -125,7 +125,7 @@ def test_huggingface_adapter_fills_required_fields_pinned_to_revision(web: Fixtu
         "no-hash-Q4_K_M.gguf",
     }  # части разбитого файла не берутся
     q4 = entries["Qwen3-8B-Q4_K_M.gguf"]
-    assert problems(q4) == ["url"]  # адрес тестового сервера — http, у настоящего https
+    assert problems(q4) == []  # http допустим только у 127.0.0.1 (тестовый сервер)
     assert q4.version == "a" * 40
     assert q4.url == f"{web.base}/Qwen/Qwen3-8B-GGUF/resolve/{'a' * 40}/Qwen3-8B-Q4_K_M.gguf"
     assert (q4.bytes, q4.checksum, q4.architecture, q4.quantization, q4.license) == (

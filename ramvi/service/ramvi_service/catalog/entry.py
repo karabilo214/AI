@@ -9,6 +9,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from ramvi_service import web
+
 SHA256 = re.compile(r"sha256:[0-9a-f]{64}")
 REQUIRED = (
     "version",
@@ -64,6 +66,6 @@ def problems(entry: CatalogEntry) -> list[str]:
         found.append("bytes")
     if entry.checksum and not SHA256.fullmatch(entry.checksum):
         found.append("checksum")
-    if entry.url and not entry.url.startswith("https://"):
+    if entry.url and not web.allowed(entry.url):  # HTTPS (HTTP — только 127.0.0.1)
         found.append("url")
     return sorted(set(found))

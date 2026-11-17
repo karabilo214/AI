@@ -26,6 +26,7 @@ from ramvi_service.app_config import AppConfig, check_folder
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatService
 from ramvi_service.contracts.modules import Authority
+from ramvi_service.download_manager import DownloadManager, register_downloaded
 from ramvi_service.engines import (
     EngineManager,
     EngineTarget,
@@ -53,6 +54,7 @@ def build(
     restart_policy: Callable[[], RestartPolicy] = RestartPolicy,
     app_dir: Path | None = None,
     catalog: Catalog | None = None,
+    download_options: dict[str, Any] | None = None,
 ) -> tuple[UIServer, EngineManager]:
     """Собрать сервис; `engine_command` — только для проверок без модели."""
     db = open_core(data_dir)
@@ -79,6 +81,7 @@ def build(
         policy=restart_policy,
         model_root=root,
     )
+    catalog = Catalog(data_dir) if catalog is None else catalog
     authority = Authority()
     llm = SharedLLM(authority, SwitchableProvider(engines))
     onboarding = Onboarding(data_dir, Models(db), app_dir=root)
@@ -99,11 +102,19 @@ def build(
         config=None if app_dir is None else AppConfig(app_dir, data_dir),
         sections=sections,
         module_data=ModuleDataApi(sections, data_dir / "exports"),
-        catalog=Catalog(data_dir) if catalog is None else catalog,
+        catalog=catalog,
     )
-    server.on_close.append(
-        db.close
-    )  # иначе файл базы открыт и после close (Windows не даст перенести)
+    server.downloads = DownloadManager(
+        db,
+        catalog,
+        onboarding.models_folder,
+        register_downloaded(onboarding.import_model, Models(db), catalog),
+        **(download_options or {}),
+    )
+    # Закрывается в обратном порядке: сначала загрузки, потом база
+    # (иначе файл базы открыт и после close — Windows не даст перенести папку).
+    server.on_close.append(db.close)
+    server.on_close.append(server.downloads.close)
     return server, engines
 
 

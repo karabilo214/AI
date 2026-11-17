@@ -1,8 +1,10 @@
 """4.3 MOD-02/MOD-04: загрузка файлов моделей.
 
 Пауза = остановка с сохранением `.part`; продолжение — HTTP Range с места
-остановки. Файл появляется под своим именем только после проверки SHA-256
-(атомарный os.replace). Имя файла не может выйти за папку моделей.
+остановки (и после переадресации на CDN). Отмена = остановка и удаление `.part`.
+Файл появляется под своим именем только после проверки SHA-256 (атомарный
+os.replace). Имя файла не может выйти за папку моделей. Адреса — только HTTPS
+(`ramvi_service.web`).
 
 3.14: ошибка загрузки — ключ `download.*` и параметры (`DownloadError.code/params`).
 """
@@ -12,11 +14,11 @@ import os
 import shutil
 import threading
 import time
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
+from ramvi_service import web
 from ramvi_service.i18n import UserError
 
 CHUNK = 1024 * 1024
@@ -29,6 +31,14 @@ class DownloadError(UserError):
 
 class Paused(DownloadError):
     pass
+
+
+class Cancelled(DownloadError):
+    pass
+
+
+class Interrupted(DownloadError):
+    """Соединение закрылось раньше конца файла; `.part` цел — можно продолжить."""
 
 
 @dataclass(frozen=True)
@@ -71,8 +81,8 @@ class Download:
         on_progress: Callable[[Progress], None] | None = None,
         timeout: float = 30.0,
     ):
-        if not url.lower().startswith(("https://", "http://")):
-            raise DownloadError("download.only_http")
+        if not web.allowed(url):
+            raise DownloadError("download.only_https")
         if len(sha256) != 64:
             raise DownloadError("download.need_sha256")
         self.url, self.sha256, self.size = url, sha256.lower(), size
@@ -80,9 +90,25 @@ class Download:
         self.part = self.target.with_name(self.target.name + ".part")
         self.limit_bps, self.on_progress, self.timeout = limit_bps, on_progress, timeout
         self._pause = threading.Event()
+        self._cancel = threading.Event()
 
     def pause(self) -> None:
         self._pause.set()
+
+    def cancel(self) -> None:
+        """Остановить; `.part` удаляет `discard()` после выхода из `run()`."""
+        self._cancel.set()
+        self._pause.set()
+
+    @property
+    def stopped(self) -> str | None:
+        """«cancelled», «paused» или None — запрошенная остановка ещё не обработана."""
+        if self._cancel.is_set():
+            return "cancelled"
+        return "paused" if self._pause.is_set() else None
+
+    def discard(self) -> None:
+        self.part.unlink(missing_ok=True)
 
     def _check_space(self, need: int) -> None:
         free = shutil.disk_usage(self.target.parent).free
@@ -101,10 +127,12 @@ class Download:
                 self.part.unlink()
                 done = 0
             self._check_space(self.size - done)
-        request = urllib.request.Request(self.url)
-        if done:
-            request.add_header("Range", f"bytes={done}-")
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+        request = web.request(self.url, {"Range": f"bytes={done}-"} if done else None)
+        try:
+            response = web.OPENER.open(request, timeout=self.timeout)
+        except web.Refused:
+            raise DownloadError("download.only_https") from None
+        with response:
             if done and response.status != 206:  # сервер не умеет Range — заново
                 done = 0
             length = response.headers.get("Content-Length")
@@ -116,6 +144,8 @@ class Download:
             with self.part.open("ab" if done else "wb") as file:
                 while True:
                     if self._pause.is_set():
+                        if self._cancel.is_set():
+                            raise Cancelled("download.cancelled")
                         raise Paused("download.paused")
                     block = response.read(min(CHUNK, self.limit_bps or CHUNK))
                     if not block:
@@ -132,7 +162,7 @@ class Download:
                 file.flush()
                 os.fsync(file.fileno())
         if total is not None and self.part.stat().st_size != total:
-            raise DownloadError("download.interrupted")
+            raise Interrupted("download.interrupted")
         if digest.hexdigest() != self.sha256:
             self.part.unlink()
             raise DownloadError("download.hash_mismatch")
