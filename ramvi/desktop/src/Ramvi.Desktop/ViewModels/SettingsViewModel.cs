@@ -38,6 +38,11 @@ public sealed class SettingsViewModel : ObservableObject
     private string? _error;
     private string? _message;
     private bool _restartNeeded;
+    private readonly IReadOnlyCollection<ModelInfo> _models;
+    private readonly Func<Task>? _openModels;
+    private readonly Func<Task>? _defaultChanged;
+    private ModelInfo? _defaultModel;
+    private string? _savedDefault;
 
     public SettingsViewModel(
         Func<IChatApi> api,
@@ -46,9 +51,22 @@ public sealed class SettingsViewModel : ObservableObject
         Action<string>? applyTheme = null,
         Func<Task>? openOnboarding = null,
         Action? onUnloaded = null,
-        Action<string>? applyLanguage = null)
+        Action<string>? applyLanguage = null,
+        IReadOnlyCollection<ModelInfo>? models = null,
+        Func<Task>? openModels = null,
+        Func<Task>? defaultChanged = null)
     {
         _api = api;
+        _models = models ?? [];
+        _openModels = openModels;
+        _defaultChanged = defaultChanged;
+        ManageModelsCommand = new Command(
+            async () =>
+            {
+                IsOpen = false;
+                await _openModels!().ConfigureAwait(true);
+            },
+            () => _openModels is not null);
         _applyLanguage = applyLanguage;
         _onUnloaded = onUnloaded;
         UnloadModelCommand = new Command(UnloadModelAsync, () => _loadedModel is not null);
@@ -90,6 +108,19 @@ public sealed class SettingsViewModel : ObservableObject
 
     /// <summary>Снова открыть мастер первого запуска: проверка компьютера и подключение модели.</summary>
     public Command OpenOnboardingCommand { get; }
+
+    /// <summary>4.11: открыть экран «Модели» (скачать, удалить, по умолчанию).</summary>
+    public Command ManageModelsCommand { get; }
+
+    /// <summary>4.11: установленные модели для выбора модели по умолчанию.</summary>
+    public IReadOnlyCollection<ModelInfo> Models => _models;
+
+    /// <summary>4.11: модель новых чатов; сохраняется кнопкой «Сохранить».</summary>
+    public ModelInfo? DefaultModel
+    {
+        get => _defaultModel;
+        set => Set(ref _defaultModel, value);
+    }
 
     /// <summary>3.17: «Выгрузить модель» — освободить память; активна, только когда модель загружена.</summary>
     public Command UnloadModelCommand { get; }
@@ -213,6 +244,9 @@ public sealed class SettingsViewModel : ObservableObject
         {
             Show(await _api().SettingsAsync().ConfigureAwait(true));
             ShowEngine((await _api().StatusAsync().ConfigureAwait(true)).Engine);
+            _savedDefault = (await _api().OnboardingAsync().ConfigureAwait(true)).DefaultModel;
+            Raise(nameof(Models));
+            DefaultModel = _models.FirstOrDefault(m => m.Id == _savedDefault);
         }
         catch (Exception error) when (error is ApiException or HttpRequestException)
         {
@@ -294,7 +328,8 @@ public sealed class SettingsViewModel : ObservableObject
             ApiPort: port != saved.ApiPort ? port : null,
             NetworkAccess: NetworkAccess != saved.NetworkAccess ? NetworkAccess : null,
             Theme: Theme is { } theme && theme.Code != saved.Theme ? theme.Code : null);
-        if (update == new SettingsUpdate())
+        var newDefault = DefaultModel?.Id is { } id && id != _savedDefault ? id : null;
+        if (update == new SettingsUpdate() && newDefault is null)
         {
             Message = L["settings.saved"];
             return;
@@ -302,6 +337,22 @@ public sealed class SettingsViewModel : ObservableObject
 
         try
         {
+            if (newDefault is not null)
+            {
+                await _api().SetDefaultModelAsync(newDefault).ConfigureAwait(true);
+                _savedDefault = newDefault;
+                if (_defaultChanged is not null)
+                {
+                    await _defaultChanged().ConfigureAwait(true);
+                }
+            }
+
+            if (update == new SettingsUpdate())
+            {
+                Message = L["settings.saved"];
+                return;
+            }
+
             var info = await _api().SaveSettingsAsync(update).ConfigureAwait(true);
             Show(info);
             if (update.Theme is not null)

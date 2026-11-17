@@ -269,6 +269,89 @@ internal sealed class FakeChatApi : IChatApi
         new(AppSettings, new SettingsFolders("/app/" + AppSettings.DataDir, "/app/" + AppSettings.ModelsDir), "/app/data",
             ["ru", "en"], restart);
 
+    // --- 4.11: каталог, загрузки, выбор, по умолчанию, удаление ------------------------------
+
+    public List<CatalogEntryInfo> Catalog { get; } = [];
+
+    public bool CatalogStale { get; set; }
+
+    public int CatalogRefreshes { get; private set; }
+
+    public List<DownloadInfo> DownloadList { get; } = [];
+
+    public List<string> ModelCalls { get; } = [];
+
+    public Recommendation Recommendation { get; set; } =
+        new("balanced", null, Message("recommend.none", ("not_runnable", 0), ("not_for_task", 0), ("unknown", 0)), []);
+
+    public Task<CatalogView> CatalogAsync(CancellationToken cancel = default) =>
+        Task.FromResult(new CatalogView([], [.. Catalog], CatalogStale));
+
+    public Task<CatalogView> RefreshCatalogAsync(CancellationToken cancel = default)
+    {
+        CatalogRefreshes++;
+        return CatalogAsync(cancel);
+    }
+
+    public Task<IReadOnlyList<DownloadInfo>> DownloadsAsync(CancellationToken cancel = default) =>
+        Task.FromResult<IReadOnlyList<DownloadInfo>>([.. DownloadList]);
+
+    public Task<DownloadInfo> StartDownloadAsync(string entryId, CancellationToken cancel = default)
+    {
+        ModelCalls.Add($"download {entryId}");
+        var entry = Catalog.First(e => e.Id == entryId);
+        var item = new DownloadInfo($"{DownloadList.Count:x16}", entryId, "running", 0, entry.Bytes, entry.Name);
+        DownloadList.Add(item);
+        return Task.FromResult(item);
+    }
+
+    public Task<DownloadInfo> DownloadActionAsync(string downloadId, string action, CancellationToken cancel = default)
+    {
+        ModelCalls.Add($"{action} {downloadId}");
+        var index = DownloadList.FindIndex(d => d.Id == downloadId);
+        var state = action switch { "pause" => "paused", "resume" => "running", _ => "cancelled" };
+        DownloadList[index] = DownloadList[index] with { State = state };
+        return Task.FromResult(DownloadList[index]);
+    }
+
+    /// <summary>Загрузка дошла до конца: модель появляется в списке установленных.</summary>
+    public void FinishDownload(string downloadId, ModelInfo installed)
+    {
+        var index = DownloadList.FindIndex(d => d.Id == downloadId);
+        DownloadList[index] = DownloadList[index] with
+        {
+            State = "done",
+            BytesDone = DownloadList[index].TotalBytes ?? 0,
+            ModelId = installed.Id,
+        };
+        Models.Add(installed);
+    }
+
+    public Task<Recommendation> RecommendationsAsync(CancellationToken cancel = default) =>
+        Task.FromResult(Recommendation);
+
+    public Task SetDefaultModelAsync(string modelId, CancellationToken cancel = default)
+    {
+        ModelCalls.Add($"default {modelId}");
+        Onboarding = Onboarding with { DefaultModel = modelId };
+        return Task.CompletedTask;
+    }
+
+    public Task<DeleteModelResult> DeleteModelAsync(string modelId, bool deleteFile, CancellationToken cancel = default)
+    {
+        ModelCalls.Add($"delete {modelId} file={deleteFile}");
+        Models.RemoveAll(m => m.Id == modelId);
+        return Task.FromResult(new DeleteModelResult(true, deleteFile));
+    }
+
+    /// <summary>Сообщение сервиса <c>{code, params}</c>, как его присылает API.</summary>
+    public static JsonElement Message(string code, params (string Name, object Value)[] values)
+    {
+        var parameters = values.ToDictionary(v => v.Name, v => (object)v.Value);
+        return JsonSerializer.SerializeToElement(
+            new Dictionary<string, object> { ["code"] = code, ["params"] = parameters }, TestJson.Default.Object);
+    }
+
     public static Dictionary<string, System.Text.Json.JsonElement> Json(params (string Name, object Value)[] values) =>
         values.ToDictionary(v => v.Name, v => JsonSerializer.SerializeToElement(v.Value, TestJson.Default.Object));
 
@@ -277,6 +360,9 @@ internal sealed class FakeChatApi : IChatApi
 }
 
 [System.Text.Json.Serialization.JsonSerializable(typeof(object))]
+[System.Text.Json.Serialization.JsonSerializable(typeof(Dictionary<string, object>))]
+[System.Text.Json.Serialization.JsonSerializable(typeof(bool))]
+[System.Text.Json.Serialization.JsonSerializable(typeof(JsonElement))]
 [System.Text.Json.Serialization.JsonSerializable(typeof(int))]
 [System.Text.Json.Serialization.JsonSerializable(typeof(string))]
 internal sealed partial class TestJson : System.Text.Json.Serialization.JsonSerializerContext;

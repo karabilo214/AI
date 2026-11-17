@@ -25,7 +25,74 @@ public sealed record MessageInfo(
     string? Finish = null,
     IReadOnlyList<Attachment>? Attachments = null);
 
-public sealed record ModelInfo(string Id, string Architecture, string? Quant, long? Bytes);
+public sealed record ModelInfo(
+    string Id,
+    string Architecture,
+    string? Quant,
+    long? Bytes,
+    Dictionary<string, JsonElement>? Capabilities = null,
+    CompatInfo? Compat = null);
+
+// --- 4.11: каталог, загрузки, совместимость, рекомендации ---------------------------------
+
+/// <summary>План слоёв модели на этом компьютере (4.4).</summary>
+public sealed record PlanInfo(int Layers, int Resident, int Gpu, int Stream, int Cpu, int Hyb, long OffGpuBytes);
+
+/// <summary>Архитектура, размер (млрд параметров) и квант из заголовка GGUF.</summary>
+public sealed record CompatModel(string Key, double? SizeB, string? Quant);
+
+/// <summary>Подходит ли модель задаче профиля (4.5).</summary>
+public sealed record TaskFit(bool Suits, IReadOnlyList<JsonElement>? Reasons);
+
+/// <summary>Статус совместимости, причины (сообщения), скорость (сообщение) и план.</summary>
+public sealed record CompatInfo(
+    string Status,
+    IReadOnlyList<JsonElement>? Reasons = null,
+    JsonElement? Speed = null,
+    PlanInfo? Plan = null,
+    CompatModel? Model = null,
+    TaskFit? Task = null);
+
+public sealed record CatalogEntryInfo(
+    string Id,
+    string Provider,
+    string Name,
+    string Source,
+    long Bytes,
+    string Architecture,
+    string Quantization,
+    string License,
+    int? ContextLength = null,
+    string? Parameters = null,
+    CompatInfo? Compat = null);
+
+public sealed record CatalogProviderInfo(double? FetchedAt, ApiError? Error, int Shown, int Hidden);
+
+public sealed record CatalogView(
+    Dictionary<string, CatalogProviderInfo> Providers, IReadOnlyList<CatalogEntryInfo> Entries, bool Stale);
+
+/// <summary>Загрузка модели (4.3): queued/running/verifying/done/paused/failed/cancelled.</summary>
+public sealed record DownloadInfo(
+    string Id, string EntryId, string State, long BytesDone, long? TotalBytes, string File, ApiError? Error = null,
+    string? ModelId = null);
+
+public sealed record RecommendedItem(string Id, string Name, bool Installed, JsonElement? Reason = null);
+
+/// <summary>4.6: лучшая модель, причина (сообщение) и альтернативы.</summary>
+public sealed record Recommendation(
+    string Priority, RecommendedItem? Best, JsonElement Reason, IReadOnlyList<RecommendedItem> Alternatives);
+
+public sealed record DeleteModelResult(bool Deleted, bool FileDeleted);
+
+internal sealed record DownloadsResponse(IReadOnlyList<DownloadInfo> Downloads);
+
+internal sealed record DownloadResponse(DownloadInfo Download);
+
+internal sealed record EntryRequest(string EntryId);
+
+internal sealed record DeleteModelRequest(bool DeleteFile);
+
+internal sealed record DefaultModelResponse(string DefaultModel);
 
 public sealed record Limits(
     int MaxTextChars,
@@ -148,4 +215,12 @@ public sealed record UnloadResponse(bool Unloaded, EngineStatus Engine);
 [JsonSerializable(typeof(SectionsResponse))]
 [JsonSerializable(typeof(SectionResponse))]
 [JsonSerializable(typeof(SettingsUpdate))]
+[JsonSerializable(typeof(CatalogView))]
+[JsonSerializable(typeof(DownloadsResponse))]
+[JsonSerializable(typeof(DownloadResponse))]
+[JsonSerializable(typeof(EntryRequest))]
+[JsonSerializable(typeof(Recommendation))]
+[JsonSerializable(typeof(DeleteModelRequest))]
+[JsonSerializable(typeof(DeleteModelResult))]
+[JsonSerializable(typeof(DefaultModelResponse))]
 internal sealed partial class ApiJson : JsonSerializerContext;

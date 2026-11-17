@@ -74,6 +74,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _connect = connect;
         _loadPoll = loadPoll ?? TimeSpan.FromMilliseconds(300);
         Sections = new SectionsViewModel(() => _api);
+        ModelsScreen = new ModelsViewModel(() => _api, ReloadModelListAsync);
+        Sections.ModelsOpened += async (_, _) => await ModelsScreen.LoadAsync().ConfigureAwait(true);
         _pickFolder = pickFolder;
         _chooseDataDir = chooseDataDir;
         Settings = new SettingsViewModel(
@@ -83,7 +85,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             applyTheme,
             () => Onboarding!.OpenAsync(SelectedModel?.Id),
             OnModelUnloaded,
-            ApplyLanguage);
+            ApplyLanguage,
+            Models,
+            OpenModelsSectionAsync,
+            ReloadModelListAsync);
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -187,6 +192,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Разделы интерфейса (3.11).</summary>
     public SectionsViewModel Sections { get; }
+
+    /// <summary>Экран «Модели» (4.11).</summary>
+    public ModelsViewModel ModelsScreen { get; }
 
     /// <summary>Экран настроек (3.7).</summary>
     public SettingsViewModel Settings { get; }
@@ -780,6 +788,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         Sections.Relocalize();
+        ModelsScreen.Relocalize();
         Settings.Relocalize();
         Onboarding.Relocalize();
     }
@@ -976,6 +985,49 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 SetStatus(() => L.Format(
                     "models.scanned",
                     ("added", scan.Added.Count), ("skipped", scan.Skipped.Count), ("folder", scan.Folder)));
+            }
+
+            UpdateState();
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            ShowError(error);
+        }
+    }
+
+    /// <summary>4.11: «Управлять моделями…» в настройках — открыть раздел «Модели».</summary>
+    private Task OpenModelsSectionAsync()
+    {
+        if (Sections.Items.FirstOrDefault(i => i.View == "models") is { } models)
+        {
+            Sections.Selected = models;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 4.11: список моделей чата после скачивания, удаления или смены модели по умолчанию
+    /// на экране «Модели» — без просмотра папки, выбранная модель сохраняется, если осталась.
+    /// </summary>
+    private async Task ReloadModelListAsync()
+    {
+        try
+        {
+            var models = await _api.ModelsAsync().ConfigureAwait(true);
+            var selected = SelectedChat?.ModelId ?? SelectedModel?.Id;
+            Models.Clear();
+            foreach (var model in models)
+            {
+                Models.Add(model);
+            }
+
+            var onboarding = await _api.OnboardingAsync().ConfigureAwait(true);
+            var keep = Models.Any(m => m.Id == selected) ? selected : onboarding.DefaultModel;
+            ShowModel(keep ?? Models.FirstOrDefault()?.Id);
+            if (_problem?.State == UiState.NoModel && Models.Count > 0)
+            {
+                SetProblem(null);
             }
 
             UpdateState();

@@ -112,6 +112,9 @@ public sealed class Localizer
     public string Format(string key, params (string Name, object? Value)[] parameters) =>
         Format(key, parameters.ToDictionary(p => p.Name, p => p.Value, StringComparer.Ordinal));
 
+    /// <summary>Сообщение сервиса целиком (<c>{code, params}</c>, список или строка) на текущем языке.</summary>
+    public string Message(JsonElement message) => ValueText(message);
+
     /// <summary>Значение параметра; вложенное сообщение <c>{code, params}</c> переводится тем же языком.</summary>
     private string ValueText(object? value) => value switch
     {

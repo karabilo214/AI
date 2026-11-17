@@ -74,6 +74,15 @@ public sealed class SectionsViewModel : ObservableObject
 
     public bool IsChatSelected => _selected is null || _selected.View == "chat";
 
+    /// <summary>4.11: открыт встроенный раздел «Модели».</summary>
+    public bool IsModelsSelected => _selected?.View == "models";
+
+    /// <summary>Открыт раздел модуля (Agent, Character).</summary>
+    public bool IsModuleSelected => !IsChatSelected && !IsModelsSelected;
+
+    /// <summary>4.11: раздел «Модели» открыли — экран перечитывает данные.</summary>
+    public event EventHandler? ModelsOpened;
+
     /// <summary>Вид открытого раздела модуля (null, когда открыт чат).</summary>
     public ModuleSectionViewModel? Current
     {
@@ -92,6 +101,8 @@ public sealed class SectionsViewModel : ObservableObject
             if (value is not null && Set(ref _selected, value))
             {
                 Raise(nameof(IsChatSelected));
+                Raise(nameof(IsModelsSelected));
+                Raise(nameof(IsModuleSelected));
                 _ = OpenAsync(value);
             }
         }
@@ -111,6 +122,8 @@ public sealed class SectionsViewModel : ObservableObject
         _selected = Items.FirstOrDefault(i => i.Id == keep) ?? Items.FirstOrDefault(i => i.View == "chat");
         Raise(nameof(Selected));
         Raise(nameof(IsChatSelected));
+        Raise(nameof(IsModelsSelected));
+        Raise(nameof(IsModuleSelected));
     }
 
     private async Task OpenAsync(SectionItem item)
@@ -118,6 +131,13 @@ public sealed class SectionsViewModel : ObservableObject
         if (item.View == "chat")
         {
             Current = null;
+            return;
+        }
+
+        if (item.View == "models")
+        {
+            Current = null;
+            ModelsOpened?.Invoke(this, EventArgs.Empty);
             return;
         }
 

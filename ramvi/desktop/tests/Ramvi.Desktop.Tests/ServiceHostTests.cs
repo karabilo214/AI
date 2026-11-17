@@ -134,6 +134,22 @@ public sealed class RealServiceStartTests
                 var unloaded = await client.UnloadModelAsync(TestContext.Current.CancellationToken);
                 Assert.False(unloaded.Unloaded);
                 Assert.Equal(("stopped", null, null), (unloaded.Engine.State, unloaded.Engine.ModelId, unloaded.Engine.Problem));
+                // 4.11: экран «Модели» — те же поля и ошибки, что у сервиса (без сети).
+                var cancel = TestContext.Current.CancellationToken;
+                var catalog = await client.CatalogAsync(cancel);
+                Assert.Empty(catalog.Entries);
+                Assert.False(catalog.Stale);
+                Assert.Empty(await client.DownloadsAsync(cancel));
+                var unknown = await Assert.ThrowsAsync<Api.ApiException>(() => client.StartDownloadAsync("нет", cancel));
+                Assert.Equal("download.unknown_entry", unknown.Code);
+                var recommendation = await client.RecommendationsAsync(cancel);
+                Assert.Null(recommendation.Best);
+                Assert.Equal("recommend.none", recommendation.Reason.GetProperty("code").GetString());
+                var noDefault = await Assert.ThrowsAsync<Api.ApiException>(() => client.SetDefaultModelAsync("no-such-model", cancel));
+                Assert.Equal("chat.model_not_found", noDefault.Code);
+                var noDelete = await Assert.ThrowsAsync<Api.ApiException>(() => client.DeleteModelAsync("no-such-model", true, cancel));
+                Assert.Equal("chat.model_not_found", noDelete.Code);
+                Assert.Contains(await client.SectionsAsync(cancel), section => section.View == "models");
             }
             finally
             {

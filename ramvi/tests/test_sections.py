@@ -46,7 +46,7 @@ def test_only_chat_without_modules_character_may_be_absent(
 ) -> None:
     registry.discover(tmp_path / "no-modules-here")
 
-    assert [s["id"] for s in registry.list()] == ["chat"]
+    assert [s["id"] for s in registry.list()] == ["chat", "models"]  # встроенные разделы
     assert by_id(registry)["chat"]["state"] == "ready"
     assert registry.open("chat")["view"] == "chat"
 
@@ -76,7 +76,7 @@ def test_switching_sections_keeps_module_state_and_process(registry: SectionRegi
 
     assert registry.host.status("agent")["agent"]["worker"]["pid"] == pid  # не перезапускался
     assert registry.host.invoke("agent", "value")["value"] == value  # activate не повторялся
-    assert [s["id"] for s in registry.list()] == ["chat", "agent", "character"]
+    assert [s["id"] for s in registry.list()] == ["chat", "models", "agent", "character"]
 
 
 def test_broken_module_is_a_section_error_not_a_crash(registry: SectionRegistry) -> None:
@@ -127,7 +127,7 @@ def test_discover_installed_modules_and_report_broken(
 
     registry.discover(modules)
 
-    assert [s["id"] for s in registry.list()] == ["chat", "agent"]
+    assert [s["id"] for s in registry.list()] == ["chat", "models", "agent"]
     assert "plain" in registry.host.status()  # установлен, но раздела нет
     assert [Path(p["path"]).parent.name for p in registry.problems] == ["broken"]
 
@@ -184,6 +184,7 @@ def test_sections_over_http_and_chat_unaffected(tmp_path: Path) -> None:
         listed = client.ok("GET", "/sections")["sections"]
         assert [(s["id"], s["state"]) for s in listed] == [
             ("chat", "ready"),
+            ("models", "ready"),
             ("agent", "available"),
         ]
         chat = client.ok("POST", "/chats", {"model_id": "model-a"})["chat"]["id"]

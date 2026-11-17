@@ -29,7 +29,8 @@ from ramvi_service.i18n import LANGUAGES, check_catalogs, load_catalog
 from ramvi_service.module_data import load_migrations
 from ramvi_service.modules.host import ModuleHost
 
-VIEWS = ("chat", "agent", "character")  # виды, которые умеет показывать оболочка
+VIEWS = ("chat", "models", "agent", "character")  # виды, которые умеет показывать оболочка
+CORE_VIEWS = ("chat", "models")  # встроенные разделы; модулям недоступны
 _ICON = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 _TITLE = re.compile(r"section\.[a-z0-9_.]{1,64}")
 
@@ -44,7 +45,10 @@ class Section:
     module_id: str | None = None
 
 
-CORE = (Section("chat", "section.chat", "chat", 10, "chat"),)
+CORE = (
+    Section("chat", "section.chat", "chat", 10, "chat"),
+    Section("models", "section.models", "models", 15, "models"),  # 4.11: экран «Модели»
+)
 
 
 def section_of(manifest: Manifest) -> Section | None:
@@ -61,8 +65,9 @@ def section_of(manifest: Manifest) -> Section | None:
         raw.get("icon", "module"),
         raw.get("order", 100),
     )
-    if view not in VIEWS or view == "chat":
-        raise ValueError(f"ui.section.view must be one of {VIEWS[1:]}")
+    if view not in VIEWS or view in CORE_VIEWS:
+        allowed = tuple(v for v in VIEWS if v not in CORE_VIEWS)
+        raise ValueError(f"ui.section.view must be one of {allowed}")
     if not isinstance(title, str) or not _TITLE.fullmatch(title):
         raise ValueError("ui.section.title_key must be a translation key section.*")
     if not isinstance(icon, str) or not _ICON.fullmatch(icon):

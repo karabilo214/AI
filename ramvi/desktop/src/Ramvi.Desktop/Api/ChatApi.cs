@@ -75,6 +75,29 @@ public interface IChatApi
 
     /// <summary>Открыть раздел: модуль загружается при первом открытии.</summary>
     Task<SectionInfo> OpenSectionAsync(string sectionId, CancellationToken cancel = default);
+
+    /// <summary>4.2: каталог — последняя сохранённая копия (без сети).</summary>
+    Task<CatalogView> CatalogAsync(CancellationToken cancel = default);
+
+    /// <summary>4.2: обновить каталог у провайдеров.</summary>
+    Task<CatalogView> RefreshCatalogAsync(CancellationToken cancel = default);
+
+    /// <summary>4.3: загрузки моделей.</summary>
+    Task<IReadOnlyList<DownloadInfo>> DownloadsAsync(CancellationToken cancel = default);
+
+    Task<DownloadInfo> StartDownloadAsync(string entryId, CancellationToken cancel = default);
+
+    /// <summary>action: pause / resume / cancel.</summary>
+    Task<DownloadInfo> DownloadActionAsync(string downloadId, string action, CancellationToken cancel = default);
+
+    /// <summary>4.6: выбор модели для профиля задачи.</summary>
+    Task<Recommendation> RecommendationsAsync(CancellationToken cancel = default);
+
+    /// <summary>4.11: модель по умолчанию для новых чатов.</summary>
+    Task SetDefaultModelAsync(string modelId, CancellationToken cancel = default);
+
+    /// <summary>4.11: забыть модель; файл удаляется, только если его скачал RAMVI и это выбрано.</summary>
+    Task<DeleteModelResult> DeleteModelAsync(string modelId, bool deleteFile, CancellationToken cancel = default);
 }
 
 /// <summary>HTTP-клиент `ramvi_service.ui_api`: только loopback, ключ в заголовке.</summary>
@@ -191,6 +214,36 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     public async Task<ModelInfo> ImportModelAsync(string path, CancellationToken cancel = default) =>
         (await PostAsync("models/import", new ImportRequest(path), ApiJson.Default.ImportRequest,
             ApiJson.Default.ImportResponse, cancel).ConfigureAwait(false)).Model;
+
+    public Task<CatalogView> CatalogAsync(CancellationToken cancel = default) =>
+        GetAsync("catalog", ApiJson.Default.CatalogView, cancel);
+
+    public Task<CatalogView> RefreshCatalogAsync(CancellationToken cancel = default) =>
+        PostAsync("catalog/refresh", new ModelRequest(null), ApiJson.Default.ModelRequest,
+            ApiJson.Default.CatalogView, cancel);
+
+    public async Task<IReadOnlyList<DownloadInfo>> DownloadsAsync(CancellationToken cancel = default) =>
+        (await GetAsync("downloads", ApiJson.Default.DownloadsResponse, cancel).ConfigureAwait(false)).Downloads;
+
+    public async Task<DownloadInfo> StartDownloadAsync(string entryId, CancellationToken cancel = default) =>
+        (await PostAsync("downloads", new EntryRequest(entryId), ApiJson.Default.EntryRequest,
+            ApiJson.Default.DownloadResponse, cancel).ConfigureAwait(false)).Download;
+
+    public async Task<DownloadInfo> DownloadActionAsync(
+        string downloadId, string action, CancellationToken cancel = default) =>
+        (await PostAsync($"downloads/{Id(downloadId)}/{Id(action)}", new ModelRequest(null),
+            ApiJson.Default.ModelRequest, ApiJson.Default.DownloadResponse, cancel).ConfigureAwait(false)).Download;
+
+    public Task<Recommendation> RecommendationsAsync(CancellationToken cancel = default) =>
+        GetAsync("recommendations", ApiJson.Default.Recommendation, cancel);
+
+    public async Task SetDefaultModelAsync(string modelId, CancellationToken cancel = default) =>
+        await PostAsync($"models/{Id(modelId)}/default", new ModelRequest(null), ApiJson.Default.ModelRequest,
+            ApiJson.Default.DefaultModelResponse, cancel).ConfigureAwait(false);
+
+    public Task<DeleteModelResult> DeleteModelAsync(string modelId, bool deleteFile, CancellationToken cancel = default) =>
+        PostAsync($"models/{Id(modelId)}/delete", new DeleteModelRequest(deleteFile),
+            ApiJson.Default.DeleteModelRequest, ApiJson.Default.DeleteModelResult, cancel);
 
     private async IAsyncEnumerable<ChatEvent> StreamAsync(
         string path, HttpContent? content, [EnumeratorCancellation] CancellationToken cancel)

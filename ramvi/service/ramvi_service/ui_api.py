@@ -27,6 +27,7 @@ from ramvi_service.guard import Guard
 from ramvi_service.i18n import to_json
 from ramvi_service.model_control import ModelControl
 from ramvi_service.model_fit import ModelFit
+from ramvi_service.model_library import ModelLibrary
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.recommend import rank
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
@@ -66,6 +67,7 @@ class UIServer:
         self.fit: ModelFit | None = None  # 4.4: статусы совместимости
         self.control: ControlRun | None = None  # 4.7: контрольный прогон
         self.guard: Guard | None = None  # 4.8: подсказки при нехватке памяти
+        self.library: ModelLibrary | None = None  # 4.11: по умолчанию / удалить
         self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
@@ -136,6 +138,14 @@ class UIServer:
         control = re.fullmatch(r"/models/([A-Za-z0-9][A-Za-z0-9._-]{0,127})/control", path)
         if control is not None:
             return self._control_route(method, control.group(1))
+        verb = re.fullmatch(r"/models/([A-Za-z0-9][A-Za-z0-9._-]{0,127})/(default|delete)", path)
+        if verb is not None and method == "POST" and self.library is not None:
+            if verb.group(2) == "default":
+                return self.library.set_default(verb.group(1))
+            delete_file = body.get("delete_file", False)
+            if not isinstance(delete_file, bool):
+                raise ChatError("api.bad_request", field="delete_file")
+            return self.library.delete(verb.group(1), delete_file)
         if path in ("/system", "/onboarding", "/models/import", "/models/scan"):
             return self._onboarding_route(method, path, body)
         match = re.fullmatch(f"/chats/{_ID}(/[a-z]+)?", path)

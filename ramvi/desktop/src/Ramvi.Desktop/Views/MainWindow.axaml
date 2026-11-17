@@ -92,7 +92,7 @@
 
     <!-- Раздел модуля (Agent/Character): вид создаётся при первом открытии и хранится -->
     <Border x:Name="ModuleSection" Grid.Column="1" Classes="card" Margin="8,4,16,16"
-            IsVisible="{Binding !Sections.IsChatSelected}">
+            IsVisible="{Binding Sections.IsModuleSelected}">
       <StackPanel Margin="28" Spacing="8" DataContext="{Binding Sections.Current}" x:DataType="vm:ModuleSectionViewModel">
         <TextBlock x:Name="ModuleTitle" Classes="title" Text="{Binding Title, FallbackValue=''}" />
         <TextBlock x:Name="ModuleState" Classes="muted" Text="{Binding State, FallbackValue=''}" />
@@ -100,6 +100,108 @@
                    IsVisible="{Binding HasError, FallbackValue=False}" />
         <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Placeholder, FallbackValue=''}" />
       </StackPanel>
+    </Border>
+
+    <!-- Модели (4.11) по иллюстрации ТЗ «Каталог моделей»: поиск, фильтры, карточки, загрузка -->
+    <Border x:Name="ModelsPanel" Grid.Column="1" Classes="card" Margin="8,4,16,16"
+            IsVisible="{Binding Sections.IsModelsSelected}">
+      <DockPanel Margin="24,20">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+          <TextBlock Classes="title" VerticalAlignment="Center" Text="{l:T models.title}" />
+          <Button x:Name="RefreshCatalogButton" Grid.Column="1" Classes="icon" ToolTip.Tip="{l:T models.refresh}"
+                  Command="{Binding ModelsScreen.RefreshCommand}">
+            <PathIcon Data="{StaticResource icon-refresh}" />
+          </Button>
+        </Grid>
+        <Border DockPanel.Dock="Top" Classes="inset" Padding="12,8" Margin="0,0,0,12">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <PathIcon Data="{StaticResource icon-search}" Width="16" Height="16" Margin="0,0,8,0" />
+            <TextBox x:Name="ModelSearch" Grid.Column="1" Classes="bare" PlaceholderText="{l:T models.search}"
+                     Text="{Binding ModelsScreen.Search}" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+              <Button x:Name="FilterAll" Content="{l:T models.filter.all}" Classes.accent="{Binding ModelsScreen.IsAll}"
+                      Command="{Binding ModelsScreen.FilterCommand}" CommandParameter="all" />
+              <Button x:Name="FilterInstalled" Content="{l:T models.filter.installed}"
+                      Classes.accent="{Binding ModelsScreen.IsInstalledFilter}"
+                      Command="{Binding ModelsScreen.FilterCommand}" CommandParameter="installed" />
+              <Button x:Name="FilterSuitable" Content="{l:T models.filter.suitable}"
+                      Classes.accent="{Binding ModelsScreen.IsSuitableFilter}"
+                      Command="{Binding ModelsScreen.FilterCommand}" CommandParameter="suitable" />
+            </StackPanel>
+          </Grid>
+        </Border>
+        <!-- Нижняя строка: выбор модели для профиля задачи (4.6) и пометка устаревшего каталога -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="0,12,0,0">
+          <TextBlock x:Name="ModelsError" Classes="error" TextWrapping="Wrap" Text="{Binding ModelsScreen.Error}"
+                     IsVisible="{Binding ModelsScreen.HasError}" />
+          <TextBlock x:Name="CatalogStale" Classes="warn" TextWrapping="Wrap" Text="{l:T models.stale}"
+                     IsVisible="{Binding ModelsScreen.IsStale}" />
+          <Border Classes="inset" Padding="12,8">
+            <TextBlock x:Name="ModelsRecommendation" TextWrapping="Wrap" Text="{Binding ModelsScreen.Recommendation}" />
+          </Border>
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Top" Classes="muted" Margin="4" Text="{l:T models.empty}"
+                   IsVisible="{Binding ModelsScreen.IsEmpty}" />
+        <ScrollViewer>
+          <ItemsControl x:Name="ModelCards" ItemsSource="{Binding ModelsScreen.Cards}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ModelCardViewModel">
+                <Border Classes="inset" Margin="2,4" Padding="14,12" ToolTip.Tip="{Binding Reasons}">
+                  <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto">
+                    <Border Grid.RowSpan="2" Classes="chip" Width="40" Height="40" Margin="0,0,14,0" VerticalAlignment="Top">
+                      <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Text="AI" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="2">
+                      <TextBlock Classes="heading" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Detail}" />
+                      <TextBlock FontSize="12" Text="{Binding CompatText}" Classes.ok="{Binding IsRecommended}"
+                                 Classes.warn="{Binding IsSlow}" Classes.fail="{Binding IsUnfit}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="6" HorizontalAlignment="Right">
+                      <Border Classes="chip" Classes.current="{Binding IsCurrentChip}" HorizontalAlignment="Right">
+                        <TextBlock FontSize="12" Text="{Binding StateText}" />
+                      </Border>
+                      <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+                        <Button Classes="accent" Command="{Binding DownloadCommand}" IsVisible="{Binding CanDownload}">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <PathIcon Data="{StaticResource icon-download}" />
+                            <TextBlock VerticalAlignment="Center" Text="{l:T models.download}" />
+                          </StackPanel>
+                        </Button>
+                        <Button Classes="icon" ToolTip.Tip="{l:T models.pause}" Command="{Binding PauseCommand}"
+                                IsVisible="{Binding IsDownloading}">
+                          <PathIcon Data="{StaticResource icon-pause}" />
+                        </Button>
+                        <Button Classes="icon" ToolTip.Tip="{l:T models.resume}" Command="{Binding ResumeCommand}"
+                                IsVisible="{Binding IsPaused}">
+                          <PathIcon Data="{StaticResource icon-play}" />
+                        </Button>
+                        <Button Classes="icon" ToolTip.Tip="{l:T models.cancel}" Command="{Binding CancelCommand}"
+                                IsVisible="{Binding HasProgress}">
+                          <PathIcon Data="{StaticResource icon-close}" />
+                        </Button>
+                        <Button Classes="icon" ToolTip.Tip="{l:T models.make_default}" Command="{Binding MakeDefaultCommand}"
+                                IsVisible="{Binding IsInstalled}">
+                          <PathIcon Data="{StaticResource icon-star}" />
+                        </Button>
+                        <Button ToolTip.Tip="{Binding DeleteHint}" Command="{Binding DeleteCommand}"
+                                IsVisible="{Binding IsInstalled}" Content="{Binding DeleteLabel}" />
+                      </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Spacing="4" Margin="0,8,0,0"
+                                IsVisible="{Binding HasProgress}">
+                      <ProgressBar Minimum="0" Maximum="100" Value="{Binding Progress}" Height="6" />
+                      <TextBlock Classes="caption" Text="{Binding ProgressText}" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Classes="error" TextWrapping="Wrap"
+                               Margin="0,8,0,0" Text="{Binding DownloadError}" IsVisible="{Binding HasDownloadError}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
     </Border>
 
     <!-- Диалог -->
@@ -303,6 +405,20 @@
               <Button Grid.Column="1" Margin="8,0,0,0" Content="{l:T settings.browse}"
                       Command="{Binding Settings.BrowseModelsDirCommand}" />
             </Grid>
+
+            <TextBlock Classes="heading" Text="{l:T settings.default_model}" />
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <ComboBox x:Name="DefaultModelBox" MinWidth="240" ItemsSource="{Binding Settings.Models}"
+                        SelectedItem="{Binding Settings.DefaultModel}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="api:ModelInfo">
+                    <TextBlock Text="{Binding Id}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <Button x:Name="ManageModelsButton" Content="{l:T settings.manage_models}"
+                      Command="{Binding Settings.ManageModelsCommand}" />
+            </StackPanel>
 
             <TextBlock Classes="heading" Text="{l:T settings.onboarding}" />
             <Button x:Name="OpenOnboardingButton" HorizontalAlignment="Left" Content="{l:T settings.onboarding_open}"

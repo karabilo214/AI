@@ -121,6 +121,10 @@
     <Setter Property="CornerRadius" Value="10" />
     <Setter Property="Padding" Value="10,4" />
   </Style>
+  <!-- 4.11: плашка «Установлена · Текущая» на карточке модели -->
+  <Style Selector="Border.chip.current TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-success}" />
+  </Style>
 
   <!-- «Печатает…»: три точки по очереди -->
   <Style Selector="Ellipse.dot">

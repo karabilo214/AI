@@ -615,6 +615,30 @@ public sealed class StyleTests
         window.Close();
     }
 
+    /// <summary>4.11: снимок экрана «Модели» (иллюстрация ТЗ «Каталог моделей») в обеих темах.</summary>
+    [AvaloniaFact]
+    public async Task Snapshot_models_screen()
+    {
+        var api = ModelsTests.Api();
+        api.Sections.Add(ModelsTests.ModelsSection);
+        api.Recommendation = new Recommendation(
+            "balanced",
+            new RecommendedItem("qwen3-8b-q4_k_m", "qwen3-8b-q4_k_m", true),
+            Message("recommend.reason.balanced", ("size", Message("recommend.size", ("size", "8"), ("quant", "Q4_K_M"))),
+                ("speed", Message("compat.speed_estimate", ("low", "48"), ("high", "57"))),
+                ("status", Message("compat.recommended.inline"))),
+            []);
+        var (window, model, _) = await OpenAsync(api);
+        model.Sections.Selected = model.Sections.Items.Single(i => i.View == "models");
+        await UntilAsync(() => model.ModelsScreen.Cards.Count == 4, "карточки");
+        await model.ModelsScreen.Cards.Single(c => c.Name == "qwen3:14b Q4_K_M").DownloadCommand.RunAsync();
+        api.DownloadList[0] = api.DownloadList[0] with { BytesDone = 1_800_000_000 };
+        await model.ModelsScreen.Cards.Single(c => c.Name == "qwen3:14b Q4_K_M").PauseCommand.RunAsync();
+        Shoot(window, "models");
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+        window.Close();
+    }
+
     private static void Shoot(Window window, string name)
     {
         var folder = Environment.GetEnvironmentVariable("RAMVI_SNAPSHOT_DIR");
