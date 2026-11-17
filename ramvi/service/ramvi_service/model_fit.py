@@ -33,6 +33,7 @@ from ramvi_engine.planning.automatic import (
     placement,
     unquantized_layers,
 )
+from ramvi_engine.planning.multigpu import usable_vram
 from ramvi_engine.planning.resources import MemoryUsage, ResourceEstimate, estimate_gguf
 
 from ramvi_service import compat, speed
@@ -66,16 +67,19 @@ def model_key(meta: GGUFMeta) -> str:
     return "-".join(p for p in (arch, size, quant) if p).lower()
 
 
-def budget(hw: HardwareProfile, *, now: bool = False) -> tuple[int, int]:
-    """(VRAM, RAM) в байтах: возможности компьютера или свободное прямо сейчас."""
+def budget(hw: HardwareProfile, *, now: bool = False, multi: bool = False) -> tuple[int, int]:
+    """(VRAM, RAM) в байтах: возможности компьютера или свободное прямо сейчас.
+
+    4.10: `multi` — модель, которую движок умеет раскладывать по нескольким картам (плотная
+    Qwen3 GGUF): основная карта плюс остальные за вычетом их резерва, как в плане движка.
+    Иначе — одна, самая большая карта."""
     cards = [g for g in hw.gpus if g.vendor == "NVIDIA"]
-    if now:
-        vram = max((g.vram_free_mb or 0 for g in cards), default=0)
-        ram = hw.ram_available_mb or 0
-    else:
-        vram = max((g.vram_total_mb or 0 for g in cards), default=0)
-        ram = hw.ram_total_mb or 0
-    return vram * MIB, ram * MIB
+    sizes = [(g.vram_free_mb if now else g.vram_total_mb) or 0 for g in cards]
+    ram = (hw.ram_available_mb if now else hw.ram_total_mb) or 0
+    if multi and len(sizes) > 1:
+        vram = usable_vram([s * MIB for s in sizes], automatic_reserve)
+        return vram, ram * MIB
+    return max(sizes, default=0) * MIB, ram * MIB
 
 
 def plan(
@@ -91,7 +95,7 @@ def plan(
     layers = int(meta.meta[f"{arch}.block_count"])
     unquantized = unquantized_layers(meta)
     fraction = offload_cpu_fraction(unquantized)
-    vram, ram = budget(hw, now=now)
+    vram, ram = budget(hw, now=now, multi=arch == "qwen3")
 
     def estimate(route: list[str], use_draft: bool, reserve: int) -> ResourceEstimate:
         value = estimate_gguf(meta, route, maxt, batch=16, native_f16=native_f16)
@@ -269,6 +273,7 @@ class ModelFit:
             model_id=model_key(meta) if context == compat.MEASURED_CONTEXT else "",
             off_gpu_bytes=None if layout is None else int(layout["off_gpu_bytes"]),
             estimated_tok_s=self._estimate(meta, layout, estimate, hw),
+            vram_mb=budget(hw, multi=arch == "qwen3")[0] // MIB,
         )
         result = compat.assess(hw, candidate)
         tok_s = (

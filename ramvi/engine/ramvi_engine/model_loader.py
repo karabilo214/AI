@@ -190,13 +190,25 @@ def offload_fraction(name: str) -> tuple[bool, float]:
     return unquantized, offload_cpu_fraction(unquantized, env("RAMVI_CPU_FRAC"))
 
 
+def _vram_available(model_format: str, architecture: str) -> int:
+    """4.10: свободная видеопамять всех используемых карт (RAMVI_DEVICES) для плана."""
+    from ramvi_engine.planning.automatic import automatic_reserve
+    from ramvi_engine.planning.multigpu import usable_vram, visible_devices
+
+    torch = import_module("torch")
+    if not torch.cuda.is_available():
+        return 0
+    ids = visible_devices(torch.cuda.device_count())
+    free = [int(torch.cuda.mem_get_info(i)[0]) for i in ids]
+    return usable_vram(free, automatic_reserve, model_format == "gguf" and architecture == "qwen3")
+
+
 def _resolve_plan(
     config: ModelConfig, options: PlanningOptions, resident_cap: int | None = None
 ) -> PlanningDecision:
     from ramvi_engine.planning.plan import ram_info
     from ramvi_engine.planning.resources import MemoryUsage
 
-    torch = import_module("torch")
     model_format, architecture, layers, estimate_main = _metadata_estimator(
         config.model, config.maxt
     )
@@ -219,7 +231,7 @@ def _resolve_plan(
     return choose_plan(
         layers,
         estimate,
-        vram_available=int(torch.cuda.mem_get_info()[0]) if torch.cuda.is_available() else 0,
+        vram_available=_vram_available(model_format, architecture),
         ram_available=int(ram_info()[1]),  # type: ignore[no-untyped-call]
         maxt=config.maxt,
         architecture=architecture,

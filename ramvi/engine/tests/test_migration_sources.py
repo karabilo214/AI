@@ -329,7 +329,7 @@ def allowed_layout_changes(name: str, source: str) -> str:
             "        ParentWatch.from_env()\n"
             "    torch.set_grad_enabled(False)",
         )
-    return mapped_weights_318(name, source)
+    return multigpu_410(name, mapped_weights_318(name, source))
 
 
 # 3.18 ENG-MAPPED-01: слои вне видеокарты читаются из файла модели без собственных копий.
@@ -375,6 +375,82 @@ MAPPED_318: dict[str, tuple[tuple[str, str], ...]] = {
 
 def mapped_weights_318(name: str, source: str) -> str:
     for old, new in MAPPED_318.get(name, ()):
+        assert source.count(old) == 1, (name, old[:60])
+        source = source.replace(old, new)
+    return source
+
+
+# 4.10 ENG-MULTIGPU: слои GGUF-модели, которой мало одной карты, раскладываются блоками по
+# нескольким картам; на одной карте путь прежний (те же буферы и ядра, CUDA-граф). Арифметика
+# слоя не меняется: добавлены выбор карты, буферы каждой карты и передача состояния между ними.
+MULTIGPU_410: tuple[tuple[str, str], ...] = (
+    (
+        "    def __init__(self, name, maxt=2048, resident=None, log=print, vram_reserve=None, extra_vram=0, cpu=True, cpu_frac=None):\n",
+        "    multi = False  # 4.10: слои на нескольких картах (по умолчанию — одна)\n    def __init__(self, name, maxt=2048, resident=None, log=print, vram_reserve=None, extra_vram=0, cpu=True, cpu_frac=None):\n",
+    ),
+    (
+        '        self.maxt, self.log, dev = maxt, log, "cuda"\n',
+        '        # 4.10: какие карты использовать (RAMVI_DEVICES); первая — основная: на ней словарь,\n        # подкачка по шине и слои вне видеопамяти. set_device — «cuda» дальше значит основную карту.\n        from ramvi_engine.planning.multigpu import SECONDARY_OVERHEAD, split_layers, visible_devices\n        self.devices = [torch.device("cuda", i) for i in visible_devices(torch.cuda.device_count())]\n        torch.cuda.set_device(self.devices[0])\n        self.maxt, self.log, dev = maxt, log, "cuda"\n',
+    ),
+    (
+        '        self.small = [{k: torch.from_numpy(g.full(f"blk.{i}.{n}.weight")).to(dev)\n                       for k, n in (("ln1", "attn_norm"), ("ln2", "ffn_norm"), ("qn", "attn_q_norm"), ("kn", "attn_k_norm"))}\n                      for i in range(self.L)]\n        # план памяти: байты слоёв\n        lb = [sum(g.raw(f"blk.{i}.{GM[n]}.weight")[0].size for n in GM) for i in range(self.L)]\n        kvb = 2 * self.KV * maxt * self.HD * 2\n        free, _ = torch.cuda.mem_get_info()\n        budget = free - vram_reserve - extra_vram - 16 * self.V * 4  # логиты\n        if resident is None:\n            R = 0\n            while R < self.L and sum(lb[:R + 1]) + self.L * kvb + (2 * max(lb) if R + 1 < self.L else 0) <= budget:\n                R += 1\n        else:\n            R = resident\n',
+        '        # план памяти: байты слоёв\n        lb = [sum(g.raw(f"blk.{i}.{GM[n]}.weight")[0].size for n in GM) for i in range(self.L)]\n        kvb = 2 * self.KV * maxt * self.HD * 2\n        free, _ = torch.cuda.mem_get_info()\n        budget = free - vram_reserve - extra_vram - 16 * self.V * 4  # логиты\n        fits = 0  # сколько слоёв помещается в основную карту\n        while fits < self.L and sum(lb[:fits + 1]) + self.L * kvb + (2 * max(lb) if fits + 1 < self.L else 0) <= budget:\n            fits += 1\n        R = fits if resident is None else resident\n        # 4.10: модель, которой мало основной карты, раскладывается подряд блоками по всем картам.\n        # Помещается в одну — остаётся на одной (меньше передач между картами), путь прежний.\n        self.layer_dev = [0] * self.L\n        wanted = self.L if resident is None else resident\n        if len(self.devices) > 1 and fits < wanted:\n            budgets = [budget - 2 * max(lb) - self.L * kvb] + [\n                torch.cuda.mem_get_info(d)[0] - vram_reserve - SECONDARY_OVERHEAD for d in self.devices[1:]]\n            split = split_layers([b + kvb for b in lb], budgets, resident)\n            if len(split) > fits:\n                R = len(split)\n                self.layer_dev = split + [0] * (self.L - R)\n        self.multi = len(set(self.layer_dev)) > 1\n        self.small = [{k: torch.from_numpy(g.full(f"blk.{i}.{n}.weight")).to(self._dev(i))\n                       for k, n in (("ln1", "attn_norm"), ("ln2", "ffn_norm"), ("qn", "attn_q_norm"), ("kn", "attn_k_norm"))}\n                      for i in range(self.L)]\n',
+    ),
+    (
+        '                self.W.append({n: repack(*g.raw(f"blk.{i}.{GM[n]}.weight")) for n in GM})\n            else:\n                pk = {n: host_weights(g.raw(f"blk.{i}.{GM[n]}.weight"), arena) for n in GM}\n                if self.place[i] == "hyb":\n                    self.HW[i] = pk\n                else:\n                    self.W.append(pk)\n            self.Kc[i] = torch.zeros(self.KV, maxt, self.HD, device=dev, dtype=torch.float16)\n',
+        '                self.W.append({n: repack(*g.raw(f"blk.{i}.{GM[n]}.weight"), dev=self._dev(i)) for n in GM})\n            else:\n                pk = {n: host_weights(g.raw(f"blk.{i}.{GM[n]}.weight"), arena) for n in GM}\n                if self.place[i] == "hyb":\n                    self.HW[i] = pk\n                else:\n                    self.W.append(pk)\n            self.Kc[i] = torch.zeros(self.KV, maxt, self.HD, device=self._dev(i), dtype=torch.float16)\n',
+    ),
+    (
+        "        self.graphs, self.ctx = {}, []\n",
+        "        self._buffers()\n        self.graphs, self.ctx = {}, []\n",
+    ),
+    (
+        '            f"закреплено RAM {arena.pinned / GiB:.2f} ГиБ (обычной {arena.plain / GiB:.2f})")\n',
+        '            f"закреплено RAM {arena.pinned / GiB:.2f} ГиБ (обычной {arena.plain / GiB:.2f})")\n        if self.multi:\n            per = ", ".join(f"{d}: {self.layer_dev[:R].count(i)} слоёв, {torch.cuda.memory_allocated(d) / GiB:.2f} ГиБ"\n                            for i, d in enumerate(self.devices))\n            log(f"несколько видеокарт (4.10): {per}")\n\n    # ---- 4.10: несколько видеокарт ----\n    def _dev(self, l):\n        """Устройство слоя: слой в видеопамяти — на своей карте, остальные — через основную."""\n        return self.devices[self.layer_dev[l]] if self.layer_dev[l] else self.devices[0]\n\n    def _buffers(self):\n        """Рабочие буферы каждой карты: на основной — прежние, на остальных — свои такие же."""\n        main = types.SimpleNamespace(device=self.devices[0], xb=self.xb, hb=self.hb, qkvb=self.qkvb, qb=self.qb,\n                                     attb=self.attb, gub=self.gub, mb=self.mb, pos=self.pos, inv=self.inv)\n        self.bufs = {0: main}\n        for d in sorted(set(self.layer_dev) - {0}):\n            device = self.devices[d]\n            f = lambda n: torch.zeros(16, n, device=device)\n            self.bufs[d] = types.SimpleNamespace(\n                device=device, xb=f(self.D), hb=f(self.D), qkvb=f(self.QKV), qb=f(self.H * self.HD),\n                attb=f(self.H * self.HD), gub=f(2 * self.FF), mb=f(self.FF),\n                pos=torch.zeros(1, dtype=torch.long, device=device), inv=self.inv.to(device))\n\n    def _fill_pos(self, value):\n        for b in getattr(self, "bufs", {0: self}).values():\n            b.pos.fill_(value)\n\n    def _to(self, x, d, T):\n        """Состояние слоя (T×D) — в буфер карты d; это единственная передача между картами."""\n        dst = self.bufs[d].xb[:T]\n        dst.copy_(x)\n        return dst\n',
+    ),
+    (
+        '        for l in range(self.L):\n            pl = self.place[l]\n            routes = getattr(self, "_active_routes", None)\n            mode = routes[l] if routes is not None else ("stream" if pl == "hyb" and T > 1 else "cpu" if pl == "hyb" else pl)\n',
+        '        cur, xd = 0, x  # 4.10: на какой карте сейчас состояние слоя\n        for l in range(self.L):\n            pl = self.place[l]\n            routes = getattr(self, "_active_routes", None)\n            mode = routes[l] if routes is not None else ("stream" if pl == "hyb" and T > 1 else "cpu" if pl == "hyb" else pl)\n            if self.multi:\n                d = self.layer_dev[l] if mode == "gpu" else 0\n                if d != cur:\n                    xd = x if d == 0 else self._to(xd, d, T)\n                    if d == 0:\n                        x.copy_(self.bufs[cur].xb[:T])\n                    cur = d\n                if d:\n                    self._gpu_layer(l, self.W[l], xd, T)\n                    continue\n',
+    ),
+    (
+        "        rmsg_k[(T,)](x, self._norm, self.hb[:T], self.eps, self.D, DP=triton.next_power_of_2(self.D))\n",
+        "        if self.multi and cur:  # последний блок был на другой карте — состояние на основную\n            x.copy_(self.bufs[cur].xb[:T])\n        rmsg_k[(T,)](x, self._norm, self.hb[:T], self.eps, self.D, DP=triton.next_power_of_2(self.D))\n",
+    ),
+    (
+        "        H, KV, HD, D, s = self.H, self.KV, self.HD, self.D, self.small[l]\n        h, qkv, q, att, gu, mb = self.hb[:T], self.qkvb[:T], self.qb[:T], self.attb[:T], self.gub[:T], self.mb[:T]\n",
+        '        if self.multi and self.place[l] == "gpu" and self.layer_dev[l]:\n            b = self.bufs[self.layer_dev[l]]\n            with torch.cuda.device(b.device):  # ядра Triton запускаются на текущей карте\n                return self._batch_layer_on(b, l, x, T, W, K, V)\n        return self._batch_layer_on(self._main_buffers(), l, x, T, W, K, V)\n\n    def _main_buffers(self):\n        bufs = getattr(self, "bufs", None)\n        if bufs is not None:\n            return bufs[0]\n        return types.SimpleNamespace(device=None, xb=self.xb, hb=self.hb, qkvb=self.qkvb, qb=self.qb, attb=self.attb,\n                                     gub=self.gub, mb=self.mb, pos=self.pos, inv=self.inv)\n\n    def _batch_layer_on(self, buf, l, x, T, W, K, V):\n        H, KV, HD, D, s = self.H, self.KV, self.HD, self.D, self.small[l]\n        h, qkv, q, att, gu, mb = buf.hb[:T], buf.qkvb[:T], buf.qb[:T], buf.attb[:T], buf.gub[:T], buf.mb[:T]\n',
+    ),
+    (
+        '            rope_attn_k[(H,)](qkv, s["qn"], s["kn"], self.inv, self.pos, K, V, att, self.maxt, self.eps, HD ** -0.5,\n                              NH=H, NKV=KV, HDIM=HD, half=HD // 2, BJ=64)\n        else:\n            qk_rope_cache_k[(H + 2 * KV, T)](qkv, s["qn"], s["kn"], self.inv, self.pos, q, K, V, self.maxt, self.eps,\n                                              NH=H, NKV=KV, HDIM=HD, half=HD // 2)\n            attn_k[(H, T)](q, K, V, self.pos, att, self.maxt, HD ** -0.5, G=H // KV, HDIM=HD, BJ=64, NHQ=H)\n',
+        '            rope_attn_k[(H,)](qkv, s["qn"], s["kn"], buf.inv, buf.pos, K, V, att, self.maxt, self.eps, HD ** -0.5,\n                              NH=H, NKV=KV, HDIM=HD, half=HD // 2, BJ=64)\n        else:\n            qk_rope_cache_k[(H + 2 * KV, T)](qkv, s["qn"], s["kn"], buf.inv, buf.pos, q, K, V, self.maxt, self.eps,\n                                              NH=H, NKV=KV, HDIM=HD, half=HD // 2)\n            attn_k[(H, T)](q, K, V, buf.pos, att, self.maxt, HD ** -0.5, G=H // KV, HDIM=HD, BJ=64, NHQ=H)\n',
+    ),
+    (
+        "        if self.all_gpu:\n            B = T  # граф обрабатывает только реальные строки, без записи KV за конец контекста\n",
+        "        if self.all_gpu and not self.multi:  # 4.10: на нескольких картах — без CUDA-графа\n            B = T  # граф обрабатывает только реальные строки, без записи KV за конец контекста\n",
+    ),
+    (
+        "        self.pos.fill_(pos0)\n        self._layers(self.xb[:T], T, pos0)\n",
+        "        self._fill_pos(pos0)\n        self._layers(self.xb[:T], T, pos0)\n",
+    ),
+    (
+        '        blocked = prefill_enabled(self, len(tokens), enabled)\n        batch = batch_limit(self)\n        self._active_routes = None\n        n = len(tokens)\n        self._set_phase("dN")\n        X = self._emb(tokens).cuda()\n        for l in range(self.L):\n',
+        '        blocked = prefill_enabled(self, len(tokens), enabled) and not self.multi\n        batch = batch_limit(self)\n        self._active_routes = None\n        n = len(tokens)\n        self._set_phase("dN")\n        X = self._emb(tokens).cuda()\n        cur, Xd = 0, X  # 4.10: запрос переезжает на карту блока слоёв один раз\n        for l in range(self.L):\n            d = self.layer_dev[l] if self.multi and self.place[l] == "gpu" else 0\n            if d != cur:\n                if cur:\n                    X.copy_(Xd)\n                Xd = X.to(self.devices[d]) if d else X\n                cur = d\n',
+    ),
+    (
+        '                    self.pos.fill_(start + c)\n                    self._batch_layer(l, X[c:c + T], T, W, self.Kc[l], self.Vc[l], None)\n            if self.place[l] != "gpu":\n                self._release()\n',
+        '                    self._fill_pos(start + c)\n                    self._batch_layer(l, Xd[c:c + T], T, W, self.Kc[l], self.Vc[l], None)\n            if self.place[l] != "gpu":\n                self._release()\n        if cur:\n            X.copy_(Xd)\n',
+    ),
+    (
+        '        self.place[l] = "stream"\n',
+        '        if self.multi and self.layer_dev[l]:  # 4.10: слой по шине — на основной карте, и его кэш там же\n            self.Kc[l], self.Vc[l] = self.Kc[l].to(self.devices[0]), self.Vc[l].to(self.devices[0])\n            self.layer_dev[l] = 0\n            self.multi = len(set(self.layer_dev)) > 1\n        self.place[l] = "stream"\n',
+    ),
+)
+
+
+def multigpu_410(name: str, source: str) -> str:
+    if name != "gengine":
+        return source
+    for old, new in MULTIGPU_410:
         assert source.count(old) == 1, (name, old[:60])
         source = source.replace(old, new)
     return source

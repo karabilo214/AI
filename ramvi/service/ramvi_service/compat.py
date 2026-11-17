@@ -4,8 +4,8 @@
 считает остальные слои на CPU. «Не хватает RAM» — только когда не помещается
 собственная RAM движка; веса, читаемые из файла (`mapped`), при нехватке RAM
 дочитываются с диска — это «Медленно» с причиной (так работают qwen3:30b и
-qwen3-8b-f16 на 16 ГБ RAM, планировщик движка тоже это допускает). Учитывается одна NVIDIA (самая большая):
-несколько карт движок пока не использует (пункт 4.10).
+qwen3-8b-f16 на 16 ГБ RAM, планировщик движка тоже это допускает). 4.10: модель, которую движок раскладывает по нескольким картам, получает их общую
+видеопамять (`Candidate.vram_mb`); иначе — одна, самая большая NVIDIA.
 
 3.14: статусы — ключи каталога `compat.*`, причины и объяснения — сообщения `Msg`
 (ключ + параметры); текст на языке пользователя собирает оболочка.
@@ -48,6 +48,8 @@ class Candidate:
     off_gpu_bytes: int | None = None
     # Оценка по плану и пропускной способности памяти (speed.py); замер важнее.
     estimated_tok_s: tuple[float, float] | None = None
+    # 4.10: видеопамять, которую движок может отдать модели (несколько карт); None — одна карта.
+    vram_mb: int | None = None
 
 
 # Только реальные замеры: (подстрока имени NVIDIA, model_id, статус) -> (мин, макс) ток/с.
@@ -114,6 +116,8 @@ def assess(hw: HardwareProfile, c: Candidate) -> Verdict:
 
 def _assess(hw: HardwareProfile, c: Candidate) -> Verdict:
     vram_mb = _gpu_vram_mb(hw)
+    if vram_mb is not None and c.vram_mb is not None:
+        vram_mb = max(vram_mb, c.vram_mb)
     if c.file_format.lower() not in SUPPORTED_FORMATS:
         return Verdict(c.name, UNSUPPORTED, (msg("compat.reason.format", format=c.file_format),))
     if not c.architecture_supported:
