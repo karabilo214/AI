@@ -148,6 +148,7 @@ def _load_bundle_once(config: ModelConfig, decision: PlanningDecision | None = N
 
 def _metadata_estimator(name: str, maxt: int) -> tuple[str, str, int, Any]:
     """Read metadata/mmap headers only; no inference or GPU weight allocation."""
+    from ramvi_engine.cpu.native_check import native_cpu_available
     from ramvi_engine.planning.resources import estimate_gguf, estimate_hf
 
     if is_gguf_model(name):
@@ -161,7 +162,11 @@ def _metadata_estimator(name: str, maxt: int) -> tuple[str, str, int, Any]:
             "gguf",
             architecture,
             int(model.meta[f"{architecture}.block_count"]),
-            (lambda route: estimate_gguf(model, route, maxt, batch=16)),
+            (
+                lambda route: estimate_gguf(
+                    model, route, maxt, batch=16, native_f16=native_cpu_available()
+                )
+            ),
         )
     from ramvi_engine.formats.model import Ckpt
 
@@ -174,10 +179,20 @@ def _metadata_estimator(name: str, maxt: int) -> tuple[str, str, int, Any]:
     )
 
 
+def offload_fraction(name: str) -> tuple[bool, float]:
+    """3.18: тот же выбор доли процессорных слоёв, что делает GGUFEngine при cpu_frac=None."""
+    from ramvi_engine.config import env
+    from ramvi_engine.formats.gguf import GGUF, find_ollama
+    from ramvi_engine.planning.automatic import offload_cpu_fraction, unquantized_layers
+
+    model = GGUF(resolve_gguf_name(name, find_ollama))  # type: ignore[no-untyped-call]
+    unquantized = unquantized_layers(model)
+    return unquantized, offload_cpu_fraction(unquantized, env("RAMVI_CPU_FRAC"))
+
+
 def _resolve_plan(
     config: ModelConfig, options: PlanningOptions, resident_cap: int | None = None
 ) -> PlanningDecision:
-    from ramvi_engine.config import env
     from ramvi_engine.planning.plan import ram_info
     from ramvi_engine.planning.resources import MemoryUsage
 
@@ -198,6 +213,9 @@ def _resolve_plan(
             reserve=MemoryUsage(vram=reserve),
         )
 
+    unquantized, cpu_fraction = (
+        offload_fraction(config.model) if model_format == "gguf" else (False, 0.58)
+    )
     return choose_plan(
         layers,
         estimate,
@@ -211,7 +229,8 @@ def _resolve_plan(
         options=options,
         requested_resident=config.resident,
         resident_cap=resident_cap,
-        cpu_fraction=float(env("RAMVI_CPU_FRAC", "0.58")) if model_format == "gguf" else 0.58,
+        cpu_fraction=cpu_fraction,
+        draft_with_offload=not unquantized,
     )
 
 

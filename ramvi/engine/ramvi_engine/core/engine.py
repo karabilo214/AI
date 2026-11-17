@@ -100,6 +100,24 @@ class Loader:
         if job.get("error") is not None:
             raise RuntimeError("ошибка подкачки весов") from job["error"]
 
+    STAGE_SLOTS = 4
+    STAGE_BYTES = 10 * 2**20
+
+    def _stage_slot(self, n):
+        """3.18: закреплённый буфер для куска из обычной памяти/файла (кольцо из 4 по 10 МиБ).
+
+        Буфер берётся снова только после того, как его прежняя копия в видеокарту завершилась."""
+        if not hasattr(self, "_stage"):
+            self._stage = [torch.empty(self.STAGE_BYTES, dtype=torch.uint8).pin_memory()
+                           for _ in range(self.STAGE_SLOTS)]
+            self._stage_events = [None] * self.STAGE_SLOTS
+            self._stage_index = -1
+        self._stage_index = (self._stage_index + 1) % self.STAGE_SLOTS
+        previous = self._stage_events[self._stage_index]
+        if previous is not None:
+            self._event(previous)
+        return self._stage[self._stage_index][:n]
+
     def _event(self, event):
         # Кусок 10 МБ копируется < 1 мс. Опрос со сном здесь нельзя: на Windows wait(0.001) спит ~16 мс
         # (шаг таймера), и подкачка слоя замедлялась в ~20 раз. Остановка проверяется перед каждым куском.
@@ -125,12 +143,20 @@ class Loader:
                     self.cs.wait_event(job["wait"]["ev"])
                 pend = []
                 for src, dst in job["pairs"]:
+                    staged = not src.is_pinned()
                     for a in range(0, src.numel(), CH):
                         if self._stop.is_set():
                             raise RuntimeError("подкачка закрыта")
+                        part = src[a:a + CH]
+                        if staged:
+                            slot = self._stage_slot(part.numel())
+                            slot.copy_(part)  # из файла (memmap): чтение с диска, если страниц нет в RAM
+                            part = slot
                         with torch.cuda.stream(self.cs):
-                            dst[a:a + CH].copy_(src[a:a + CH], non_blocking=True)
+                            dst[a:a + CH].copy_(part, non_blocking=True)
                             event = torch.cuda.Event(); event.record(self.cs)
+                        if staged:
+                            self._stage_events[self._stage_index] = event
                         pend.append(event)
                         if len(pend) > 2:
                             self._event(pend.pop(0))

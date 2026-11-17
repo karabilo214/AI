@@ -183,6 +183,8 @@ class CpuMat:
             sc = np.ascontiguousarray(blk[:, :, 192:208]).view(np.int8).astype(np.float32)
             self.DS = (d * sc).astype(np.float32)
             self.QL, self.QH = blk[:, :, :128], blk[:, :, 128:192]
+        elif t == "F16" and K % 256 == 0 and _dll() is not None:
+            self.W = None  # 3.18: ядро C++ считает F16 прямо из файла — копия в float32 не нужна
         else:  # F16 / F32 — в float32 (такие матрицы небольшие)
             from ramvi_engine.formats.gguf import dequant
             self.W = dequant(a, t, N * K).reshape(N, K).astype(np.float32)

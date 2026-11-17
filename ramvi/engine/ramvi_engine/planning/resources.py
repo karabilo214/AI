@@ -185,10 +185,21 @@ def _gpu_tensor(raw: Any, packed: bool = False) -> int:
     return sum(_aligned(x) if packed else x for x in parts)
 
 
-def _cpu_scales(raw: Any) -> int:
+def _cpu_scales(raw: Any, native_f16: bool = False) -> int:
+    """Собственная RAM процессорной матрицы сверх файла: масштабы Q4_K/Q6_K или копия в float32.
+
+    3.18: с ядром C++ (`native_f16`) F16 считается прямо из файла — копии нет."""
     _, n, k, kind = raw
     count = int(n) * int(k)
-    return count // 4 if kind in ("Q4_K", "Q6_K") else count * 4
+    if kind in ("Q4_K", "Q6_K"):
+        return count // 4
+    if kind == "F16" and native_f16 and int(k) % 256 == 0:
+        return 0
+    return count * 4
+
+
+MAPPED_STREAM_KINDS = ("F16", "F32")
+STAGE_RAM = 4 * 10 * 2**20  # кольцо закреплённых буферов загрузчика (core.engine.Loader)
 
 
 def estimate_gguf(
@@ -199,8 +210,12 @@ def estimate_gguf(
     batch: int = 16,
     draft: MemoryUsage = MemoryUsage(),
     reserve: MemoryUsage = MemoryUsage(),
+    native_f16: bool = False,
 ) -> ResourceEstimate:
-    """GGUF Qwen3 dense/MoE по размерам тензоров без распаковки весов."""
+    """GGUF Qwen3 dense/MoE по размерам тензоров без распаковки весов.
+
+    3.18: подкачиваемые F16/F32 читаются из файла — это working set файла (`mapped`, может
+    дочитываться с диска), а не собственная RAM; `native_f16` — процессор считает F16 из файла."""
     arch = g.meta["general.architecture"]
     if arch not in ("qwen3", "qwen3moe"):
         raise NotImplementedError(arch)
@@ -231,6 +246,7 @@ def estimate_gguf(
     gpu_w = _gpu_tensor(out)
     mapped_names = {"token_embd.weight"}
     gpu_kv = cpu_kv = cpu_aux = stream_ram = 0
+    staged = False
     stream_max: dict[str, int] = {}
     attn = ("attn_q", "attn_k", "attn_v", "attn_output")
     matrices = attn + (
@@ -255,12 +271,16 @@ def estimate_gguf(
             if cpu:
                 mapped_names.add(name)
                 if not moe or matrix in attn:
-                    cpu_aux += _cpu_scales(raw)
+                    cpu_aux += _cpu_scales(raw, native_f16)
             if mode == "gpu":
                 gpu_w += _gpu_tensor(raw)
             elif mode in ("stream", "hyb"):
                 size = _gpu_tensor(raw, packed=True)
-                stream_ram += size
+                if raw[3] in MAPPED_STREAM_KINDS:
+                    mapped_names.add(name)
+                    staged = True
+                else:
+                    stream_ram += size
                 stream_max[matrix] = max(stream_max.get(matrix, 0), size)
         if moe and mode == "gpu":
             gpu_w += experts * d * 4  # router is decoded fp32
@@ -281,7 +301,9 @@ def estimate_gguf(
         weights=MemoryUsage(gpu_w, mapped=mapped),
         kv=MemoryUsage(gpu_kv, cpu_kv),
         persistent=MemoryUsage(small_gpu + scratch + d * 4 + hd * 2, cpu_aux + hd * 2),
-        streaming=MemoryUsage(2 * sum(stream_max.values()), stream_ram),
+        streaming=MemoryUsage(
+            2 * sum(stream_max.values()), stream_ram + (STAGE_RAM if staged else 0)
+        ),
         cpu_workspace=MemoryUsage(ram=cpu_work),
         draft=draft,
         reserve=reserve,

@@ -11,6 +11,7 @@ class Stream:
 class Buffer:
     def __init__(self,fail=False):self.fail=fail
     def numel(self):return 1
+    def is_pinned(self):return True  # 3.18: закреплённый источник идёт без кольца
     def __getitem__(self,key):return self
     def copy_(self,*a,**kw):
         if self.fail:raise ValueError('copy failed')

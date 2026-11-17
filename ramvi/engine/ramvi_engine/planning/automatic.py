@@ -98,6 +98,35 @@ class NoMemoryPlan(RuntimeError):
     """No feasible estimated GPU/owned-RAM budget; never silently switch CPU-only."""
 
 
+CPU_FRACTION_QUANTIZED = 0.58
+
+
+def offload_cpu_fraction(unquantized: bool, override: str | None = None) -> float:
+    """3.18: share of non-GPU layers computed by the CPU (the rest stream over PCIe).
+
+    A streamed layer is read from RAM and then sent over the bus for every pass; a CPU layer
+    is read from RAM once. For unquantized F16/F32 weights the bus copy is the larger cost, so
+    all non-GPU layers go to the CPU (RTX 5060 8 GB laptop, qwen3-8b-f16: 2.35 tok/s vs 1.47 with streaming).
+    Quantized layers keep the earlier measured split. An explicit RAMVI_CPU_FRAC wins.
+    """
+    if override is not None and override != "":
+        value = float(override)
+        if not math.isfinite(value) or not 0 <= value <= 1:
+            raise ValueError("RAMVI_CPU_FRAC must be within 0..1")
+        return value
+    return 1.0 if unquantized else CPU_FRACTION_QUANTIZED
+
+
+LAYER_MATRICES = ("attn_q", "attn_k", "attn_v", "attn_output", "ffn_gate", "ffn_up", "ffn_down")
+
+
+def unquantized_layers(gguf: Any) -> bool:
+    """3.18: dense Qwen3 GGUF whose layer matrices are F16/F32 (metadata only)."""
+    if gguf.meta.get("general.architecture") != "qwen3":
+        return False
+    return all(gguf.raw(f"blk.0.{name}.weight")[3] in ("F16", "F32") for name in LAYER_MATRICES)
+
+
 def automatic_reserve(vram_available: int) -> int:
     if (
         isinstance(vram_available, bool)
@@ -165,8 +194,12 @@ def choose_plan(
     requested_resident: int | None = None,
     cpu_fraction: float = 0.58,
     resident_cap: int | None = None,
+    draft_with_offload: bool = True,
 ) -> PlanningDecision:
     """At most 2*(layers+1) candidates; fixed native buffers are still estimated at16.
+
+    3.18: draft_with_offload=False skips draft candidates that leave layers outside the GPU
+    (with a draft those layers become "hyb" and every verification batch streams them).
 
     Draft is considered only if a name was supplied. No speed benefit is inferred.
     Mapped-file working-set deficit can be allowed explicitly; owned RAM cannot.
@@ -208,6 +241,15 @@ def choose_plan(
     for use_draft in draft_modes:
         for resident in residents:
             assert resident is not None
+            # An explicit draft=on (or manual plan) wins over the rule, like RAMVI_CPU_FRAC.
+            if (
+                use_draft
+                and not draft_with_offload
+                and options.draft == "auto"
+                and not manual
+                and resident < layers
+            ):
+                continue
             route = placement(
                 layers,
                 resident,

@@ -329,6 +329,54 @@ def allowed_layout_changes(name: str, source: str) -> str:
             "        ParentWatch.from_env()\n"
             "    torch.set_grad_enabled(False)",
         )
+    return mapped_weights_318(name, source)
+
+
+# 3.18 ENG-MAPPED-01: слои вне видеокарты читаются из файла модели без собственных копий.
+# Арифметика слоёв прежняя: меняется только источник байт подкачки (memmap + закреплённое
+# кольцо загрузчика) и отсутствие неиспользуемой копии F16 в float32 при ядре C++.
+MAPPED_318: dict[str, tuple[tuple[str, str], ...]] = {
+    "engine": (
+        (
+            '                pend = []\n                for src, dst in job["pairs"]:\n                    for a in range(0, src.numel(), CH):\n                        if self._stop.is_set():\n                            raise RuntimeError("подкачка закрыта")\n                        with torch.cuda.stream(self.cs):\n                            dst[a:a + CH].copy_(src[a:a + CH], non_blocking=True)\n                            event = torch.cuda.Event(); event.record(self.cs)\n                        pend.append(event)\n',
+            '                pend = []\n                for src, dst in job["pairs"]:\n                    staged = not src.is_pinned()\n                    for a in range(0, src.numel(), CH):\n                        if self._stop.is_set():\n                            raise RuntimeError("подкачка закрыта")\n                        part = src[a:a + CH]\n                        if staged:\n                            slot = self._stage_slot(part.numel())\n                            slot.copy_(part)  # из файла (memmap): чтение с диска, если страниц нет в RAM\n                            part = slot\n                        with torch.cuda.stream(self.cs):\n                            dst[a:a + CH].copy_(part, non_blocking=True)\n                            event = torch.cuda.Event(); event.record(self.cs)\n                        if staged:\n                            self._stage_events[self._stage_index] = event\n                        pend.append(event)\n',
+        ),
+        (
+            "    def _event(self, event):",
+            '    STAGE_SLOTS = 4\n    STAGE_BYTES = 10 * 2**20\n\n    def _stage_slot(self, n):\n        """3.18: закреплённый буфер для куска из обычной памяти/файла (кольцо из 4 по 10 МиБ).\n\n        Буфер берётся снова только после того, как его прежняя копия в видеокарту завершилась."""\n        if not hasattr(self, "_stage"):\n            self._stage = [torch.empty(self.STAGE_BYTES, dtype=torch.uint8).pin_memory()\n                           for _ in range(self.STAGE_SLOTS)]\n            self._stage_events = [None] * self.STAGE_SLOTS\n            self._stage_index = -1\n        self._stage_index = (self._stage_index + 1) % self.STAGE_SLOTS\n        previous = self._stage_events[self._stage_index]\n        if previous is not None:\n            self._event(previous)\n        return self._stage[self._stage_index][:n]\n\n    def _event(self, event):',
+        ),
+    ),
+    "gengine": (
+        (
+            'GM = {"q": "attn_q", "k": "attn_k", "v": "attn_v", "o": "attn_output", "gate": "ffn_gate", "up": "ffn_up", "down": "ffn_down"}\n',
+            'GM = {"q": "attn_q", "k": "attn_k", "v": "attn_v", "o": "attn_output", "gate": "ffn_gate", "up": "ffn_up", "down": "ffn_down"}\nMAPPED_KINDS = ("F16", "F32")\n\n\ndef host_weights(raw, arena):\n    """3.18: источник подкачки матрицы слоя вне видеокарты — (байты, раскладка для _unpack).\n\n    F16/F32 в видеокарте лежат как в файле, поэтому подкачиваются прямо из файла модели (memmap):\n    своей копии в RAM нет, прочитанное держит в памяти система, а не поместившееся дочитывает с диска.\n    Q4_K/Q6_K в видеокарте раскладываются иначе (repack) — их копия по-прежнему в закреплённой RAM."""\n    buf, N, K, t = raw\n    if t in MAPPED_KINDS and N > 0 and K > 0 and K % 256 == 0:\n        import warnings\n        with warnings.catch_warnings():  # memmap только для чтения: torch предупреждает о записи\n            warnings.simplefilter("ignore", UserWarning)\n            src = torch.from_numpy(np.asarray(buf).reshape(-1))\n        dtype = torch.float16 if t == "F16" else torch.float32\n        return src, [("t", None, t, None), ("N", None, N, None), ("K", None, K, None), ("W", 0, dtype, (N, K))]\n    b, lay = _pack(repack(buf, N, K, t))\n    return arena.put(b.cpu()), lay\n\n\n',
+        ),
+        (
+            '            ws = {n: repack(*g.raw(f"blk.{i}.{GM[n]}.weight")) for n in GM}\n            if self.place[i] == "gpu":\n                self.W.append(ws)\n            else:\n                pk = {}\n                for n, w in ws.items():\n                    b, lay = _pack(w)\n                    pk[n] = (arena.put(b.cpu()), lay)\n                if self.place[i] == "hyb":\n                    self.HW[i] = pk\n                else:\n                    self.W.append(pk)\n                del ws\n',
+            '            if self.place[i] == "gpu":\n                self.W.append({n: repack(*g.raw(f"blk.{i}.{GM[n]}.weight")) for n in GM})\n            else:\n                pk = {n: host_weights(g.raw(f"blk.{i}.{GM[n]}.weight"), arena) for n in GM}\n                if self.place[i] == "hyb":\n                    self.HW[i] = pk\n                else:\n                    self.W.append(pk)\n',
+        ),
+        (
+            "    def __init__(self, name, maxt=2048, resident=None, log=print, vram_reserve=None, extra_vram=0, cpu=True):\n",
+            "    def __init__(self, name, maxt=2048, resident=None, log=print, vram_reserve=None, extra_vram=0, cpu=True, cpu_frac=None):\n",
+        ),
+        (
+            '        self.cpu_frac = float(env("RAMVI_CPU_FRAC", "0.58"))  # доля слоёв вне видеокарты на процессоре\n',
+            '        if cpu_frac is None:  # 3.18: то же правило, что у плана (несжатые слои — процессору)\n            from ramvi_engine.planning.automatic import offload_cpu_fraction, unquantized_layers\n            cpu_frac = offload_cpu_fraction(unquantized_layers(g), env("RAMVI_CPU_FRAC"))\n        self.cpu_frac = float(cpu_frac)  # доля слоёв вне видеокарты на процессоре\n',
+        ),
+    ),
+    "gcpu": (
+        (
+            "        else:  # F16 / F32 — в float32 (такие матрицы небольшие)\n",
+            '        elif t == "F16" and K % 256 == 0 and _dll() is not None:\n            self.W = None  # 3.18: ядро C++ считает F16 прямо из файла — копия в float32 не нужна\n        else:  # F16 / F32 — в float32 (такие матрицы небольшие)\n',
+        ),
+    ),
+}
+
+
+def mapped_weights_318(name: str, source: str) -> str:
+    for old, new in MAPPED_318.get(name, ()):
+        assert source.count(old) == 1, (name, old[:60])
+        source = source.replace(old, new)
     return source
 
 

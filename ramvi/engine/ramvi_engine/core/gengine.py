@@ -18,11 +18,30 @@ from ramvi_engine.planning.plan import GiB, ram_info
 from ramvi_engine.kernels.tkernels import attn_k, qk_rope_cache_k, rmsg_k, rope_attn_k
 
 GM = {"q": "attn_q", "k": "attn_k", "v": "attn_v", "o": "attn_output", "gate": "ffn_gate", "up": "ffn_up", "down": "ffn_down"}
+MAPPED_KINDS = ("F16", "F32")
+
+
+def host_weights(raw, arena):
+    """3.18: источник подкачки матрицы слоя вне видеокарты — (байты, раскладка для _unpack).
+
+    F16/F32 в видеокарте лежат как в файле, поэтому подкачиваются прямо из файла модели (memmap):
+    своей копии в RAM нет, прочитанное держит в памяти система, а не поместившееся дочитывает с диска.
+    Q4_K/Q6_K в видеокарте раскладываются иначе (repack) — их копия по-прежнему в закреплённой RAM."""
+    buf, N, K, t = raw
+    if t in MAPPED_KINDS and N > 0 and K > 0 and K % 256 == 0:
+        import warnings
+        with warnings.catch_warnings():  # memmap только для чтения: torch предупреждает о записи
+            warnings.simplefilter("ignore", UserWarning)
+            src = torch.from_numpy(np.asarray(buf).reshape(-1))
+        dtype = torch.float16 if t == "F16" else torch.float32
+        return src, [("t", None, t, None), ("N", None, N, None), ("K", None, K, None), ("W", 0, dtype, (N, K))]
+    b, lay = _pack(repack(buf, N, K, t))
+    return arena.put(b.cpu()), lay
 
 
 class GGUFEngine(Engine):
     supports_mask = True
-    def __init__(self, name, maxt=2048, resident=None, log=print, vram_reserve=None, extra_vram=0, cpu=True):
+    def __init__(self, name, maxt=2048, resident=None, log=print, vram_reserve=None, extra_vram=0, cpu=True, cpu_frac=None):
         """cpu: True — слои вне видеокарты через один считает процессор (из файла модели), пока следующий едет по
         шине; "hybrid" — такие слои («hyb») при одиночном шаге считает процессор, а при проходе пачкой они
         подкачиваются по шине и считаются в видеокарте (кэш k, v — в обоих местах, новые строки копируются)."""
@@ -66,7 +85,10 @@ class GGUFEngine(Engine):
         else:
             R = resident
         alt = "hyb" if cpu == "hybrid" else "cpu"
-        self.cpu_frac = float(env("RAMVI_CPU_FRAC", "0.58"))  # доля слоёв вне видеокарты на процессоре
+        if cpu_frac is None:  # 3.18: то же правило, что у плана (несжатые слои — процессору)
+            from ramvi_engine.planning.automatic import offload_cpu_fraction, unquantized_layers
+            cpu_frac = offload_cpu_fraction(unquantized_layers(g), env("RAMVI_CPU_FRAC"))
+        self.cpu_frac = float(cpu_frac)  # доля слоёв вне видеокарты на процессоре
         self.place = ["gpu"] * R + self._spread(self.L - R, alt if cpu else None)
         tot, avail = ram_info()
         log(f"GGUF {name}: {self.L} слоёв, {sum(lb) / GiB:.2f} ГиБ весов слоёв; видеокарта свободно {free / GiB:.1f} ГиБ -> "
@@ -81,19 +103,14 @@ class GGUFEngine(Engine):
                 self.W.append(GCpuLayer(g, i, self.small[i], self.H, self.KV, self.HD, self.FF, self.eps, maxt))
                 if self.place[i] == "cpu":
                     continue
-            ws = {n: repack(*g.raw(f"blk.{i}.{GM[n]}.weight")) for n in GM}
             if self.place[i] == "gpu":
-                self.W.append(ws)
+                self.W.append({n: repack(*g.raw(f"blk.{i}.{GM[n]}.weight")) for n in GM})
             else:
-                pk = {}
-                for n, w in ws.items():
-                    b, lay = _pack(w)
-                    pk[n] = (arena.put(b.cpu()), lay)
+                pk = {n: host_weights(g.raw(f"blk.{i}.{GM[n]}.weight"), arena) for n in GM}
                 if self.place[i] == "hyb":
                     self.HW[i] = pk
                 else:
                     self.W.append(pk)
-                del ws
             self.Kc[i] = torch.zeros(self.KV, maxt, self.HD, device=dev, dtype=torch.float16)
             self.Vc[i] = torch.zeros_like(self.Kc[i])
             torch.cuda.empty_cache()
