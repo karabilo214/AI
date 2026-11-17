@@ -329,7 +329,7 @@ def allowed_layout_changes(name: str, source: str) -> str:
             "        ParentWatch.from_env()\n"
             "    torch.set_grad_enabled(False)",
         )
-    return prefill_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
+    return multigpu_410(name, mapped_weights_318(name, source))
 
 
 # 3.18 ENG-MAPPED-01: слои вне видеокарты читаются из файла модели без собственных копий.
@@ -456,76 +456,6 @@ def multigpu_410(name: str, source: str) -> str:
     return source
 
 
-# B.6: чтение длинного запроса кусками по 64 слова на тензорных блоках (было 16). Арифметика
-# каждого числа та же: те же части bf16 и порядок по K; меняются ширина блока по словам, шаг
-# строк входа, размер рабочих буферов и шаг цикла чтения запроса.
-PREFILL_B6: dict[str, tuple[tuple[str, str], ...]] = {
-    "gengine": (
-        (
-            "    return arena.put(b.cpu()), lay\n",
-            '    return arena.put(b.cpu()), lay\n\n\nPREFILL_ROWS = 64  # B.6: самый широкий кусок чтения запроса (рабочие буферы слоя — на столько слов)\n\n\ndef prefill_rows(batch: int) -> int:\n    """Кусок чтения запроса: 64 слова (RAMVI_PREFILL_ROWS=16/32/64 — для сравнения); план, урезавший\n    пачку после нехватки памяти (batch < 16), урезает и кусок."""\n    if batch < 16:\n        return batch\n    rows = int(env("RAMVI_PREFILL_ROWS", str(PREFILL_ROWS)))\n    if rows not in (16, 32, 64):\n        raise ValueError("RAMVI_PREFILL_ROWS должен быть 16, 32 или 64")\n    return rows\n\n\ndef wide_ok(W: dict) -> bool:\n    """Широкий кусок — только если все матрицы слоя на тензорных блоках (Q4_K/Q6_K); иначе 16."""\n    return all(isinstance(W[n], dict) and W[n].get("t") in ("Q4_K", "Q6_K") for n in GM)\n',
-        ),
-        (
-            "        f = lambda n: torch.zeros(16, n, device=dev)\n        H, KV, HD = self.H, self.KV, self.HD\n        self.QKV = (H + 2 * KV) * HD\n        self.xb, self.hb, self.qkvb, self.qb, self.attb = f(self.D), f(self.D), f(self.QKV), f(H * HD), f(H * HD)\n        self.gub, self.mb, self.logits = f(2 * self.FF), f(self.FF), f(self.V)\n",
-            "        f = lambda n: torch.zeros(PREFILL_ROWS, n, device=dev)  # B.6: чтение запроса кусками до 64 слов\n        H, KV, HD = self.H, self.KV, self.HD\n        self.QKV = (H + 2 * KV) * HD\n        self.xb, self.hb, self.qkvb, self.qb, self.attb = f(self.D), f(self.D), f(self.QKV), f(H * HD), f(H * HD)\n        self.gub, self.mb = f(2 * self.FF), f(self.FF)\n        self.logits = torch.zeros(16, self.V, device=dev)\n",
-        ),
-        (
-            "            f = lambda n: torch.zeros(16, n, device=device)\n",
-            "            f = lambda n: torch.zeros(PREFILL_ROWS, n, device=device)\n",
-        ),
-        (
-            "        batch = batch_limit(self)\n",
-            "        batch = batch_limit(self)\n        rows = prefill_rows(batch)\n",
-        ),
-        (
-            "                for c in range(0, n, batch):\n                    T = min(batch, n - c)\n",
-            "                step = rows if wide_ok(W) else batch\n                for c in range(0, n, step):\n                    T = min(step, n - c)\n",
-        ),
-    ),
-    "gkernels": (
-        (
-            "# ---------------- пачка 2..16 слов на тензорных блоках ----------------\n# Вход раскладывается один раз (xprep_k) на 3 части bf16 (~fp32) + суммы по подблокам 32. Вес подблока\n# sc*q — целое (Q4_K: 0..945, Q6_K: -4096..4064); оно точно делится на две части bf16: a*S + b. Умножения\n# на тензорных блоках длиной 128, масштаб d (и сдвиги Q4_K) — после, в fp32.\n@triton.jit\ndef xprep_k(X, X3, SX, T, K):\n",
-            "# ---------------- пачка 2..64 слов на тензорных блоках ----------------\n# B.6: чтение запроса — кусками до 64 слов (TT=64): веса распаковываются один раз на 64 слова, а не\n# на 16. Арифметика каждого числа та же (те же части bf16, тот же порядок по K), меняется только\n# ширина блока по словам. Строки X3 — с шагом XR (64) при любой ширине.\n# Вход раскладывается один раз (xprep_k) на 3 части bf16 (~fp32) + суммы по подблокам 32. Вес подблока\n# sc*q — целое (Q4_K: 0..945, Q6_K: -4096..4064); оно точно делится на две части bf16: a*S + b. Умножения\n# на тензорных блоках длиной 128, масштаб d (и сдвиги Q4_K) — после, в fp32.\n@triton.jit\ndef xprep_k(X, X3, SX, T, K, XR: tl.constexpr):\n",
-        ),
-        (
-            '    tl.store(X3 + 16 * K + t * K + r, x2)\n    tl.store(X3 + 32 * K + t * K + r, x3)\n    tl.store(SX + t * (K // 32) + j, tl.sum(x, 0))\n\n\n@triton.jit\ndef _dx(X3, k, T, K, a, b, S: tl.constexpr):\n    """(S*a + b) @ x^T, x [len(k), 16] из трёх частей bf16."""\n    rt = tl.arange(0, 16)\n    p = X3 + rt[None, :] * K + k[:, None]\n    m = rt[None, :] < T\n    r = tl.zeros((a.shape[0], 16), dtype=tl.float32)\n    for i in tl.static_range(3):\n        x = tl.load(p + i * 16 * K, mask=m, other=0.0)\n        r += tl.dot(a, x) * S + tl.dot(b, x)\n    return r\n\n\n@triton.jit\ndef q4k_tc_k(X3, SX, Q, SC, MN, D, Y, T, N, K, YS, MODE: tl.constexpr, BN: tl.constexpr):\n    pid = tl.program_id(0)\n    rn = pid * BN + tl.arange(0, BN)\n    rt = tl.arange(0, 16)\n    c = tl.arange(0, 4)\n    l = tl.arange(0, 32)\n    kk = tl.reshape(c[:, None] * 64 + l[None, :], (128,))\n    acc = tl.zeros((BN, 16), dtype=tl.float32)\n',
-            '    tl.store(X3 + XR * K + t * K + r, x2)\n    tl.store(X3 + 2 * XR * K + t * K + r, x3)\n    tl.store(SX + t * (K // 32) + j, tl.sum(x, 0))\n\n\n@triton.jit\ndef _dx(X3, k, T, K, a, b, S: tl.constexpr, TT: tl.constexpr, XR: tl.constexpr):\n    """(S*a + b) @ x^T, x [len(k), TT] из трёх частей bf16."""\n    rt = tl.arange(0, TT)\n    p = X3 + rt[None, :] * K + k[:, None]\n    m = rt[None, :] < T\n    r = tl.zeros((a.shape[0], TT), dtype=tl.float32)\n    for i in tl.static_range(3):\n        x = tl.load(p + i * XR * K, mask=m, other=0.0)\n        r += tl.dot(a, x) * S + tl.dot(b, x)\n    return r\n\n\n@triton.jit\ndef q4k_tc_k(X3, SX, Q, SC, MN, D, Y, T, N, K, YS, MODE: tl.constexpr, BN: tl.constexpr,\n             TT: tl.constexpr = 16, XR: tl.constexpr = 64):\n    pid = tl.program_id(0)\n    rn = pid * BN + tl.arange(0, BN)\n    rt = tl.arange(0, TT)\n    c = tl.arange(0, 4)\n    l = tl.arange(0, 32)\n    kk = tl.reshape(c[:, None] * 64 + l[None, :], (128,))\n    acc = tl.zeros((BN, TT), dtype=tl.float32)\n',
-        ),
-        (
-            "        blk = _dx(X3, k0 + kk, T, K, (wl >> 5).to(tl.bfloat16), (wl & 31).to(tl.bfloat16), 32)\n        blk += _dx(X3, k0 + kk + 32, T, K, (wh >> 5).to(tl.bfloat16), (wh & 31).to(tl.bfloat16), 32)\n        # сдвиги: dm * sum_sub m_sub * sum(x по подблоку)\n        sxo = SX + rt[None, :] * (K // 32) + k0 // 32 + 2 * c[:, None]  # [4, 16]\n",
-            "        blk = _dx(X3, k0 + kk, T, K, (wl >> 5).to(tl.bfloat16), (wl & 31).to(tl.bfloat16), 32, TT, XR)\n        blk += _dx(X3, k0 + kk + 32, T, K, (wh >> 5).to(tl.bfloat16), (wh & 31).to(tl.bfloat16), 32, TT, XR)\n        # сдвиги: dm * sum_sub m_sub * sum(x по подблоку)\n        sxo = SX + rt[None, :] * (K // 32) + k0 // 32 + 2 * c[:, None]  # [4, TT]\n",
-        ),
-        (
-            "def q6k_tc_k(X3, QL, QH, SC, D, Y, T, N, K, YS, MODE: tl.constexpr, BN: tl.constexpr):\n    pid = tl.program_id(0)\n    rn = pid * BN + tl.arange(0, BN)\n    rt = tl.arange(0, 16)\n",
-            "def q6k_tc_k(X3, QL, QH, SC, D, Y, T, N, K, YS, MODE: tl.constexpr, BN: tl.constexpr,\n             TT: tl.constexpr = 16, XR: tl.constexpr = 64):\n    pid = tl.program_id(0)\n    rn = pid * BN + tl.arange(0, BN)\n    rt = tl.arange(0, TT)\n",
-        ),
-        (
-            "    acc = tl.zeros((BN, 16), dtype=tl.float32)\n",
-            "    acc = tl.zeros((BN, TT), dtype=tl.float32)\n",
-        ),
-        (
-            "        blk = _dx(X3, k0 + kk, T, K, (wl >> 6).to(tl.bfloat16), (wl & 63).to(tl.bfloat16), 64)\n        blk += _dx(X3, k0 + kk + 64, T, K, (wh >> 6).to(tl.bfloat16), (wh & 63).to(tl.bfloat16), 64)\n",
-            "        blk = _dx(X3, k0 + kk, T, K, (wl >> 6).to(tl.bfloat16), (wl & 63).to(tl.bfloat16), 64, TT, XR)\n        blk += _dx(X3, k0 + kk + 64, T, K, (wh >> 6).to(tl.bfloat16), (wh & 63).to(tl.bfloat16), 64, TT, XR)\n",
-        ),
-        (
-            "def xprep(x, T, K):\n    key = (K, x.device.index)\n    if key not in _XP:\n        _XP[key] = (torch.zeros(3, 16, K, dtype=torch.bfloat16, device=x.device), torch.zeros(16, K // 32, device=x.device))\n    X3, SX = _XP[key]\n    xprep_k[(T, K // 32)](x, X3, SX, T, K)\n    return X3, SX\n\n\nTC_FROM = 2  # с какого размера пачки — тензорные блоки\nCFGTC = {}\n",
-            'XROWS = 64  # B.6: самая широкая пачка тензорных блоков (чтение запроса)\n\n\ndef xprep(x, T, K):\n    if T > XROWS:\n        raise ValueError(f"пачка тензорных блоков не больше {XROWS} слов")\n    key = (K, x.device.index)\n    if key not in _XP:\n        _XP[key] = (torch.zeros(3, XROWS, K, dtype=torch.bfloat16, device=x.device),\n                    torch.zeros(XROWS, K // 32, device=x.device))\n    X3, SX = _XP[key]\n    xprep_k[(T, K // 32)](x, X3, SX, T, K, XR=XROWS)\n    return X3, SX\n\n\ndef tc_width(T: int) -> int:\n    """Ширина блока по словам: до 16 — прежние 16 (одиночные пачки и угадыватель), дальше 32/64."""\n    return 16 if T <= 16 else 32 if T <= 32 else 64\n\n\nTC_FROM = 2  # с какого размера пачки — тензорные блоки\nCFGTC = {}\n\n\ndef _cfg_tc(t, N, K, T):\n    """Настройка (BN, warps): до 16 слов — подобранная tune; шире — своя запись (иначе 32 строки,\n    4 warps: подобранные для 16 широкие BN при 64 словах не помещаются в регистры)."""\n    width = tc_width(T)\n    if width == 16:\n        return CFGTC.get((t, N, K), (32, 4))\n    return CFGTC.get((t, N, K, width), (32, 4))\n',
-        ),
-        (
-            '        BN, nw = cfg or CFGTC.get((t, N, K), (32, 4))\n        if N % BN:\n            raise ValueError("число строк не кратно блоку GPU-ядра")\n        q4k_tc_k[(N // BN,)](X3, SX, w["Q"], w["SC"], w["MN"], w["D"], y, T, N, K, ys, mode, BN=BN, num_warps=nw)\n    elif t == "Q6_K":\n        X3, SX = xprep(x, T, K)\n        BN, nw = cfg or CFGTC.get((t, N, K), (32, 4))\n        if N % BN:\n            raise ValueError("число строк не кратно блоку GPU-ядра")\n        q6k_tc_k[(N // BN,)](X3, w["QL"], w["QH"], w["SC"], w["D"], y, T, N, K, ys, mode, BN=BN, num_warps=nw)\n    else:  # F16 — обычные вычислители (небольшие матрицы, счёт fp32)\n',
-            '        BN, nw = cfg or _cfg_tc(t, N, K, T)\n        if N % BN:\n            raise ValueError("число строк не кратно блоку GPU-ядра")\n        q4k_tc_k[(N // BN,)](X3, SX, w["Q"], w["SC"], w["MN"], w["D"], y, T, N, K, ys, mode, BN=BN,\n                             TT=tc_width(T), XR=XROWS, num_warps=nw)\n    elif t == "Q6_K":\n        X3, SX = xprep(x, T, K)\n        BN, nw = cfg or _cfg_tc(t, N, K, T)\n        if N % BN:\n            raise ValueError("число строк не кратно блоку GPU-ядра")\n        q6k_tc_k[(N // BN,)](X3, w["QL"], w["QH"], w["SC"], w["D"], y, T, N, K, ys, mode, BN=BN,\n                             TT=tc_width(T), XR=XROWS, num_warps=nw)\n    else:  # F16 — обычные вычислители (небольшие матрицы, счёт fp32)\n        if T > 16:\n            raise ValueError("F16: пачка не больше 16 слов")\n',
-        ),
-    ),
-}
-
-
-def prefill_b6(name: str, source: str) -> str:
-    for old, new in PREFILL_B6.get(name, ()):
-        assert source.count(old) == 1, (name, old[:60])
-        source = source.replace(old, new)
-    return source
-
-
 def computational_tree(source: str) -> str:
     """Нормализовать AST без исполнения проверяемого модуля."""
     return ast.dump(WithoutImports().visit(ast.parse(source)), include_attributes=False)
@@ -544,8 +474,9 @@ def test_migrated_computation_matches_baseline(name: str) -> None:
 )
 def test_independent_kernels_keep_exact_bytes(name: str) -> None:
     """Перенос не меняет исходные байты ядер и ключи автонастройки."""
-    old = prefill_b6(name, source_before_move(f"{name}.py").decode("utf-8")).encode("utf-8")
-    assert old == (PACKAGE_ROOT / "kernels" / f"{name}.py").read_bytes()
+    assert (
+        source_before_move(f"{name}.py") == (PACKAGE_ROOT / "kernels" / f"{name}.py").read_bytes()
+    )
 
 
 @pytest.mark.parametrize("name", ["qmm.cpp", "build.sh", "write_manifest.py"])

@@ -202,9 +202,6 @@ MAPPED_STREAM_KINDS = ("F16", "F32")
 STAGE_RAM = 4 * 10 * 2**20  # кольцо закреплённых буферов загрузчика (core.engine.Loader)
 
 
-PREFILL_ROWS = 64  # B.6: ширина куска чтения запроса у плотного GGUF (gengine)
-
-
 def estimate_gguf(
     g: Any,
     place: list[str],
@@ -296,11 +293,6 @@ def estimate_gguf(
         cpu_aux += batch * (2 * d + topk * (ff + d)) * 4
     else:
         scratch += batch * 3 * ff * 4
-        # B.6: рабочие буферы слоя — на 64 слова (чтение запроса кусками по 64), логиты — на 16;
-        # входы тензорных блоков: 3 части bf16 по 64 строки и суммы подблоков для каждой длины K.
-        wide = PREFILL_ROWS - batch if batch == 16 else 0
-        scratch += wide * (2 * d + qkv + 2 * h * hd + 3 * ff) * 4
-        scratch += sum(PREFILL_ROWS * (k * 3 * 2 + k // 32 * 4) for k in {d, h * hd, ff})
         cpu_aux += batch * d * 4 if nc else 0
     cpu_work = batch * (2 * d + qkv + h * hd + 3 * ff + (d + h * hd + ff) // 32) * 4 if nc else 0
     if moe and nc:
