@@ -287,5 +287,8 @@
   "models.recommend": "Model choice: {name} — {reason}",
   "models.error": "Models screen error: {detail}",
   "settings.default_model": "Default model",
-  "settings.manage_models": "Manage models…"
+  "settings.manage_models": "Manage models…",
+  "models.measured": "Measured on this PC: peak VRAM {vram} GB, RAM {ram} GB, first token {ttft} s",
+  "models.busy": "A control run of {model_id} is in progress — delete it afterwards",
+  "models.file_busy": "The {model_id} model file is in use by another program — the model was not deleted ({detail})"
 }

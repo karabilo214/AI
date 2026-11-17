@@ -154,6 +154,8 @@
                     <StackPanel Grid.Column="1" Spacing="2">
                       <TextBlock Classes="heading" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                       <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Detail}" />
+                      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Measured}"
+                                 IsVisible="{Binding HasMeasured}" />
                       <TextBlock FontSize="12" Text="{Binding CompatText}" Classes.ok="{Binding IsRecommended}"
                                  Classes.warn="{Binding IsSlow}" Classes.fail="{Binding IsUnfit}" />
                     </StackPanel>

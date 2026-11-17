@@ -100,7 +100,7 @@ def check_texts(catalogs: dict[str, dict[str, str]], module_id: str) -> None:
 
 
 def load_manifest(path: Path) -> Manifest:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8-sig"))  # Блокнот Windows пишет BOM
     if not isinstance(raw, dict):
         raise ValueError("the manifest must be a JSON object")
     for name in ("required", "optional", "capabilities", "permissions"):

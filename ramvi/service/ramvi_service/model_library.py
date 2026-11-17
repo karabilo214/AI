@@ -29,9 +29,11 @@ class ModelLibrary:
         app_dir: Path | None,
         loaded: Callable[[], str | None],
         unload: Callable[[], Any],
+        busy: Callable[[str], bool] = lambda model_id: False,
     ) -> None:
         self.models, self.remember, self.models_folder = models, remember, models_folder
         self.app_dir, self.loaded, self.unload = app_dir, loaded, unload
+        self.busy = busy  # 4.7: по модели идёт контрольный прогон — удалять нельзя
 
     def _get(self, model_id: str) -> Model:
         try:
@@ -56,15 +58,19 @@ class ModelLibrary:
         model = self._get(model_id)
         if delete_file and not self.owns_file(model):
             raise ChatError("models.file_not_ours", model_id=model_id)
+        if self.busy(model_id):
+            raise ChatError("models.busy", model_id=model_id)
         if self.loaded() == model_id:
             self.unload()
         path = resolve_model(model, self.app_dir).path
-        self.models.delete(model_id)
         removed = False
-        if delete_file:
+        if delete_file:  # сначала файл: не удалился — запись остаётся, модель не «теряется»
             try:
                 os.remove(path)
                 removed = True
             except FileNotFoundError:
                 pass
+            except OSError as error:
+                raise ChatError("models.file_busy", model_id=model_id, detail=str(error)) from None
+        self.models.delete(model_id)
         return {"deleted": True, "file_deleted": removed}

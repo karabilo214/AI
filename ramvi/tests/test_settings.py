@@ -59,3 +59,9 @@ def test_path_outside_app_stays_absolute(tmp_path: Path) -> None:
     app, other = tmp_path / "app", tmp_path / "elsewhere"
     s = st.Settings().with_path(app, "models_dir", other)
     assert s.resolve(app, "models_dir") == other.resolve()
+
+
+def test_settings_file_with_bom_is_read(tmp_path: Path) -> None:
+    """Блокнот и PowerShell 5 сохраняют UTF-8 с BOM — настройки всё равно читаются."""
+    (tmp_path / st.FILE_NAME).write_bytes(b"\xef\xbb\xbf" + json.dumps({"language": "en"}).encode())
+    assert st.load(tmp_path).language == "en"

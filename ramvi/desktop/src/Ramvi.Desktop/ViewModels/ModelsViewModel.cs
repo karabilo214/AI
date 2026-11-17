@@ -133,6 +133,15 @@ public sealed class ModelCardViewModel : ObservableObject
         }
     }
 
+    /// <summary>4.7 / экзамен 2 ТЗ: фактические ресурсы из контрольного прогона на этом ПК.</summary>
+    public string? Measured => Compat?.Control is { } c
+        ? L.Format("models.measured",
+            ("vram", Gb(c.PeakVram ?? 0)), ("ram", Gb(c.PeakRam ?? 0)),
+            ("ttft", (c.TtftS ?? 0).ToString("0.00", System.Globalization.CultureInfo.CurrentCulture)))
+        : null;
+
+    public bool HasMeasured => Measured is not null;
+
     /// <summary>Подсказка: все причины статуса и почему не подходит задаче.</summary>
     public string Reasons
     {

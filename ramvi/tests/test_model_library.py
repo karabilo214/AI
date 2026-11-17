@@ -108,3 +108,27 @@ def test_models_section_is_built_in_and_reserved(app: Any) -> None:
 
     with pytest.raises(ValueError):
         section_of(manifest("thief", view="models"))
+
+
+def test_locked_file_keeps_the_model_and_busy_model_is_refused(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows: открытый движком файл не удалить — запись остаётся, ошибка понятная."""
+    import os
+
+    server, _, client, files = app
+
+    def locked(path: Any) -> None:
+        raise PermissionError(32, "The process cannot access the file", str(path))
+
+    monkeypatch.setattr(os, "remove", locked)
+    status, body = client.request("POST", "/models/model-own/delete", {"delete_file": True})
+    assert status == 400 and body["error"]["code"] == "models.file_busy"
+    assert "model-own" in ids(client) and files["own"].exists()
+    monkeypatch.undo()
+
+    assert server.library is not None
+    server.library.busy = lambda model_id: model_id == "model-own"  # идёт контрольный прогон
+    status, body = client.request("POST", "/models/model-own/delete", {"delete_file": True})
+    assert status == 400 and body["error"]["code"] == "models.busy"
+    assert "model-own" in ids(client)

@@ -167,6 +167,7 @@ def build(
         root,
         lambda: engines.model_id,
         control.unload,
+        lambda model_id: runs.status(model_id)["state"] in ("queued", "running"),
     )
     server.app_dir = root
     # Закрывается в обратном порядке: сначала загрузки, потом база

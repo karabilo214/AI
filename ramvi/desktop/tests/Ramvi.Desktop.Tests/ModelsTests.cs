@@ -78,6 +78,24 @@ public sealed class ModelsTests
     }
 
     [Fact]
+    public async Task Measured_resources_from_control_run_are_shown()
+    {
+        var api = Api();
+        var measured = api.Models[0] with
+        {
+            Compat = api.Models[0].Compat! with { Control = new ControlInfo(true, 55, 0.25, 2_000_000_000, 6_400_000_000, 36) },
+        };
+        api.Models[0] = measured;
+        var (_, screen, _) = await Open(api);
+
+        var card = Card(screen, "qwen3-8b-q4_k_m");
+        Assert.True(card.HasMeasured);
+        Assert.Equal("Замер на этом ПК: пик видеопамяти 6,4 ГБ, RAM 2,0 ГБ, первый токен 0,25 с",
+            card.Measured!.Replace('.', ','));
+        Assert.False(Card(screen, "my-local").HasMeasured);
+    }
+
+    [Fact]
     public async Task Filters_and_search()
     {
         var (_, screen, _) = await Open();

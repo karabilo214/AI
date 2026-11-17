@@ -44,6 +44,11 @@ public sealed record CompatModel(string Key, double? SizeB, string? Quant);
 /// <summary>Подходит ли модель задаче профиля (4.5).</summary>
 public sealed record TaskFit(bool Suits, IReadOnlyList<JsonElement>? Reasons);
 
+/// <summary>4.7: замер контрольного прогона на этом компьютере (фактические ресурсы).</summary>
+public sealed record ControlInfo(
+    bool Stable, double? TokS = null, double? TtftS = null, long? PeakRam = null, long? PeakVram = null,
+    int? Resident = null);
+
 /// <summary>Статус совместимости, причины (сообщения), скорость (сообщение) и план.</summary>
 public sealed record CompatInfo(
     string Status,
@@ -51,7 +56,8 @@ public sealed record CompatInfo(
     JsonElement? Speed = null,
     PlanInfo? Plan = null,
     CompatModel? Model = null,
-    TaskFit? Task = null);
+    TaskFit? Task = null,
+    ControlInfo? Control = null);
 
 public sealed record CatalogEntryInfo(
     string Id,

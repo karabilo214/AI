@@ -66,7 +66,7 @@ def load_catalog(language: str, folder: Path = CORE_DIR) -> dict[str, str]:
     path = Path(folder) / f"{language}.json"
     if not path.is_file():
         return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8-sig"))  # Блокнот Windows пишет BOM
     if not isinstance(raw, dict) or not all(
         isinstance(k, str) and isinstance(v, str) for k, v in raw.items()
     ):

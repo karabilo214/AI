@@ -287,5 +287,8 @@
   "models.recommend": "Подбор модели: {name} — {reason}",
   "models.error": "Ошибка экрана моделей: {detail}",
   "settings.default_model": "Модель по умолчанию",
-  "settings.manage_models": "Управлять моделями…"
+  "settings.manage_models": "Управлять моделями…",
+  "models.measured": "Замер на этом ПК: пик видеопамяти {vram} ГБ, RAM {ram} ГБ, первый токен {ttft} с",
+  "models.busy": "По модели {model_id} сейчас идёт контрольный прогон — удалите её после него",
+  "models.file_busy": "Файл модели {model_id} занят другой программой — модель не удалена ({detail})"
 }

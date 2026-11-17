@@ -234,3 +234,24 @@ def test_normal_run_does_not_pin_the_plan_and_replaced_file_drops_result(
         models.upsert(Model(**{**models.get("model-plain").__dict__, "sha256": "f" * 64}))
     compat = {m["id"]: m for m in client.ok("GET", "/models")["models"]}["model-plain"]["compat"]
     assert "control" not in compat and compat["speed"]["code"] != "compat.speed_here"
+
+
+def test_page_faults_cover_the_whole_engine_tree() -> None:
+    """На Windows движок запускается через процесс-привратник: считать надо всё дерево."""
+    import os
+    import subprocess
+    import sys
+
+    from ramvi_service.control_run import _tree, page_faults
+
+    if not (sys.platform.startswith("linux") or sys.platform == "win32"):
+        pytest.skip("page faults считаются на Windows и Linux")
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"])
+    try:
+        assert child.pid in _tree(os.getpid())
+        faults = page_faults(os.getpid())
+        assert faults is not None and faults >= 0
+    finally:
+        child.kill()
+        child.wait()
+    assert page_faults(None) is None

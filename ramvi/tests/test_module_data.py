@@ -220,7 +220,11 @@ def test_module_data_over_http(tmp_path: Path) -> None:
         )
         assert client.ok("POST", "/modules/character/reset")["module"]["state"] == "disposed"
         client.ok("POST", "/modules/character/uninstall", {"purge": True})
-        assert [s["id"] for s in client.ok("GET", "/sections")["sections"]] == ["chat", "models", "agent"]
+        assert [s["id"] for s in client.ok("GET", "/sections")["sections"]] == [
+            "chat",
+            "models",
+            "agent",
+        ]
         status, error = client.request("POST", "/modules/nope/reset")
         assert status == 400 and error["error"]["code"] == "module.not_found"
     finally:

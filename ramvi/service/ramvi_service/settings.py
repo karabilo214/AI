@@ -87,7 +87,7 @@ def load(data_dir: str | os.PathLike[str]) -> Settings:
     path = Path(data_dir) / FILE_NAME
     if not path.exists():
         return Settings()
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8-sig"))  # Блокнот Windows пишет BOM
     if not isinstance(raw, dict):
         raise SettingsError("settings.bad_file", path=str(path))
     known = {f.name for f in fields(Settings)}

@@ -40,7 +40,11 @@ from ramvi_service.hardware import HardwareProfile
 from ramvi_service.resources import SharedLLM
 
 WARMUP = "Reply with one word: ready"
-SHORT = ("Name three colors.", "Count from one to five.")
+# Просьбы о тексте ~100 слов: ответ дольше 64 токенов, скорость меряется на полной длине.
+SHORT = (
+    "Write a short story about a cat in about 100 words.",
+    "Explain how a refrigerator works in about 100 words.",
+)
 OUTPUT_TOKENS = 64
 UNSTABLE_SPREAD = 0.25  # разброс скорости коротких запросов (max−min)/медиана
 SAFE_FACTOR = 0.75  # при нехватке памяти — столько от прежних слоёв в видеопамяти
@@ -84,10 +88,72 @@ def file_sha256(path: str) -> str:
     return digest.hexdigest()
 
 
+def _tree(pid: int) -> list[int]:
+    """Процесс и все его потомки (на Windows движок запускается через процесс-привратник)."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        class Entry(ctypes.Structure):
+            _fields_ = [
+                ("size", wintypes.DWORD),
+                ("usage", wintypes.DWORD),
+                ("pid", wintypes.DWORD),
+                ("heap", ctypes.c_size_t),
+                ("module", wintypes.DWORD),
+                ("threads", wintypes.DWORD),
+                ("parent", wintypes.DWORD),
+                ("priority", ctypes.c_long),
+                ("flags", wintypes.DWORD),
+                ("name", ctypes.c_wchar * 260),
+            ]
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        snapshot = kernel.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+        parents: dict[int, int] = {}
+        try:
+            entry = Entry()
+            entry.size = ctypes.sizeof(Entry)
+            ok = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
+            while ok:
+                parents[int(entry.pid)] = int(entry.parent)
+                ok = kernel.Process32NextW(snapshot, ctypes.byref(entry))
+        finally:
+            kernel.CloseHandle(snapshot)
+    else:
+        parents = {}
+        for folder in Path("/proc").glob("[0-9]*"):
+            try:
+                parents[int(folder.name)] = int(
+                    (folder / "stat").read_text().rsplit(")", 1)[1].split()[1]
+                )
+            except (OSError, ValueError, IndexError):
+                continue
+    found, frontier = [pid], [pid]
+    while frontier:
+        current = frontier.pop()
+        children = [
+            child for child, parent in parents.items() if parent == current and child != pid
+        ]
+        found += children
+        frontier += children
+    return found
+
+
 def page_faults(pid: int | None) -> int | None:
-    """Счётчик page faults процесса движка; на этой ОС недоступен — None."""
-    if pid is None:
+    """Page faults дерева процессов движка; на этой ОС недоступно — None."""
+    if pid is None or sys.platform not in ("win32",) and not sys.platform.startswith("linux"):
         return None
+    try:
+        counts = [_faults(p) for p in _tree(pid)]
+    except (OSError, ValueError, AttributeError):
+        return None
+    known = [c for c in counts if c is not None]
+    return sum(known) if known else None
+
+
+def _faults(pid: int) -> int | None:
     try:
         if sys.platform.startswith("linux"):
             fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
