@@ -37,6 +37,9 @@ def test_defaults_are_inside_app_folder(config: AppConfig) -> None:
         "api_port": 11435,
         "network_access": False,
         "theme": "system",
+        "task_mode": "chat",
+        "task_priority": "speed",
+        "task_context": 0,
     }
     assert got["resolved"]["data_dir"] == str((config.app_dir / "data").resolve())
     assert got["current_data_dir"] == str((config.app_dir / "data").resolve())

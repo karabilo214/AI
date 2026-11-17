@@ -27,9 +27,9 @@ def service(tmp_path: Path) -> Iterator[tuple[UIServer, EngineManager, Client]]:
     starts: list[str] = []
     make = engines._make_engine
 
-    def counted(model: Any, draft: Any = None) -> Any:
+    def counted(model: Any, draft: Any = None, **options: Any) -> Any:
         starts.append(model.id)
-        return make(model, draft)
+        return make(model, draft, **options)
 
     engines._make_engine = counted
     engines.starts = starts  # type: ignore[attr-defined]

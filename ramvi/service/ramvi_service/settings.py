@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ramvi_service.i18n import UserError
+from ramvi_service.task_profile import TaskProfile
 
 LANGUAGES = ("ru", "en", "uk")
 THEMES = ("system", "light", "dark")  # 3.16: тема окна оболочки
@@ -32,6 +33,14 @@ class Settings:
     api_port: int = 11435
     network_access: bool = False  # слушать не только 127.0.0.1 — только по явному включению
     theme: str = "system"
+    # 4.5: профиль задачи (режим, приоритет, контекст; 0 — по режиму)
+    task_mode: str = "chat"
+    task_priority: str = "speed"
+    task_context: int = 0
+
+    @property
+    def task(self) -> TaskProfile:
+        return TaskProfile(self.task_mode, self.task_priority, self.task_context)
 
     def validate(self) -> "Settings":
         if self.language not in LANGUAGES:
@@ -46,6 +55,9 @@ class Settings:
             raise SettingsError("settings.bad_theme", allowed=", ".join(THEMES))
         if not isinstance(self.network_access, bool):
             raise SettingsError("settings.bad_network")
+        problem = self.task.problem()
+        if problem is not None:
+            raise SettingsError(problem[0], **problem[1])
         for name in ("data_dir", "models_dir"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():

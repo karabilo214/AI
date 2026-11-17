@@ -182,6 +182,7 @@
   "compat.reason.vram": "the plan needs {need_mb} MB of VRAM, the card has {total_mb}",
   "compat.reason.ram_busy": "only {free_mb} MB of the needed {need_mb} MB of RAM is free now — close other programs",
   "compat.reason.paging": "about {mb} MB of weights do not fit in RAM and will be re-read from disk — noticeably slower",
+  "compat.reason.busy_now": "right now free memory is not enough even for the lightest plan — close other programs",
   "compat.reason.on_cpu": "{mb} MB of weights do not fit in VRAM and run on the CPU",
   "compat.reason.in_vram": "the whole model fits in video memory",
   "compat.reason.no_header": "the model header has not been read yet — refresh the catalog",
@@ -214,6 +215,9 @@
   "settings.bad_language": "the language must be one of: {allowed}",
   "settings.bad_port": "the API port must be an integer 1024–65535",
   "settings.bad_theme": "the theme must be one of: {allowed}",
+  "settings.bad_task_mode": "Unknown task mode. Allowed: {allowed}",
+  "settings.bad_task_priority": "Unknown priority. Allowed: {allowed}",
+  "settings.bad_task_context": "Context must be {low} to {high} tokens (0 — from the mode)",
   "settings.bad_network": "network access must be true/false",
   "settings.empty_folder": "{field} cannot be empty",
   "settings.bad_file": "The settings file is damaged ({path}): a JSON object was expected",
@@ -232,5 +236,7 @@
   "cli.service.app_dir": "application folder with settings.json (settings screen, 3.7)",
   "cli.service.engine_command_json": "for tests: JSON list with a fake engine command instead of the real one",
   "cli.service.need_token": "{name} of at least 16 characters is required",
-  "section.error": "Module error: {detail}"
+  "section.error": "Module error: {detail}",
+  "task.reason.capability": "this task needs the “{capability}” capability",
+  "task.reason.context": "the model supports {model} tokens of context, the task needs {need}"
 }

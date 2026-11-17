@@ -7,7 +7,12 @@
 свободной RAM сейчас — пометка («закройте программы»), а не отказ (`compat.py`).
 Неполное размещение в VRAM — «Медленно», не «неподходящая» (приёмка MOD-03).
 
-Угадыватель (draft) в оценку не входит: каталог показывает саму модель.
+Угадыватель (draft) в оценку не входит: если он не помещается, план движка его
+выключает (`choose_plan`, draft=auto), так что выполнимость от него не зависит.
+
+4.5 AUTO-02/03: контекст берётся из профиля задачи (KV-кэш); кроме оценки на весь
+компьютер считается план на **свободную сейчас** VRAM и RAM (`now`) и проверяется,
+подходит ли модель задаче (`task`: нужные возможности и длина контекста модели).
 """
 
 import os
@@ -31,10 +36,12 @@ from ramvi_engine.planning.resources import MemoryUsage, ResourceEstimate, estim
 
 from ramvi_service import compat, speed
 from ramvi_service.catalog.headers import HeaderStore, read_file_header
+from ramvi_service.catalog.support import capabilities as engine_capabilities
 from ramvi_service.gguf_meta import GGUFMeta, NotGGUF
 from ramvi_service.hardware import HardwareProfile
 from ramvi_service.i18n import msg
 from ramvi_service.onboarding import FILE_TYPES, SUPPORTED_ARCHITECTURES
+from ramvi_service.task_profile import TaskProfile
 
 MAXT = 2048  # контекст чата по умолчанию (ModelConfig.maxt)
 MIB = 1024 * 1024
@@ -49,16 +56,32 @@ def model_key(meta: GGUFMeta) -> str:
     return "-".join(p for p in (arch, size, quant) if p).lower()
 
 
+def budget(hw: HardwareProfile, *, now: bool = False) -> tuple[int, int]:
+    """(VRAM, RAM) в байтах: возможности компьютера или свободное прямо сейчас."""
+    cards = [g for g in hw.gpus if g.vendor == "NVIDIA"]
+    if now:
+        vram = max((g.vram_free_mb or 0 for g in cards), default=0)
+        ram = hw.ram_available_mb or 0
+    else:
+        vram = max((g.vram_total_mb or 0 for g in cards), default=0)
+        ram = hw.ram_total_mb or 0
+    return vram * MIB, ram * MIB
+
+
 def plan(
-    meta: GGUFMeta, hw: HardwareProfile, *, maxt: int = MAXT, native_f16: bool = False
+    meta: GGUFMeta,
+    hw: HardwareProfile,
+    *,
+    maxt: int = MAXT,
+    native_f16: bool = False,
+    now: bool = False,
 ) -> tuple[dict[str, Any] | None, ResourceEstimate]:
     """План движка для этого железа; не помещается — None и оценка самого лёгкого плана."""
     arch = str(meta.meta["general.architecture"])
     layers = int(meta.meta[f"{arch}.block_count"])
     unquantized = unquantized_layers(meta)
     fraction = offload_cpu_fraction(unquantized)
-    vram = max((g.vram_total_mb or 0 for g in hw.gpus if g.vendor == "NVIDIA"), default=0) * MIB
-    ram = (hw.ram_total_mb or 0) * MIB
+    vram, ram = budget(hw, now=now)
 
     def estimate(route: list[str], use_draft: bool, reserve: int) -> ResourceEstimate:
         value = estimate_gguf(meta, route, maxt, batch=16, native_f16=native_f16)
@@ -148,8 +171,10 @@ class ModelFit:
         *,
         ttl: float = 30.0,
         native_f16: Callable[[], bool] = _native_f16,
+        profile: Callable[[], TaskProfile] = TaskProfile,
     ) -> None:
         self.headers, self.hardware, self.ttl = headers, hardware, ttl
+        self.profile = profile
         self._native = native_f16
         self._lock = threading.Lock()
         self._hw: tuple[float, HardwareProfile, bool] | None = None
@@ -162,14 +187,21 @@ class ModelFit:
             return self._hw[1], self._hw[2]
 
     def verdict(
-        self, meta: GGUFMeta | None, name: str, file_bytes: int, downloaded: bool
+        self,
+        meta: GGUFMeta | None,
+        name: str,
+        file_bytes: int,
+        downloaded: bool,
+        capabilities: tuple[str, ...] | list[str] = (),
     ) -> dict[str, Any]:
         if meta is None:
             return {"status": UNKNOWN, "reasons": [msg("compat.reason.no_header").json()]}
         hw, native = self._profile()
+        task = self.profile()
+        context = task.effective_context
         arch = str(meta.meta.get("general.architecture", ""))
         try:
-            layout, estimate = plan(meta, hw, native_f16=native)
+            layout, estimate = plan(meta, hw, maxt=context, native_f16=native)
         except NotImplementedError as error:  # тип матриц без ядра движка
             reason = msg("compat.reason.format", format=str(error).rsplit(" ", 1)[-1])
             return {"status": compat.UNSUPPORTED, "reasons": [reason.json()]}
@@ -186,21 +218,59 @@ class ModelFit:
             estimate=estimate,
             downloaded=downloaded,
             architecture_supported=arch in SUPPORTED_ARCHITECTURES,
-            model_id=model_key(meta),
+            # Замер снят при контексте 2048; при другом контексте — оценка по плану.
+            model_id=model_key(meta) if context == compat.MEASURED_CONTEXT else "",
             off_gpu_bytes=None if layout is None else int(layout["off_gpu_bytes"]),
             estimated_tok_s=self._estimate(meta, layout, estimate, hw),
         )
         result = compat.assess(hw, candidate)
         need = estimate.required
+        reasons = [r.json() for r in result.reasons]
+        now = self._now(meta, hw, context, native, result.status)
+        if now is not None and not now["fits"]:
+            reasons.append(msg("compat.reason.busy_now").json())
         return {
             "status": result.status,
-            "reasons": [r.json() for r in result.reasons],
+            "reasons": reasons,
             "speed": result.speed.json(),
             "plan": None
             if layout is None
             else {k: v for k, v in layout.items() if k != "placement"},
             "memory": {"vram": need.vram, "ram": need.ram, "mapped": need.mapped},
+            "context": context,
+            "now": now,
+            "task": self._task(meta, task, capabilities),
         }
+
+    @staticmethod
+    def _now(
+        meta: GGUFMeta, hw: HardwareProfile, context: int, native: bool, status: str
+    ) -> dict[str, Any] | None:
+        """AUTO-03: помещается ли план в свободную сейчас память (а не только во всю)."""
+        if status not in compat.RUNNABLE:
+            return None
+        layout, _ = plan(meta, hw, maxt=context, native_f16=native, now=True)
+        if layout is None:
+            return {"fits": False}
+        return {"fits": True, "gpu": layout["gpu"], "layers": layout["layers"]}
+
+    @staticmethod
+    def _task(
+        meta: GGUFMeta, task: TaskProfile, capabilities: tuple[str, ...] | list[str]
+    ) -> dict[str, Any]:
+        """Подходит ли модель профилю: нужные возможности и длина контекста модели."""
+        reasons = [
+            msg("task.reason.capability", capability=need).json()
+            for need in task.needs
+            if need not in capabilities
+        ]
+        arch = meta.meta.get("general.architecture", "")
+        limit = meta.meta.get(f"{arch}.context_length")
+        if isinstance(limit, int) and limit < task.effective_context:
+            reasons.append(
+                msg("task.reason.context", model=limit, need=task.effective_context).json()
+            )
+        return {"suits": not reasons, "reasons": reasons}
 
     @staticmethod
     def _estimate(
@@ -224,7 +294,13 @@ class ModelFit:
     def for_entry(self, entry: dict[str, Any]) -> dict[str, Any]:
         """Запись каталога: только по сохранённому заголовку, без сети."""
         meta = self.headers.cached(entry["checksum"])
-        return self.verdict(meta, entry["name"], int(entry["bytes"]), downloaded=False)
+        return self.verdict(
+            meta,
+            entry["name"],
+            int(entry["bytes"]),
+            downloaded=False,
+            capabilities=entry.get("capabilities", ()),
+        )
 
     def for_file(self, path: str | os.PathLike[str], name: str) -> dict[str, Any]:
         """Установленная модель: заголовок из файла (кэш по пути, размеру и времени)."""
@@ -239,4 +315,6 @@ class ModelFit:
                 self._files[key] = read_file_header(file)
             except (OSError, NotGGUF):
                 self._files[key] = None
-        return self.verdict(self._files[key], name, stat.st_size, downloaded=True)
+        meta = self._files[key]
+        arch = "" if meta is None else str(meta.meta.get("general.architecture", ""))
+        return self.verdict(meta, name, stat.st_size, True, engine_capabilities("gguf", arch))

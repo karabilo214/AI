@@ -22,6 +22,7 @@ from ramvi_engine.processes import ParentWatch
 from ramvi_storage.repositories import Model, Models
 from ramvi_storage.schema import open_core
 
+from ramvi_service import settings as app_settings
 from ramvi_service.app_config import AppConfig, check_folder
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatService
@@ -42,6 +43,7 @@ from ramvi_service.onboarding import Onboarding
 from ramvi_service.resources import SharedLLM
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
 from ramvi_service.supervisor import RestartPolicy
+from ramvi_service.task_profile import TaskProfile
 from ramvi_service.ui_api import UIServer
 
 TOKEN_ENV = "RAMVI_UI_TOKEN"
@@ -64,11 +66,11 @@ def build(
     if engine_command is not None:
         command = list(engine_command)
 
-        def make_engine(model: Model, draft: Model | None = None) -> EngineTarget:
+        def make_engine(model: Model, draft: Model | None = None, maxt: int = 2048) -> EngineTarget:
             from ramvi_engine.engine_process import EngineProcess
             from ramvi_engine.model_loader import ModelConfig
 
-            extra = [] if draft is None else ["--draft", draft.path]
+            extra = ["--maxt", str(maxt)] + ([] if draft is None else ["--draft", draft.path])
             return EngineProcess(
                 ModelConfig(model.path),
                 command=[*command, "--model", model.path, *extra],
@@ -76,12 +78,21 @@ def build(
             )
 
     root = None if app_dir is None else Path(app_dir).resolve()
+
+    def task() -> TaskProfile:
+        """4.5: профиль задачи из настроек; испорченный файл — профиль по умолчанию."""
+        try:
+            return app_settings.load(root or data_dir).task
+        except (OSError, ValueError):
+            return TaskProfile()
+
     engines = EngineManager(
         Models(db),
         data_dir / "run",
         make_engine=make_engine,
         policy=restart_policy,
         model_root=root,
+        context=lambda: task().effective_context,
     )
     catalog = Catalog(data_dir) if catalog is None else catalog
     authority = Authority()
@@ -118,7 +129,7 @@ def build(
         folder = onboarding.models_folder()
         return collect(folder if folder.is_dir() else data_dir)
 
-    server.fit = ModelFit(catalog.headers, hardware)
+    server.fit = ModelFit(catalog.headers, hardware, profile=task)
     server.app_dir = root
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).

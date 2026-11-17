@@ -101,7 +101,7 @@ def resolve_model(model: Model, root: Path | None) -> Model:
 DRAFT_RATIO = 8  # предсказатель хотя бы в 8 раз меньше основной модели
 
 
-def default_engine(model: Model, draft: Model | None = None) -> EngineTarget:
+def default_engine(model: Model, draft: Model | None = None, maxt: int = 2048) -> EngineTarget:
     """Настоящий движок для записи модели (тяжёлые импорты только при запуске)."""
     from ramvi_engine.engine_process import EngineProcess
     from ramvi_engine.model_loader import ModelConfig
@@ -114,6 +114,7 @@ def default_engine(model: Model, draft: Model | None = None) -> EngineTarget:
             model.path,
             draft=None if draft is None else draft.path,
             tokenizer=tokenizer,
+            maxt=maxt,  # 4.5: контекст из профиля задачи
             planning=PlanningOptions(),
         )
     )
@@ -125,13 +126,15 @@ class EngineManager:
         models: Models,
         run_dir: Path,
         *,
-        make_engine: Callable[[Model, Model | None], EngineTarget] = default_engine,
+        make_engine: Callable[..., EngineTarget] = default_engine,
         policy: Callable[[], RestartPolicy] = RestartPolicy,
         interval: float = 1.0,
         request_timeout: float = 600.0,
         model_root: Path | None = None,
+        context: Callable[[], int] = lambda: 2048,
     ) -> None:
         self.models, self.run_dir = models, Path(run_dir)
+        self.context = context  # 4.5: контекст из профиля задачи при каждой загрузке
         self.model_root = model_root
         self._make_engine, self._policy, self._interval = make_engine, policy, interval
         self.request_timeout = request_timeout
@@ -204,16 +207,20 @@ class EngineManager:
             self._loading = model_id
             self._problem, self._problem_model = None, model_id
             self._served_name = served_name(model.path)
-            draft = self.draft_for(model)
-            self._draft_id = None if draft is None else draft.id
-            engine = self._make_engine(model, draft)
-            supervisor = Supervisor(
-                engine,
-                self.run_dir,
-                policy=self._policy(),
-                interval=self._interval,
-                on_change=lambda status: self._on_change(engine, status),
-            )
+            try:
+                draft = self.draft_for(model)
+                self._draft_id = None if draft is None else draft.id
+                engine = self._make_engine(model, draft, maxt=self.context())
+                supervisor = Supervisor(
+                    engine,
+                    self.run_dir,
+                    policy=self._policy(),
+                    interval=self._interval,
+                    on_change=lambda status: self._on_change(engine, status),
+                )
+            except Exception as error:  # иначе «загружается» висело бы вечно
+                self._loading = None
+                raise EngineError("engine.start_failed", detail=str(error)) from error
             self._engine, self._supervisor, self._model_id = engine, supervisor, model_id
             try:
                 supervisor.start()

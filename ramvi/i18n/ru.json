@@ -182,6 +182,7 @@
   "compat.reason.vram": "план требует {need_mb} МБ VRAM, у карты {total_mb}",
   "compat.reason.ram_busy": "сейчас свободно {free_mb} МБ RAM из нужных {need_mb} — закройте программы",
   "compat.reason.paging": "около {mb} МБ весов не помещаются в RAM и будут дочитываться с диска — заметно медленнее",
+  "compat.reason.busy_now": "сейчас свободной памяти не хватает даже на самый лёгкий план — закройте программы",
   "compat.reason.on_cpu": "{mb} МБ весов не помещаются в VRAM и считаются на CPU",
   "compat.reason.in_vram": "модель целиком в видеопамяти",
   "compat.reason.no_header": "заголовок модели ещё не прочитан — обновите каталог",
@@ -214,6 +215,9 @@
   "settings.bad_language": "язык должен быть одним из: {allowed}",
   "settings.bad_port": "порт API должен быть целым числом 1024–65535",
   "settings.bad_theme": "тема должна быть одной из: {allowed}",
+  "settings.bad_task_mode": "Неизвестный режим задачи. Допустимо: {allowed}",
+  "settings.bad_task_priority": "Неизвестный приоритет. Допустимо: {allowed}",
+  "settings.bad_task_context": "Контекст — от {low} до {high} токенов (0 — по режиму)",
   "settings.bad_network": "сетевой доступ должен быть true/false",
   "settings.empty_folder": "{field} не может быть пустым",
   "settings.bad_file": "Файл настроек испорчен ({path}): ожидался объект JSON",
@@ -232,5 +236,7 @@
   "cli.service.app_dir": "папка приложения с settings.json (экран настроек, 3.7)",
   "cli.service.engine_command_json": "для проверок: JSON-список команды поддельного движка вместо настоящего",
   "cli.service.need_token": "нужен {name} длиной от 16 символов",
-  "section.error": "Ошибка модуля: {detail}"
+  "section.error": "Ошибка модуля: {detail}",
+  "task.reason.capability": "для этой задачи нужна возможность «{capability}»",
+  "task.reason.context": "модель поддерживает {model} токенов контекста, а задаче нужно {need}"
 }

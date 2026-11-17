@@ -51,6 +51,8 @@ class Candidate:
 
 
 # Только реальные замеры: (подстрока имени NVIDIA, model_id, статус) -> (мин, макс) ток/с.
+# Все сняты при контексте MEASURED_CONTEXT; при другом контексте план другой — тогда оценка.
+MEASURED_CONTEXT = 2048
 MEASURED = {
     # ASUS RTX 5060 8 ГБ + 16 ГБ RAM, greedy, контекст 2048, 30 вопросов,
     # полные ряды этапов 1–2: 7.80–9.11 ток/с (docs/reports/STAGE2_ACCEPTANCE.md, CONTEXT.md).

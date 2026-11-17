@@ -216,6 +216,7 @@ class UIServer:
     def _with_entry_fit(self, view: dict[str, Any]) -> dict[str, Any]:
         """4.4: статус каждой записи каталога по сохранённому заголовку."""
         if self.fit is not None:
+            view["profile"] = self.fit.profile().json()
             for entry in view["entries"]:
                 entry["compat"] = self.fit.for_entry(entry)
         return view
