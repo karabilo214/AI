@@ -11,6 +11,7 @@ MODE 0: Y = Wx, 1: Y += Wx. YS — шаг строк Y (можно писать 
 import numpy as np
 import torch
 import triton
+from ramvi_engine.config import env
 import triton.language as tl
 
 
@@ -266,18 +267,30 @@ TC_FROM = 2  # с какого размера пачки — тензорные 
 CFGTC = {}
 
 
+def _cfg_tc(t: str, N: int, K: int) -> tuple[int, int]:
+    """B.6: блок (BN строк, warps) для пачки 2..16 слов. BN делит только строки матрицы — каждое
+    число считается теми же операциями, результат побайтно тот же. Замер RTX 5060 Laptop
+    (qwen3 8B/14B, 16 слов): Q4_K от 5120x5120 — (128, 8), остальные — (64, 4); быстрее
+    прежних (32, 4) в 1,25–2,3 раза. RAMVI_TC_CFG=fixed — прежние (32, 4) для сравнения."""
+    if env("RAMVI_TC_CFG", "auto") == "fixed":
+        return 32, 4
+    if t == "Q4_K" and N * K >= 5120 * 5120 and N % 128 == 0:
+        return 128, 8
+    return (64, 4) if N % 64 == 0 else (32, 4)
+
+
 def ggemv_tc(x, w, y, mode, T, cfg=None, ys=None):
     t, N, K = w["t"], w["N"], w["K"]
     ys = ys or N
     if t == "Q4_K":
         X3, SX = xprep(x, T, K)
-        BN, nw = cfg or CFGTC.get((t, N, K), (32, 4))
+        BN, nw = cfg or CFGTC.get((t, N, K)) or _cfg_tc(t, N, K)
         if N % BN:
             raise ValueError("число строк не кратно блоку GPU-ядра")
         q4k_tc_k[(N // BN,)](X3, SX, w["Q"], w["SC"], w["MN"], w["D"], y, T, N, K, ys, mode, BN=BN, num_warps=nw)
     elif t == "Q6_K":
         X3, SX = xprep(x, T, K)
-        BN, nw = cfg or CFGTC.get((t, N, K), (32, 4))
+        BN, nw = cfg or CFGTC.get((t, N, K)) or _cfg_tc(t, N, K)
         if N % BN:
             raise ValueError("число строк не кратно блоку GPU-ядра")
         q6k_tc_k[(N // BN,)](X3, w["QL"], w["QH"], w["SC"], w["D"], y, T, N, K, ys, mode, BN=BN, num_warps=nw)

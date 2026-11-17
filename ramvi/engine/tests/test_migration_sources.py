@@ -329,7 +329,7 @@ def allowed_layout_changes(name: str, source: str) -> str:
             "        ParentWatch.from_env()\n"
             "    torch.set_grad_enabled(False)",
         )
-    return multigpu_410(name, mapped_weights_318(name, source))
+    return tc_cfg_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
 
 
 # 3.18 ENG-MAPPED-01: слои вне видеокарты читаются из файла модели без собственных копий.
@@ -456,6 +456,29 @@ def multigpu_410(name: str, source: str) -> str:
     return source
 
 
+# B.6: подобранный блок (BN, warps) ядер тензорных блоков вместо постоянного (32, 4). BN делит
+# только строки матрицы: каждое число считается теми же операциями (побайтно тот же результат).
+TC_CFG_B6: dict[str, tuple[tuple[str, str], ...]] = {
+    "gkernels": (
+        (
+            "import triton.language as tl\n",
+            "from ramvi_engine.config import env\nimport triton.language as tl\n",
+        ),
+        (
+            'def ggemv_tc(x, w, y, mode, T, cfg=None, ys=None):\n    t, N, K = w["t"], w["N"], w["K"]\n    ys = ys or N\n    if t == "Q4_K":\n        X3, SX = xprep(x, T, K)\n        BN, nw = cfg or CFGTC.get((t, N, K), (32, 4))\n        if N % BN:\n            raise ValueError("число строк не кратно блоку GPU-ядра")\n        q4k_tc_k[(N // BN,)](X3, SX, w["Q"], w["SC"], w["MN"], w["D"], y, T, N, K, ys, mode, BN=BN, num_warps=nw)\n    elif t == "Q6_K":\n        X3, SX = xprep(x, T, K)\n        BN, nw = cfg or CFGTC.get((t, N, K), (32, 4))\n',
+            'def _cfg_tc(t: str, N: int, K: int) -> tuple[int, int]:\n    """B.6: блок (BN строк, warps) для пачки 2..16 слов. BN делит только строки матрицы — каждое\n    число считается теми же операциями, результат побайтно тот же. Замер RTX 5060 Laptop\n    (qwen3 8B/14B, 16 слов): Q4_K от 5120x5120 — (128, 8), остальные — (64, 4); быстрее\n    прежних (32, 4) в 1,25–2,3 раза. RAMVI_TC_CFG=fixed — прежние (32, 4) для сравнения."""\n    if env("RAMVI_TC_CFG", "auto") == "fixed":\n        return 32, 4\n    if t == "Q4_K" and N * K >= 5120 * 5120 and N % 128 == 0:\n        return 128, 8\n    return (64, 4) if N % 64 == 0 else (32, 4)\n\n\ndef ggemv_tc(x, w, y, mode, T, cfg=None, ys=None):\n    t, N, K = w["t"], w["N"], w["K"]\n    ys = ys or N\n    if t == "Q4_K":\n        X3, SX = xprep(x, T, K)\n        BN, nw = cfg or CFGTC.get((t, N, K)) or _cfg_tc(t, N, K)\n        if N % BN:\n            raise ValueError("число строк не кратно блоку GPU-ядра")\n        q4k_tc_k[(N // BN,)](X3, SX, w["Q"], w["SC"], w["MN"], w["D"], y, T, N, K, ys, mode, BN=BN, num_warps=nw)\n    elif t == "Q6_K":\n        X3, SX = xprep(x, T, K)\n        BN, nw = cfg or CFGTC.get((t, N, K)) or _cfg_tc(t, N, K)\n',
+        ),
+    ),
+}
+
+
+def tc_cfg_b6(name: str, source: str) -> str:
+    for old, new in TC_CFG_B6.get(name, ()):
+        assert source.count(old) == 1, (name, old[:60])
+        source = source.replace(old, new)
+    return source
+
+
 def computational_tree(source: str) -> str:
     """Нормализовать AST без исполнения проверяемого модуля."""
     return ast.dump(WithoutImports().visit(ast.parse(source)), include_attributes=False)
@@ -474,9 +497,8 @@ def test_migrated_computation_matches_baseline(name: str) -> None:
 )
 def test_independent_kernels_keep_exact_bytes(name: str) -> None:
     """Перенос не меняет исходные байты ядер и ключи автонастройки."""
-    assert (
-        source_before_move(f"{name}.py") == (PACKAGE_ROOT / "kernels" / f"{name}.py").read_bytes()
-    )
+    old = tc_cfg_b6(name, source_before_move(f"{name}.py").decode("utf-8")).encode("utf-8")
+    assert old == (PACKAGE_ROOT / "kernels" / f"{name}.py").read_bytes()
 
 
 @pytest.mark.parametrize("name", ["qmm.cpp", "build.sh", "write_manifest.py"])
