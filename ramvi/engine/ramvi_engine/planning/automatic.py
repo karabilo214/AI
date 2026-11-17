@@ -261,7 +261,7 @@ def choose_plan(
                 and resident < layers
             ):
                 continue
-            hybrids = [use_draft]
+            options_here = [(resident, use_draft)]
             if (
                 hybrid_prefill
                 and not use_draft
@@ -270,11 +270,14 @@ def choose_plan(
                 and architecture == "qwen3"
                 and model_format == "gguf"
             ):
-                hybrids = [True, False]
-            for hybrid in hybrids:
+                # Гибриду нужен ещё кэш k, v этих слоёв в видеокарте: ради него можно отдать 1–2
+                # слоя видеокарты (одиночный шаг почти не меняется, длинный запрос — в разы быстрее).
+                options_here = [(r, True) for r in (resident, resident - 1, resident - 2) if r >= 0]
+                options_here.append((resident, False))
+            for chosen, hybrid in options_here:
                 route = placement(
                     layers,
-                    resident,
+                    chosen,
                     architecture=architecture,
                     model_format=model_format,
                     cpu=cpu,
@@ -290,9 +293,10 @@ def choose_plan(
                 required = resources.required
                 fits_owned = required.vram <= vram_available and required.ram <= ram_available
                 fits = fits_owned and (options.allow_paging or assessment["estimated_fit"])
-                if manual or fits or hybrid is False or len(hybrids) == 1:
+                if manual or fits:
                     break
             if manual or fits:
+                resident = chosen
                 reasons = [
                     f"metadata_candidates_tested={attempts}",
                     "fixed native allocation buffers estimated at batch=16",

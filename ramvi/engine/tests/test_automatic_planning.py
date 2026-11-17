@@ -435,6 +435,21 @@ def test_hybrid_prefill_without_draft_and_fallback_to_cpu() -> None:
         hybrid_prefill=True,
     )
     assert tight.placement == ("gpu", "gpu", "cpu") and tight.resident == 2
+
+    def kv_on_gpu(route: list[str], use: bool, reserve: int) -> ResourceEstimate:
+        # кэш гибридного слоя в видеокарте: при 2 слоях видеокарты гибрид не помещается
+        vram = 10 + 30 * route.count("gpu") + 5 * route.count("hyb")
+        return ResourceEstimate(weights=MemoryUsage(vram=vram))
+
+    traded = choose(
+        estimate=kv_on_gpu,
+        vram_available=70,
+        draft_requested=False,
+        options=off,
+        cpu_fraction=1.0,
+        hybrid_prefill=True,
+    )
+    assert traded.placement == ("gpu", "hyb", "hyb") and traded.resident == 1
     whole = choose(
         estimate=by_route(5),
         vram_available=1000,
