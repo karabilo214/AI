@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         MessagesScroll.ScrollChanged += OnMessagesScrolled;
         InputBox.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         DataContextChanged += (_, _) =>
@@ -88,6 +89,32 @@ public sealed partial class MainWindow : Window
         if (Launcher is { } launcher)
         {
             await launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(path)).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// 5.3 (VOI-02): Ctrl+M — начать или остановить голосовую запись (и во время набора текста),
+    /// Esc во время записи — отменить её. Микрофон включается только так или кнопкой.
+    /// </summary>
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (Model is not { } model)
+        {
+            return;
+        }
+
+        var command = e.Key == Key.M && e.KeyModifiers == KeyModifiers.Control ? model.Voice.ToggleCommand
+            : e.Key == Key.Escape && model.Voice.IsRecording ? model.Voice.CancelCommand
+            : null;
+        if (command is null)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (command.CanExecute(null))
+        {
+            command.Execute(null);
         }
     }
 

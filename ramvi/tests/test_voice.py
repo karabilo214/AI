@@ -416,6 +416,27 @@ def test_worker_process_gets_audio_through_shared_memory(tmp_path: Path) -> None
     assert not process.running
 
 
+def test_audio_never_reaches_disk(tmp_path: Path) -> None:
+    """5.3 VOI-02: звук только в памяти — ни файлов, ни оставленной общей памяти."""
+    env = Env(tmp_path)
+    env.voice.make_transcriber = lambda path: WhisperProcess(
+        path, threads=1, command=[sys.executable, "-c", FAKE_WORKER], timeout=30
+    )
+    env.install()
+    before = {p: p.stat().st_size for p in tmp_path.rglob("*")}
+    shm = Path("/dev/shm")
+    shm_before = set(shm.glob("ramvi-stt-*")) if shm.is_dir() else set()
+    try:
+        env.voice.start()
+        env.mic.say(tone(1.0))
+        assert env.voice.stop()["text"].startswith("32000 ")
+    finally:
+        env.voice.close()
+    assert {p: p.stat().st_size for p in tmp_path.rglob("*")} == before
+    if shm.is_dir():
+        assert set(shm.glob("ramvi-stt-*")) == shm_before
+
+
 def test_whisper_wrapper_uses_cpu_vad_and_speech_padding(monkeypatch: pytest.MonkeyPatch) -> None:
     """Обёртка whisper в процессе распознавания — на подставном pywhispercpp."""
     pytest.importorskip("numpy")

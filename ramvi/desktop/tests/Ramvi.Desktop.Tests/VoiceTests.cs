@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Ramvi.Desktop.Api;
@@ -192,6 +194,46 @@ public sealed class VoiceTests
             Error: new ApiError("download.hash_mismatch", null));
         await sound.LoadAsync(api.AppSettings);
         Assert.Equal(Ru["download.hash_mismatch"], sound.ModelStatus);
+    }
+
+    [AvaloniaFact]
+    public async Task Ctrl_M_toggles_recording_while_typing_and_Esc_cancels()
+    {
+        var api = new FakeChatApi();
+        var model = new MainViewModel(api);
+        var window = new MainWindow { DataContext = model };
+        window.Show();
+        await model.InitializeAsync();
+        Dispatcher.UIThread.RunJobs();
+        var input = window.FindControl<TextBox>("InputBox")!;
+        input.Focus();
+        input.Text = "текст";
+
+        async Task Press(PhysicalKey key, RawInputModifiers modifiers, int calls)
+        {
+            window.KeyPressQwerty(key, modifiers);
+            for (var i = 0; i < 100 && api.VoiceCalls.Count < calls; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(5, TestContext.Current.CancellationToken);
+            }
+        }
+
+        await Press(PhysicalKey.Escape, RawInputModifiers.None, 0);
+        Assert.Empty(api.VoiceCalls); // Esc без записи ничего не делает
+        await Press(PhysicalKey.M, RawInputModifiers.Control, 1);
+        Assert.Equal(["start"], api.VoiceCalls);
+        Assert.True(model.Voice.IsRecording);
+        await Press(PhysicalKey.Escape, RawInputModifiers.None, 2);
+        Assert.Equal(["start", "cancel"], api.VoiceCalls);
+        await Press(PhysicalKey.M, RawInputModifiers.Control, 3);
+        await Press(PhysicalKey.M, RawInputModifiers.Control, 4);
+        Assert.Equal(["start", "cancel", "start", "stop"], api.VoiceCalls);
+        await Until(() => model.Input == "текст привет мир", "текст в поле ввода");
+        Assert.Equal("текст привет мир", input.Text);
+        await Press(PhysicalKey.M, RawInputModifiers.None, 4);
+        Assert.Equal(4, api.VoiceCalls.Count); // буква M без Ctrl — просто текст
+        window.Close();
     }
 
     [AvaloniaFact]
