@@ -633,7 +633,7 @@ public sealed class StyleTests
         api.VoiceStopGate.SetResult();
         await stop;
 
-        await model.Settings.OpenAsync();
+        await model.Settings.OpenAsync("sound");
         api.VoiceDownloadState = new VoiceDownload("running", "large-v3-turbo-q5_0", 200_000_000, 574_041_195);
         await model.Settings.Sound.LoadAsync(api.AppSettings);
         Pump();
@@ -668,7 +668,7 @@ public sealed class StyleTests
                 ("status", Message("compat.recommended.inline"))),
             []);
         var (window, model, _) = await OpenAsync(api);
-        model.Sections.Selected = model.Sections.Items.Single(i => i.View == "models");
+        await model.OpenModelsAsync();
         await UntilAsync(() => model.ModelsScreen.Cards.Count == 4, "карточки");
         await model.ModelsScreen.Cards.Single(c => c.Name == "qwen3:14b Q4_K_M").DownloadCommand.RunAsync();
         api.DownloadList[0] = api.DownloadList[0] with { BytesDone = 1_800_000_000 };

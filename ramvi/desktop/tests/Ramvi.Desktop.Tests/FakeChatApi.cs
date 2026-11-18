@@ -287,8 +287,14 @@ internal sealed class FakeChatApi : IChatApi
     public Recommendation Recommendation { get; set; } =
         new("balanced", null, Message("recommend.none", ("not_runnable", 0), ("not_for_task", 0), ("unknown", 0)), []);
 
-    public Task<CatalogView> CatalogAsync(CancellationToken cancel = default) =>
-        Task.FromResult(new CatalogView([], [.. Catalog], CatalogStale));
+    /// <summary>Сколько раз экран моделей читал каталог.</summary>
+    public int CatalogLoads { get; private set; }
+
+    public Task<CatalogView> CatalogAsync(CancellationToken cancel = default)
+    {
+        CatalogLoads++;
+        return Task.FromResult(new CatalogView([], [.. Catalog], CatalogStale));
+    }
 
     public Task<CatalogView> RefreshCatalogAsync(CancellationToken cancel = default)
     {

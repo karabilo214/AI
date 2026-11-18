@@ -22,6 +22,15 @@ public sealed class VoiceTests
 
     public VoiceTests() => Localizer.Current = Ru;
 
+    /// <summary>
+    /// Виден ли элемент на самом деле: он и все предки. IsEffectivelyVisible у вложенных
+    /// элементов не обновляется, а у ещё не показанной вкладки нет визуального дерева —
+    /// поэтому проверяются предки по логическому дереву.
+    /// </summary>
+    internal static bool Shown(Control control) =>
+        control.IsVisible && Avalonia.LogicalTree.LogicalExtensions.GetLogicalAncestors(control)
+            .OfType<Control>().All(a => a.IsVisible);
+
     private static (VoiceViewModel Voice, List<string> Inserted, List<Exception> Errors) Make(FakeChatApi api)
     {
         var inserted = new List<string>();
@@ -356,7 +365,11 @@ public sealed class VoiceTests
 
         await model.OpenSettingsCommand.RunAsync();
         Dispatcher.UIThread.RunJobs();
-        Assert.True(window.FindControl<ComboBox>("VoiceDeviceBox")!.IsEffectivelyVisible);
+        var deviceBox = window.FindControl<ComboBox>("VoiceDeviceBox")!;
+        Assert.False(Shown(deviceBox)); // открылась вкладка «Общие»
+        model.Settings.SelectedTab = model.Settings.Tabs.Single(t => t.Id == "sound");
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(Shown(deviceBox));
         Assert.Equal(3, window.FindControl<ComboBox>("VoiceDeviceBox")!.ItemCount);
         Assert.Equal("auto", (window.FindControl<ComboBox>("VoiceLanguageBox")!.SelectedItem as VoiceOption)?.Code);
         var apiPanel = window.FindControl<StackPanel>("VoiceApiPanel")!;
@@ -364,6 +377,7 @@ public sealed class VoiceTests
         model.Settings.Sound.Backend = model.Settings.Sound.Backends.Single(b => b.Code == "api");
         Dispatcher.UIThread.RunJobs();
         Assert.True(apiPanel.IsVisible);
+        Assert.False(window.FindControl<TextBlock>("VoiceLocalNote")!.IsVisible); // «без интернета» — неправда для API
         Assert.Equal('•', window.FindControl<TextBox>("VoiceApiKeyBox")!.PasswordChar);
         Assert.Empty(Localizer.Current.Missing);
         window.Close();

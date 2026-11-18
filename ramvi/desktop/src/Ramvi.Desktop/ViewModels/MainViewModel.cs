@@ -75,7 +75,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _loadPoll = loadPoll ?? TimeSpan.FromMilliseconds(300);
         Sections = new SectionsViewModel(() => _api);
         ModelsScreen = new ModelsViewModel(() => _api, ReloadModelListAsync);
-        Sections.ModelsOpened += async (_, _) => await ModelsScreen.LoadAsync().ConfigureAwait(true);
         _pickFolder = pickFolder;
         _chooseDataDir = chooseDataDir;
         Settings = new SettingsViewModel(
@@ -87,7 +86,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             OnModelUnloaded,
             ApplyLanguage,
             Models,
-            OpenModelsSectionAsync,
+            () => ModelsScreen.LoadAsync(),
             ReloadModelListAsync,
             () => Voice!.LoadAsync());
         Onboarding = new OnboardingViewModel(
@@ -1001,16 +1000,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>4.11: «Управлять моделями…» в настройках — открыть раздел «Модели».</summary>
-    private Task OpenModelsSectionAsync()
-    {
-        if (Sections.Items.FirstOrDefault(i => i.View == "models") is { } models)
-        {
-            Sections.Selected = models;
-        }
-
-        return Task.CompletedTask;
-    }
+    /// <summary>Открыть настройки на вкладке «Модели» (раньше — раздел бокового меню).</summary>
+    public Task OpenModelsAsync() => Settings.OpenAsync("models");
 
     /// <summary>
     /// 4.11: список моделей чата после скачивания, удаления или смены модели по умолчанию

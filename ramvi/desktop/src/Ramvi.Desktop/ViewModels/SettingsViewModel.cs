@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using Ramvi.Desktop.Api;
 using Ramvi.Desktop.Localization;
@@ -9,6 +10,16 @@ public sealed record LanguageOption(string Code, string Label);
 
 /// <summary>Вариант темы: system (как в ОС), light, dark (3.16).</summary>
 public sealed record ThemeOption(string Code, string Label);
+
+/// <summary>Вкладка настроек: встроенная (general, sound, models) или модуля (module:&lt;id&gt;).</summary>
+public sealed class SettingsTab(string id, string titleKey) : ObservableObject
+{
+    public string Id { get; } = id;
+
+    public string TitleKey { get; } = titleKey;
+
+    public string Title => Localizer.Current[TitleKey];
+}
 
 /// <summary>
 /// Экран настроек (3.7): папка данных, папка моделей, язык, порт внешнего API, доступ из сети.
@@ -43,6 +54,7 @@ public sealed class SettingsViewModel : ObservableObject
     private readonly Func<Task>? _defaultChanged;
     private ModelInfo? _defaultModel;
     private string? _savedDefault;
+    private SettingsTab? _selectedTab;
     private readonly Func<Task>? _soundChanged;
 
     public SettingsViewModel(
@@ -64,13 +76,14 @@ public sealed class SettingsViewModel : ObservableObject
         _models = models ?? [];
         _openModels = openModels;
         _defaultChanged = defaultChanged;
-        ManageModelsCommand = new Command(
-            async () =>
-            {
-                IsOpen = false;
-                await _openModels!().ConfigureAwait(true);
-            },
-            () => _openModels is not null);
+        Tabs = [new("general", "settings.tab.general"), new("sound", "settings.tab.sound"), new("models", "settings.tab.models")];
+        _selectedTab = Tabs[0];
+        // «Управлять моделями…» — та же панель, вкладка «Модели» (раньше — раздел бокового меню).
+        ManageModelsCommand = new Command(() =>
+        {
+            SelectedTab = Tabs.First(t => t.Id == "models");
+            return Task.CompletedTask;
+        });
         _applyLanguage = applyLanguage;
         _onUnloaded = onUnloaded;
         UnloadModelCommand = new Command(UnloadModelAsync, () => _loadedModel is not null);
@@ -102,6 +115,52 @@ public sealed class SettingsViewModel : ObservableObject
     private static Localizer L => Localizer.Current;
 
     public Command SaveCommand { get; }
+
+    /// <summary>Вкладки: «Общие», «Звук», «Модели»; модули добавляют свои (<see cref="AddTab"/>).</summary>
+    public ObservableCollection<SettingsTab> Tabs { get; }
+
+    public SettingsTab? SelectedTab
+    {
+        get => _selectedTab;
+        set
+        {
+            if (value is null || !Set(ref _selectedTab, value))
+            {
+                return;
+            }
+
+            foreach (var name in new[] { nameof(IsGeneralTab), nameof(IsSoundTab), nameof(IsModelsTab), nameof(IsModuleTab), nameof(HasFooter) })
+            {
+                Raise(name);
+            }
+
+            if (value.Id == "models" && IsOpen && _openModels is not null)
+            {
+                _ = _openModels(); // экран моделей перечитывает каталог и загрузки
+            }
+        }
+    }
+
+    public bool IsGeneralTab => _selectedTab?.Id == "general";
+
+    public bool IsSoundTab => _selectedTab?.Id == "sound";
+
+    public bool IsModelsTab => _selectedTab?.Id == "models";
+
+    public bool IsModuleTab => _selectedTab?.Id.StartsWith("module:", StringComparison.Ordinal) == true;
+
+    /// <summary>«Сохранить» — у вкладок с полями; у «Модели» свои кнопки на карточках.</summary>
+    public bool HasFooter => IsGeneralTab || IsSoundTab;
+
+    /// <summary>Вкладка модуля (этапы 6 и 9): добавляется один раз по id.</summary>
+    public void AddTab(string moduleId, string titleKey)
+    {
+        var id = "module:" + moduleId;
+        if (Tabs.All(t => t.Id != id))
+        {
+            Tabs.Add(new SettingsTab(id, titleKey));
+        }
+    }
 
     /// <summary>5.2: раздел «Звук» — микрофон, язык и модель распознавания речи.</summary>
     public SoundSettingsViewModel Sound { get; }
@@ -243,11 +302,19 @@ public sealed class SettingsViewModel : ObservableObject
         }
     }
 
-    public async Task OpenAsync()
+    /// <summary>Открыть настройки на вкладке <paramref name="tab"/> (general, sound, models).</summary>
+    public async Task OpenAsync(string tab = "general")
     {
         Error = null;
         Message = null;
         IsOpen = true;
+        var target = Tabs.FirstOrDefault(t => t.Id == tab) ?? Tabs[0];
+        if (target == _selectedTab && target.Id == "models" && _openModels is not null)
+        {
+            _ = _openModels();
+        }
+
+        SelectedTab = target;
         try
         {
             var info = await _api().SettingsAsync().ConfigureAwait(true);
@@ -296,6 +363,10 @@ public sealed class SettingsViewModel : ObservableObject
         Languages = [.. Languages.Select(l => new LanguageOption(l.Code, L[$"settings.lang.{l.Code}"]))];
         base.Relocalize();
         Sound.Relocalize();
+        foreach (var t in Tabs)
+        {
+            t.Relocalize();
+        }
         Theme = Themes.FirstOrDefault(t => t.Code == theme);
         Language = Languages.FirstOrDefault(l => l.Code == language);
     }

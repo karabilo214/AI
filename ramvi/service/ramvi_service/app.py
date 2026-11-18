@@ -183,8 +183,11 @@ def build(
     # 5.6: микрофоном владеет держатель аренды MICROPHONE в общем ResourceBroker хоста модулей;
     # интерфейс RAMVI — свой владелец, модули — свои (Scoped Services voice.*).
     voice_owner = host.authority.issue("core", "local_user", "voice")
+    # Модели распознавания — в папке приложения, а не в папке моделей LLM: та может указывать
+    # в чужое хранилище (например, blobs Ollama), куда нельзя класть свои подпапки.
+    stt_root = (root or data_dir) / "models"
     server.voice = VoiceService(
-        onboarding.models_folder,
+        lambda: stt_root,
         current_settings,
         resources=host.resources,
         owner=voice_owner,

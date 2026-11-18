@@ -365,5 +365,10 @@
   "voice.api_check": "Check",
   "voice.api_ok": "Connected: {host}, response in {seconds} s",
   "voice.api_sending": "Audio is sent to {host}",
-  "voice.api_warning": "With API recognition your voice recording is sent to the server {host}. Voice input via API does not work offline"
+  "voice.api_warning": "With API recognition your voice recording is sent to the server {host}. Voice input via API does not work offline",
+  "settings.tab.general": "General",
+  "settings.tab.sound": "Sound",
+  "settings.tab.models": "Models",
+  "settings.module_tab_note": "Module settings will appear with the module.",
+  "models.tab_note": "Model catalog: download, set default, delete"
 }

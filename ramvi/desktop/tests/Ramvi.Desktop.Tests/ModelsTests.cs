@@ -206,19 +206,42 @@ public sealed class ModelsTests
     }
 
     [Fact]
-    public async Task Opening_models_section_loads_screen_and_settings_link_opens_it()
+    public async Task Models_are_a_settings_tab_not_a_sidebar_section()
     {
         var api = Api();
-        api.Sections.Add(ModelsSection);
+        api.Sections.Add(ModelsSection); // сервис по-прежнему объявляет раздел «Модели»
         var model = new MainViewModel(api);
         await model.InitializeAsync();
-        Assert.Empty(model.ModelsScreen.Cards); // экран не грузится, пока раздел не открыт
+        Assert.DoesNotContain(model.Sections.Items, i => i.View == "models"); // в боковом меню его нет
+        Assert.Empty(model.ModelsScreen.Cards); // экран не грузится, пока вкладку не открыли
 
         await model.Settings.OpenAsync();
+        Assert.Equal(["general", "sound", "models"], model.Settings.Tabs.Select(t => t.Id));
+        Assert.True(model.Settings.IsGeneralTab && model.Settings.HasFooter);
         Assert.Equal("qwen3-8b-q4_k_m", model.Settings.DefaultModel?.Id);
-        await model.Settings.ManageModelsCommand.RunAsync();
-        Assert.True(model.Sections.IsModelsSelected && !model.Settings.IsOpen);
+        await model.Settings.ManageModelsCommand.RunAsync(); // «Управлять моделями…» — вкладка «Модели»
+        Assert.True(model.Settings.IsOpen && model.Settings.IsModelsTab && !model.Settings.HasFooter);
         await MainViewModelTests.Until(() => model.ModelsScreen.Cards.Count > 0, "экран загружен");
+
+        await model.Settings.CloseCommand.RunAsync();
+        var loads = api.CatalogLoads;
+        await model.OpenModelsAsync(); // прямой переход — та же вкладка, данные перечитываются
+        Assert.True(model.Settings.IsOpen && model.Settings.IsModelsTab);
+        await MainViewModelTests.Until(() => api.CatalogLoads > loads, "перечитан каталог");
+    }
+
+    [Fact]
+    public async Task Module_tab_is_added_once_and_relocalized()
+    {
+        var api = Api();
+        var model = new MainViewModel(api);
+        await model.InitializeAsync();
+        model.Settings.AddTab("agent", "section.agent");
+        model.Settings.AddTab("agent", "section.agent");
+        Assert.Equal(["general", "sound", "models", "module:agent"], model.Settings.Tabs.Select(t => t.Id));
+        model.Settings.SelectedTab = model.Settings.Tabs[^1];
+        Assert.True(model.Settings.IsModuleTab && !model.Settings.HasFooter);
+        Assert.Equal("Общие", model.Settings.Tabs[0].Title);
     }
 
     [Fact]
@@ -236,7 +259,7 @@ public sealed class ModelsTests
     }
 
     [AvaloniaFact]
-    public async Task Window_shows_models_panel_with_cards()
+    public async Task Window_shows_models_tab_with_cards_in_settings()
     {
         var api = Api();
         api.Sections.Add(ModelsSection);
@@ -244,16 +267,21 @@ public sealed class ModelsTests
         var window = new MainWindow { DataContext = model };
         window.Show();
         await model.InitializeAsync();
-        model.Sections.Selected = model.Sections.Items.Single(i => i.Id == "models");
+        await model.OpenModelsAsync();
         await MainViewModelTests.Until(() => model.ModelsScreen.Cards.Count == 4, "карточки");
         Dispatcher.UIThread.RunJobs();
 
-        Assert.True(window.FindControl<Border>("ModelsPanel")!.IsVisible);
-        Assert.False(window.FindControl<DockPanel>("ChatPanel")!.IsVisible);
-        Assert.False(window.FindControl<Border>("ModuleSection")!.IsVisible);
+        Assert.True(VoiceTests.Shown(window.FindControl<DockPanel>("ModelsPanel")!));
+        Assert.False(VoiceTests.Shown(window.FindControl<ScrollViewer>("GeneralTab")!));
+        Assert.False(VoiceTests.Shown(window.FindControl<Button>("SettingsSave")!)); // у «Моделей» нет «Сохранить»
+        Assert.True(VoiceTests.Shown(window.FindControl<Button>("SettingsClose")!));
+        model.Settings.SelectedTab = model.Settings.Tabs[0];
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(VoiceTests.Shown(window.FindControl<Button>("SettingsSave")!));
+        Assert.False(VoiceTests.Shown(window.FindControl<DockPanel>("ModelsPanel")!));
         var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
         Assert.Contains("Установлена · Текущая", texts);
         Assert.Contains("Доступна онлайн", texts);
-        Assert.Contains("Каталог моделей · совместимость и загрузка", texts);
+        Assert.DoesNotContain(window.FindControl<ListBox>("SectionList")!.Items.OfType<SectionItem>(), i => i.View == "models");
     }
 }

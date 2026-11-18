@@ -74,14 +74,8 @@ public sealed class SectionsViewModel : ObservableObject
 
     public bool IsChatSelected => _selected is null || _selected.View == "chat";
 
-    /// <summary>4.11: открыт встроенный раздел «Модели».</summary>
-    public bool IsModelsSelected => _selected?.View == "models";
-
     /// <summary>Открыт раздел модуля (Agent, Character).</summary>
-    public bool IsModuleSelected => !IsChatSelected && !IsModelsSelected;
-
-    /// <summary>4.11: раздел «Модели» открыли — экран перечитывает данные.</summary>
-    public event EventHandler? ModelsOpened;
+    public bool IsModuleSelected => !IsChatSelected;
 
     /// <summary>Вид открытого раздела модуля (null, когда открыт чат).</summary>
     public ModuleSectionViewModel? Current
@@ -101,7 +95,6 @@ public sealed class SectionsViewModel : ObservableObject
             if (value is not null && Set(ref _selected, value))
             {
                 Raise(nameof(IsChatSelected));
-                Raise(nameof(IsModelsSelected));
                 Raise(nameof(IsModuleSelected));
                 _ = OpenAsync(value);
             }
@@ -113,7 +106,8 @@ public sealed class SectionsViewModel : ObservableObject
         var sections = await _api().SectionsAsync().ConfigureAwait(true);
         var keep = _selected?.Id;
         Items.Clear();
-        foreach (var info in sections.OrderBy(s => s.Order))
+        // «Модели» — вкладка настроек, а не пункт бокового меню (решение владельца 2026-11-18).
+        foreach (var info in sections.Where(s => s.View != "models").OrderBy(s => s.Order))
         {
             Items.Add(new SectionItem(info));
         }
@@ -122,7 +116,6 @@ public sealed class SectionsViewModel : ObservableObject
         _selected = Items.FirstOrDefault(i => i.Id == keep) ?? Items.FirstOrDefault(i => i.View == "chat");
         Raise(nameof(Selected));
         Raise(nameof(IsChatSelected));
-        Raise(nameof(IsModelsSelected));
         Raise(nameof(IsModuleSelected));
     }
 
@@ -131,13 +124,6 @@ public sealed class SectionsViewModel : ObservableObject
         if (item.View == "chat")
         {
             Current = null;
-            return;
-        }
-
-        if (item.View == "models")
-        {
-            Current = null;
-            ModelsOpened?.Invoke(this, EventArgs.Empty);
             return;
         }
 

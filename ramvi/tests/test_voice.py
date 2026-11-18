@@ -1324,3 +1324,27 @@ def test_key_never_appears_in_settings_file_or_api_answers(tmp_path: Path, api: 
     finally:
         server.close()
         engines.stop()
+
+
+def test_stt_models_stay_in_app_folder_when_llm_models_live_elsewhere(tmp_path: Path) -> None:
+    app, data, ollama = tmp_path / "app", tmp_path / "app" / "data", tmp_path / "ollama" / "blobs"
+    ollama.mkdir(parents=True)
+    server, engines = build(
+        data,
+        TOKEN,
+        engine_command=ENGINE,
+        app_dir=app,
+        voice_options={"microphone": FakeMicrophone(), "memory": lambda: (None, None)},
+    )
+    server.start()
+    try:
+        client = Client(server.port)
+        client.ok("POST", "/settings", {"models_dir": str(ollama)})  # модели LLM — у Ollama
+        vm.MODELS[vm.DEFAULT_MODEL].path(app / "models").parent.mkdir(parents=True)
+        vm.MODELS[vm.DEFAULT_MODEL].path(app / "models").write_bytes(b"x")
+        vm.VAD.path(app / "models").write_bytes(b"v")
+        assert client.ok("GET", "/voice")["model"]["installed"] is True
+        assert not (ollama / "stt").exists()  # в чужое хранилище ничего не кладётся
+    finally:
+        server.close()
+        engines.stop()
