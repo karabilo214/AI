@@ -15,6 +15,7 @@ from ramvi_storage.migrations import Migration
 
 from ramvi_service.context import ContextProvider, GrantStore
 from ramvi_service.contracts.modules import Authority, Manifest, Owner
+from ramvi_service.contracts.voice import MICROPHONE
 from ramvi_service.events import EventBus
 from ramvi_service.module_data import DB_FILE, ModuleDatabase, export_namespace
 from ramvi_service.modules.controller import ProcessModuleWorker, WorkerController
@@ -75,7 +76,8 @@ class ModuleHost:
             if service is not None and service.authority is not self.authority:
                 raise ValueError("services use different Authority objects")
         self.grants = grants or (context.grants if context else GrantStore(self.authority))
-        self.resources = ResourceBroker(self.authority, capacity or {"cpu_slots": 1})
+        self.resources = ResourceBroker(self.authority, capacity or {"cpu_slots": 1, MICROPHONE: 1})
+        self.voice: Any = None  # 5.6: VoiceService, подключает app.build
         self.events = EventBus(self.authority)
         self.llm, self.context = llm, context
         self.secrets = secrets or MemorySecrets()
@@ -228,6 +230,7 @@ class ModuleHost:
             self.context,
             timeout=self.timeout,
             database=entry.database,
+            voice=self.voice,
         )
         entry.owner, entry.services = owner, scope
         for permission in set(entry.approved) & set(entry.manifest.permissions):

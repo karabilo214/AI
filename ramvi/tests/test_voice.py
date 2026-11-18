@@ -119,6 +119,7 @@ class Env:
             return t
 
         defaults: dict[str, Any] = {
+            "make_transcriber": make,
             "make_gpu_transcriber": make_gpu,
             "memory": lambda: (self.ram, self.vram),
             "has_nvidia": lambda: self.vram is not None,
@@ -128,7 +129,6 @@ class Env:
             lambda: self.models,
             lambda: self.settings,
             microphone=self.mic,
-            make_transcriber=make,
             **{**defaults, **options},
         )
 
@@ -896,3 +896,163 @@ def test_gpu_also_needs_some_ram(tmp_path: Path) -> None:
     assert record_and_stop(env)["backend"] == "gpu"
     env.ram = GPU_RAM_NEED_MB - 1  # 14B занял почти всю RAM: ни видеокарта, ни CPU
     assert code(env.voice.start) == "voice.no_memory"
+
+
+# --- 5.6: публичный контракт и владение микрофоном ------------------------------------
+
+
+def broker_env(tmp_path: Path) -> tuple[Env, Any, Any, Any]:
+    from ramvi_service.contracts.modules import Authority
+    from ramvi_service.contracts.voice import MICROPHONE
+    from ramvi_service.resources import ResourceBroker
+
+    authority = Authority()
+    broker = ResourceBroker(authority, {"cpu_slots": 1, MICROPHONE: 1})
+    ui = authority.issue("core", "local_user", "voice")
+    env = Env(tmp_path, resources=broker, owner=ui)
+    env.install()
+    return env, authority, broker, ui
+
+
+def test_microphone_belongs_to_one_lease_holder(tmp_path: Path) -> None:
+    from ramvi_service.contracts.voice import MICROPHONE
+
+    env, authority, broker, _ = broker_env(tmp_path)
+    other = authority.issue("character", "local_user", "s")
+    lease = broker.acquire(other, {MICROPHONE: 1})  # микрофон взял чужой адаптер
+    assert code(env.voice.start) == "voice.mic_busy"
+    assert env.mic.opened == [] and env.voice.status()["state"] == "idle"
+    broker.release(other, lease)
+    record_and_stop(env)
+    assert broker.status()["leases"] == 0  # после записи микрофон свободен
+    env.voice.start()
+    env.voice.cancel()
+    assert broker.status()["leases"] == 0
+    env.mic.names = ()  # открыть микрофон не удалось — аренда тоже возвращена
+    with pytest.raises(ChatError):
+        env.voice.start("нет")
+    assert broker.status()["leases"] == 0
+
+
+def test_module_listens_through_scoped_services(tmp_path: Path) -> None:
+    from ramvi_service.context import GrantStore
+    from ramvi_service.events import EventBus
+    from ramvi_service.scoped import MemorySecrets, ScopedData, ScopedSecrets
+    from ramvi_service.services import ScopedServices
+
+    env, authority, broker, _ = broker_env(tmp_path)
+    grants = GrantStore(authority)
+
+    def scope(name: str) -> ScopedServices:
+        owner = authority.issue(name, "local_user", name)
+        result = ScopedServices(
+            owner,
+            authority,
+            grants,
+            ScopedData(tmp_path / "modules", name),
+            ScopedSecrets(MemorySecrets(), name),
+            broker,
+            EventBus(authority),
+            voice=env.voice,
+        )
+        result.active = True
+        return result
+
+    character, other = scope("character"), scope("other")
+    with pytest.raises(PermissionError):
+        character.call("voice.capabilities", {})  # без права voice — нельзя
+    grants.allow(character.owner, "voice")
+    grants.allow(other.owner, "voice")
+    caps = character.call("voice.capabilities", {})["capabilities"]
+    assert caps["languages"] == ["auto", "ru", "en", "uk"] and caps["streaming"] is False
+    assert caps["cancel"] is True and caps["backends"] == ["cpu"] and caps["installed"] is True
+
+    assert character.call("voice.listen.start", {}) == {"state": "recording", "backend": "cpu"}
+    env.mic.say(tone(0.5))
+    with pytest.raises(ChatError) as error:
+        other.call("voice.listen.stop", {})  # чужую запись не остановить
+    assert error.value.code == "voice.not_owner"
+    assert code(lambda: other.call("voice.listen.start", {})) == "voice.busy"
+    assert character.call("voice.listen.stop", {})["text"] == "привет мир"
+
+    character.call("voice.listen.start", {})
+    assert env.voice.cancel()["state"] == "idle"  # общий Stop интерфейса отменяет и запись модуля
+    character.call("voice.listen.start", {})
+    character.stop()  # модуль остановлен — его запись отменена, микрофон свободен
+    assert env.voice.status()["state"] == "idle" and broker.status()["leases"] == 0
+    assert env.transcribers[0].calls == [(16_000, 16_000, "auto")]
+
+
+def test_cancel_interrupts_running_transcription(tmp_path: Path) -> None:
+    class Slow(FakeTranscriber):
+        def __init__(self, path: Path) -> None:
+            super().__init__(path)
+            self.started, self.stopped = threading.Event(), threading.Event()
+
+        def transcribe(self, pcm: bytes, rate: int, language: str) -> dict[str, Any]:
+            self.started.set()
+            if not self.stopped.wait(5):
+                return {"text": "не дождались"}
+            raise ChatError("voice.stt_failed", detail="worker exited")
+
+        def close(self) -> None:
+            super().close()
+            self.stopped.set()
+
+    slow: list[Slow] = []
+
+    def make_slow(path: Path) -> Slow:
+        slow.append(Slow(path))
+        return slow[-1]
+
+    env = Env(tmp_path, make_transcriber=make_slow)
+    env.install()
+    env.voice.start()
+    env.mic.say(tone(0.5))
+    result: list[Any] = []
+    worker = threading.Thread(target=lambda: result.append(_code_or(env.voice.stop)))
+    worker.start()
+    assert slow[0].started.wait(5)
+    assert env.voice.status()["state"] == "transcribing"
+    env.voice.cancel()
+    worker.join(5)
+    assert result == ["voice.cancelled"] and slow[0].closed == 1
+    assert env.voice.status()["state"] == "idle"
+    env.voice.make_transcriber = FakeTranscriber
+    assert record_and_stop(env)["text"] == "привет мир"  # новый процесс, всё работает
+
+
+def _code_or(call: Callable[[], Any]) -> Any:
+    try:
+        return call()
+    except ChatError as error:
+        return error.code
+
+
+def test_local_voice_needs_no_character_tts_or_audio_libraries() -> None:
+    """5.6: базовый локальный STT не требует TTS, аватара или установки Character."""
+    import os
+    import subprocess
+
+    service = Path(__file__).resolve().parents[1] / "service"
+    script = (
+        "import sys; import ramvi_service.voice.service, ramvi_service.contracts.voice, "
+        "ramvi_service.services; "
+        "bad = [m for m in sys.modules if any(w in m.lower() for w in "
+        "('character', 'tts', 'avatar', 'sounddevice', 'whisper', 'numpy', 'torch'))]; "
+        "print(bad)"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(
+                [str(service), str(service.parent / "engine"), str(service.parent / "storage")]
+            ),
+        },
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "[]"

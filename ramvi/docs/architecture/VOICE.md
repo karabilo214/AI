@@ -39,9 +39,21 @@
 
 Настройки (`settings.json`): `voice_device` («» — системный), `voice_language` (`auto`/`ru`/`en`/`uk`), `voice_model`.
 
+## Контракт для модулей (5.6)
+
+`service/ramvi_service/contracts/voice.py` — без аудиобиблиотек, whisper, TTS и Character:
+
+- `SpeechCapabilities` — языки (`auto`, `ru`, `en`, `uk`), авто-язык, `streaming=False` (потоковая транскрипция — VOI-04), `cancel=True`, `backends` (`cpu` или `cpu`+`gpu`, если скачан ускоритель), предел длины;
+- `AudioCapture`, `AudioStream`, `Device` — захват (реализация `voice/audio.py`); `SpeechRecognizer` — распознавание (`voice/stt.py` на CPU, `voice/server.py` на видеокарте);
+- `MICROPHONE = "audio_input"` — единица ресурса в общем `ResourceBroker` хоста модулей (ёмкость 1). Запись берёт аренду и отдаёт её после остановки, отмены или ошибки открытия микрофона; занят — `voice.mic_busy`.
+
+Модули пользуются голосом через Scoped Services (право `voice`): `voice.capabilities`, `voice.listen.start` `{device?}`, `voice.listen.stop` (текст, язык, где распознано), `voice.listen.cancel`. Модуль останавливает только свою запись (`voice.not_owner`); общий Stop интерфейса отменяет любую. Остановленный модуль не держит микрофон: его запись отменяется вместе с остальными ресурсами. Character повторно использует захват и распознавание, а оркестрацию и эмоциональную политику держит у себя.
+
+Отмена во время распознавания останавливает процесс распознавания; `stop` возвращает `voice.cancelled`.
+
 ## Ошибки
 
-`voice.model_missing` и `voice.no_memory` (до открытия микрофона), `voice.accel_unsupported`, `voice.no_device`, `voice.device_missing`, `voice.device_error`, `voice.unavailable` (нет пакетов), `voice.too_short` (< 0,3 с), `voice.no_signal` (одни нули — так macOS отдаёт звук без разрешения на микрофон), `voice.no_speech`, `voice.stt_failed`, `voice.busy`. После любой ошибки состояние — idle, чат работает.
+`voice.model_missing` и `voice.no_memory` (до открытия микрофона), `voice.accel_unsupported`, `voice.no_device`, `voice.device_missing`, `voice.device_error`, `voice.unavailable` (нет пакетов), `voice.mic_busy`, `voice.not_owner`, `voice.cancelled`, `voice.too_short` (< 0,3 с), `voice.no_signal` (одни нули — так macOS отдаёт звук без разрешения на микрофон), `voice.no_speech`, `voice.stt_failed`, `voice.busy`. После любой ошибки состояние — idle, чат работает.
 
 ## Проверено
 

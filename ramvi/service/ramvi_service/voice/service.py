@@ -21,6 +21,8 @@ from typing import Any, Protocol
 
 from ramvi_service import hardware
 from ramvi_service.chat import ChatError
+from ramvi_service.contracts.modules import Owner
+from ramvi_service.contracts.voice import MICROPHONE, SpeechCapabilities
 from ramvi_service.downloads import Download, DownloadError
 from ramvi_service.voice import accel
 from ramvi_service.voice.audio import Microphone, Recorder, SoundDeviceMicrophone
@@ -76,6 +78,8 @@ class VoiceService:
         memory: Callable[[], tuple[int | None, int | None]] = _memory_now,
         has_nvidia: Callable[[], bool] = lambda: shutil.which("nvidia-smi") is not None,
         platform: str = sys.platform,
+        resources: Any = None,
+        owner: Owner | None = None,
         max_seconds: float = 120.0,
         idle_seconds: float = 300.0,
     ) -> None:
@@ -86,6 +90,11 @@ class VoiceService:
         self._has_nvidia_probe = has_nvidia
         self._has_nvidia: bool | None = None
         self.platform = platform
+        # 5.6: микрофоном владеет тот, у кого аренда MICROPHONE в общем ResourceBroker.
+        self.resources, self.owner = resources, owner
+        self._lease: tuple[Owner, str] | None = None
+        self._recording_owner: Owner | None = None
+        self._cancelled = False
         self._active: tuple[str, SttModel] | None = None  # где распознаётся текущая запись
         self._last: dict[str, Any] | None = None
         self.max_seconds, self.idle_seconds = max_seconds, idle_seconds
@@ -220,16 +229,52 @@ class VoiceService:
             "devices": [{"name": d.name, "default": d.default} for d in self.microphone.devices()]
         }
 
-    def start(self, device: str | None = None) -> dict[str, Any]:
+    def capabilities(self) -> SpeechCapabilities:
+        """5.6: что умеет распознавание сейчас (для чата и модулей)."""
+        gpu = self.accel_offered() and accel.CUDA.installed(self.models_dir())
+        return SpeechCapabilities(
+            languages=LANGUAGES,
+            backends=("cpu", "gpu") if gpu else ("cpu",),
+            max_seconds=self.max_seconds,
+            extra={
+                "model": self.model().id,
+                "installed": installed(self.model(), self.models_dir()),
+            },
+        )
+
+    def _acquire_microphone(self, owner: Owner | None) -> None:
+        who = owner or self.owner
+        if self.resources is None or who is None:
+            return
+        try:
+            lease = self.resources.acquire(who, {MICROPHONE: 1}, timeout=0.1)
+        except TimeoutError:
+            raise ChatError("voice.mic_busy") from None  # микрофон у другой записи
+        self._lease = (who, lease)
+
+    def _release_microphone(self) -> None:
+        if self._lease is not None and self.resources is not None:
+            self.resources.release(*self._lease)
+        self._lease = None
+
+    def start(self, device: str | None = None, owner: Owner | None = None) -> dict[str, Any]:
+        """Начать запись. `owner` — модуль (Scoped Services); None — интерфейс RAMVI."""
         with self._lock:
             if self._state != "idle":
                 raise ChatError("voice.busy", state=self._state)
             backend, model = self._choose()
             name = device if device is not None else self.settings().voice_device
+            self._acquire_microphone(owner)
             self._limit = False
-            self._recorder = Recorder(
-                self.microphone, name or None, self.max_seconds, on_limit=self._on_limit
-            )
+            try:
+                self._recorder = Recorder(
+                    self.microphone, name or None, self.max_seconds, on_limit=self._on_limit
+                )
+            except BaseException:
+                self._release_microphone()
+                raise
+            self._recording_owner = owner
+            self._cancelled = False
             self._state = "recording"
             self._active = (backend, model)
             self._cancel_idle()
@@ -257,8 +302,15 @@ class VoiceService:
         pcm, rate, loudest = recorder.finish()
         return pcm, rate, loudest, seconds
 
-    def stop(self) -> dict[str, Any]:
+    def _check_owner(self, owner: Owner | None) -> None:
+        """Модуль останавливает только свою запись; интерфейс (None) — любую (общий Stop)."""
+        if owner is not None and self._recording_owner != owner:
+            raise ChatError("voice.not_owner")
+
+    def stop(self, owner: Owner | None = None) -> dict[str, Any]:
         """Остановить запись и распознать; ответ — текст для поля ввода."""
+        with self._lock:
+            self._check_owner(owner)
         pcm, rate, loudest, seconds = self._take()
         try:
             if seconds < MIN_SECONDS:
@@ -272,10 +324,16 @@ class VoiceService:
             started = time.monotonic()
             try:
                 result = transcriber.transcribe(pcm, rate, self._language())
+            except ChatError:
+                if self._cancelled:
+                    raise ChatError("voice.cancelled") from None
+                raise
             finally:
                 proc = round(time.monotonic() - started, 2)
                 with self._lock:
                     self._last = {"backend": backend, "model": model.id, "proc_s": proc}
+            if self._cancelled:
+                raise ChatError("voice.cancelled")
             if not str(result.get("text", "")).strip():
                 raise ChatError("voice.no_speech")
             return {
@@ -295,18 +353,32 @@ class VoiceService:
             self._state = "idle"
             self._limit = False
             self._active = None
+            self._recording_owner = None
+            self._release_microphone()
             if self._transcriber is not None and getattr(self._transcriber, "single_use", False):
                 self._transcriber.close()  # видеопамять — только на время записи
                 self._transcriber = None
             self._schedule_idle()
 
-    def cancel(self) -> dict[str, Any]:
-        """Прекратить запись без распознавания; звук забывается."""
+    def cancel(self, owner: Owner | None = None) -> dict[str, Any]:
+        """Прекратить запись без распознавания или прервать идущее распознавание."""
+        recorder = transcriber = None
+        cancelled = False
         with self._lock:
-            recorder, self._recorder = self._recorder, None
-            cancelled = self._state == "recording"
+            if self._state != "idle":
+                self._check_owner(owner)
+                recorder, self._recorder = self._recorder, None
+                cancelled = self._state == "recording"
+                if self._state == "transcribing":
+                    self._cancelled = True
+                    transcriber = self._transcriber
         if recorder is not None:
             recorder.finish()
+        if transcriber is not None:
+            transcriber.close()  # процесс распознавания останавливается, stop вернёт «отменено»
+            with self._lock:
+                if self._transcriber is transcriber:
+                    self._transcriber = None
         if cancelled:
             self._after_use()
         return self.status()

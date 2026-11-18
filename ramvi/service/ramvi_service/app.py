@@ -179,7 +179,17 @@ def build(
         except (OSError, ValueError):
             return app_settings.Settings()
 
-    server.voice = VoiceService(onboarding.models_folder, current_settings, **(voice_options or {}))
+    # 5.6: микрофоном владеет держатель аренды MICROPHONE в общем ResourceBroker хоста модулей;
+    # интерфейс RAMVI — свой владелец, модули — свои (Scoped Services voice.*).
+    voice_owner = host.authority.issue("core", "local_user", "voice")
+    server.voice = VoiceService(
+        onboarding.models_folder,
+        current_settings,
+        resources=host.resources,
+        owner=voice_owner,
+        **(voice_options or {}),
+    )
+    host.voice = server.voice
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
     server.on_close.append(db.close)

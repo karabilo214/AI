@@ -337,5 +337,8 @@
   "voice.accel_not_installed": "Not downloaded ({size} MB). Recognition on the GPU is about 10 times faster",
   "voice.accel_download": "Download the GPU recognition accelerator",
   "voice.last_gpu": "Last recognition: GPU, {seconds} s",
-  "voice.last_cpu": "Last recognition: CPU, {seconds} s"
+  "voice.last_cpu": "Last recognition: CPU, {seconds} s",
+  "voice.mic_busy": "The microphone is already used by another recording",
+  "voice.not_owner": "This recording was started by another module",
+  "voice.cancelled": "Recognition cancelled"
 }

@@ -39,6 +39,10 @@ METHODS = {
     "llm.read",
     "llm.cancel",
     "context.capture",
+    "voice.capabilities",
+    "voice.listen.start",
+    "voice.listen.stop",
+    "voice.listen.cancel",
 }
 # Право, которое ожидается для вызова с PAYLOAD.
 EXPECTED = {method: (method.split(".")[0], "*") for method in METHODS}

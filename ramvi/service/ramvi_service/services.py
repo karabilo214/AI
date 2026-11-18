@@ -104,7 +104,9 @@ class ScopedServices:
         context: ContextProvider | None = None,
         timeout: float = 30,
         database: Any = None,
+        voice: Any = None,
     ) -> None:
+        self.voice = voice  # 5.6: VoiceService (захват и распознавание) или None
         self.database = database  # 3.12: своя база модуля (ModuleDatabase) или None
         self.owner, self.authority, self.grants, self.data, self.secrets = (
             owner,
@@ -447,6 +449,41 @@ class ScopedServices:
             )
         }
 
+    # --- 5.6: голос для модулей (Character и др.) ---------------------------------------
+
+    def _voice_service(self) -> Any:
+        if self.voice is None:
+            raise NotImplementedError("voice is not connected")
+        return self.voice
+
+    @handler("voice.capabilities", permission="voice")
+    def _voice_capabilities(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"capabilities": self._voice_service().capabilities().to_dict()}
+
+    @handler("voice.listen.start", permission="voice", active=True)
+    def _voice_start(self, payload: dict[str, Any]) -> dict[str, Any]:
+        device = payload.get("device")
+        if device is not None and not isinstance(device, str):
+            raise ValueError("device must be a string")
+        status = self._voice_service().start(device, owner=self.owner)
+        return {"state": status["state"], "backend": status["backend"]}
+
+    @handler("voice.listen.stop", permission="voice", active=True)
+    def _voice_stop(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._voice_service().stop(owner=self.owner))
+
+    @handler("voice.listen.cancel", permission="voice", active=True)
+    def _voice_cancel(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"state": self._voice_service().cancel(owner=self.owner)["state"]}
+
+    def _voice_release(self) -> None:
+        """Остановленный модуль не держит микрофон: его запись отменяется."""
+        if self.voice is not None:
+            try:
+                self.voice.cancel(owner=self.owner)
+            except Exception:
+                pass  # запись чужая или уже закончилась
+
     def stop(self) -> None:
         with self._condition:
             self.active = False
@@ -460,6 +497,7 @@ class ScopedServices:
                 stream.condition.notify_all()
         if self.llm is not None:
             self.llm.release_owner(self.owner)
+        self._voice_release()
         self.events.release_owner(self.owner)
         self.resources.release_owner(self.owner)
         if self.context is not None:

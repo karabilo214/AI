@@ -10,31 +10,20 @@ import sys
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 from ramvi_service.chat import ChatError
+from ramvi_service.contracts.voice import AudioCapture, AudioStream, Device
+
+__all__ = ["Device", "Microphone", "Recorder", "SoundDeviceMicrophone", "Stream", "peak"]
 
 RATE = 16_000  # whisper ждёт 16 кГц; другую частоту устройства пересчитывает процесс распознавания
 BLOCK_SECONDS = 0.1
 
 
-@dataclass(frozen=True)
-class Device:
-    name: str
-    default: bool = False
-
-
-class Stream(Protocol):
-    rate: int
-
-    def close(self) -> None: ...
-
-
-class Microphone(Protocol):
-    def devices(self) -> list[Device]: ...
-
-    def open(self, device: str | None, on_block: Callable[[bytes], None]) -> Stream: ...
+# Типы — из публичного контракта (5.6); прежние имена оставлены для кода и тестов.
+Microphone = AudioCapture
+Stream = AudioStream
 
 
 def peak(block: bytes) -> int:

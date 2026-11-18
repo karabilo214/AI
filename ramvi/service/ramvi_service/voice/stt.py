@@ -6,21 +6,13 @@ import threading
 import uuid
 from multiprocessing import shared_memory
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from ramvi_service.chat import ChatError
+from ramvi_service.contracts.voice import SpeechRecognizer
 from ramvi_service.voice.models import VAD
 
-
-class Transcriber(Protocol):
-    def prepare(self) -> None: ...
-
-    def transcribe(self, pcm: bytes, rate: int, language: str) -> dict[str, Any]: ...
-
-    def close(self) -> None: ...
-
-    @property
-    def running(self) -> bool: ...
+Transcriber = SpeechRecognizer  # публичный контракт 5.6
 
 
 def default_threads() -> int:

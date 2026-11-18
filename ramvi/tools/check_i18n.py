@@ -35,7 +35,16 @@ NOT_KEY = re.compile(r".*\.(json|sql|py|gguf|zip|txt|md|part|lock|png|ico|exe|dl
 CS_STRING = re.compile(r'\$?@?"((?:[^"\\\n]|\\.)*)"')
 XAML_KEY = re.compile(r"\{l:T\s+([^}\s]+)\s*\}")
 # Похоже на ключ, но это имя метода Scoped Services (services.py), а не текст.
-NOT_KEYS = frozenset({"settings.get", "settings.set"})
+NOT_KEYS = frozenset(
+    {
+        "settings.get",
+        "settings.set",
+        "voice.capabilities",
+        "voice.listen.start",
+        "voice.listen.stop",
+        "voice.listen.cancel",
+    }
+)
 
 
 def core_catalogs(root: Path = ROOT) -> dict[str, dict[str, str]]:
