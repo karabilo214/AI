@@ -1,0 +1,50 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="using:Ramvi.Desktop.ViewModels" xmlns:l="using:Ramvi.Desktop.Localization"
+ x:Class="Ramvi.Desktop.Views.AgentSettingsView" x:DataType="vm:AgentViewModel">
+ <UserControl.Resources>
+  <DataTemplate x:Key="AgentFlag" x:DataType="vm:AgentOption"><CheckBox Content="{Binding Label}" IsChecked="{Binding Enabled}" Margin="0,0,14,4" MinWidth="220"/></DataTemplate>
+ </UserControl.Resources>
+ <ScrollViewer><StackPanel Margin="28,12" Spacing="10">
+  <TextBlock Classes="title" Text="{l:T section.agent}"/>
+  <TextBlock Text="{l:T agent.settings_note}" TextWrapping="Wrap" Classes="caption"/>
+  <TextBlock Text="{l:T agent.rights}" FontWeight="SemiBold"/>
+  <ItemsControl ItemsSource="{Binding Rights}" ItemTemplate="{StaticResource AgentFlag}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
+  <TextBlock Text="{l:T agent.restrictions}" FontWeight="SemiBold"/>
+  <ItemsControl ItemsSource="{Binding Restrictions}" ItemTemplate="{StaticResource AgentFlag}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
+  <TextBlock Text="{l:T agent.secrets}"/>
+  <TextBox Text="{Binding SecretPatterns}" AcceptsReturn="True" Height="80"/>
+  <TextBlock Text="{l:T agent.confirmations}" FontWeight="SemiBold"/>
+  <ItemsControl ItemsSource="{Binding Confirmations}" ItemTemplate="{StaticResource AgentFlag}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
+  <TextBlock Text="{l:T agent.tools}" FontWeight="SemiBold"/>
+  <ItemsControl ItemsSource="{Binding Tools}" ItemTemplate="{StaticResource AgentFlag}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
+  <TextBlock Text="{l:T agent.limits}" FontWeight="SemiBold"/>
+  <ItemsControl ItemsSource="{Binding Limits}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:AgentLimit">
+   <Grid ColumnDefinitions="*,140,180" ColumnSpacing="10" Margin="0,3">
+    <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+    <TextBox Grid.Column="1" Text="{Binding Value}" IsEnabled="{Binding IsLimited}"/>
+    <CheckBox Grid.Column="2" Content="{l:T agent.unlimited}" IsChecked="{Binding Unlimited}" IsVisible="{Binding SupportsUnlimited}"/>
+   </Grid>
+  </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+  <Button x:Name="AgentSaveSettings" AutomationProperties.AutomationId="AgentSaveSettings" Content="{l:T settings.save}" Command="{Binding SaveSettingsCommand}" Classes="accent" HorizontalAlignment="Left"/>
+  <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap"/>
+  <TextBlock Text="{Binding Status}" Classes="caption" TextWrapping="Wrap"/>
+  <Separator/>
+  <TextBlock Text="{l:T agent.application}" FontWeight="SemiBold"/>
+  <TextBlock Text="{l:T agent.target_note}" TextWrapping="Wrap" Classes="caption"/>
+  <Button Content="{l:T agent.pick_target}" Command="{Binding PickTargetCommand}" HorizontalAlignment="Left"/>
+  <TextBlock Text="{Binding Target}" TextWrapping="Wrap"/>
+  <WrapPanel>
+   <CheckBox Content="{l:T agent.grant_ui}" IsChecked="{Binding GrantUi}" Margin="0,0,16,0"/>
+   <CheckBox Content="{l:T agent.grant_screen}" IsChecked="{Binding GrantScreen}" Margin="0,0,16,0"/>
+   <CheckBox Content="{l:T agent.grant_control}" IsChecked="{Binding GrantControl}"/>
+  </WrapPanel>
+  <Button Content="{l:T agent.apply_grants}" Command="{Binding SaveGrantsCommand}" HorizontalAlignment="Left"/>
+  <CheckBox Content="{l:T agent.use_ui}" IsChecked="{Binding UseUi}"/>
+  <Separator/>
+  <TextBlock Text="{l:T agent.cleanup}" FontWeight="SemiBold"/>
+  <TextBlock Text="{l:T agent.cleanup_note}" TextWrapping="Wrap" Classes="caption"/>
+  <TextBox Text="{Binding ClearBefore}" PlaceholderText="{l:T agent.clear_before}"/>
+  <CheckBox Content="{l:T agent.clear_confirm}" IsChecked="{Binding ClearConfirmed}"/>
+  <Button x:Name="AgentClearHistory" AutomationProperties.AutomationId="AgentClearHistory" Content="{l:T agent.clear}" Command="{Binding ClearCommand}" HorizontalAlignment="Left"/>
+ </StackPanel></ScrollViewer>
+</UserControl>

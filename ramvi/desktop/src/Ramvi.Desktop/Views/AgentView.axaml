@@ -1,0 +1,154 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="using:Ramvi.Desktop.ViewModels" xmlns:api="using:Ramvi.Desktop.Api" xmlns:l="using:Ramvi.Desktop.Localization"
+ x:Class="Ramvi.Desktop.Views.AgentView" x:DataType="vm:AgentViewModel">
+ <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="20" RowSpacing="10">
+  <StackPanel Spacing="8">
+   <TextBlock Classes="title" Text="{l:T section.agent}"/>
+   <Grid ColumnDefinitions="*,Auto,240" ColumnSpacing="8">
+    <TextBox x:Name="AgentWorkspace" AutomationProperties.AutomationId="AgentWorkspace" Text="{Binding Workspace}" PlaceholderText="{l:T agent.workspace}"/>
+    <Button Grid.Column="1" Content="{l:T agent.browse}" Command="{Binding BrowseCommand}"/>
+    <ComboBox x:Name="AgentModel" AutomationProperties.AutomationId="AgentModel" Grid.Column="2" ItemsSource="{Binding Models}" SelectedItem="{Binding Model}" HorizontalAlignment="Stretch">
+     <ComboBox.ItemTemplate><DataTemplate x:DataType="api:ModelInfo"><TextBlock Text="{Binding Id}"/></DataTemplate></ComboBox.ItemTemplate>
+    </ComboBox>
+   </Grid>
+   <TextBlock Text="{Binding Status}" Classes="muted"/>
+   <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap"/>
+  </StackPanel>
+  <Border x:Name="AgentApproval" AutomationProperties.AutomationId="AgentApproval" Grid.Row="1" Classes="inset" Padding="12" IsVisible="{Binding HasPending}" MaxHeight="280">
+   <ScrollViewer><StackPanel Spacing="6">
+    <TextBlock Text="{l:T agent.approval}" FontWeight="SemiBold"/>
+    <TextBlock Text="{Binding PendingTitle}" TextWrapping="Wrap"/>
+    <TextBox Text="{Binding PendingDetail}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="monospace" MinHeight="50" MaxHeight="120"/>
+    <TextBox Text="{Binding Reason}" PlaceholderText="{l:T agent.refusal_reason}"/>
+    <StackPanel Orientation="Horizontal" Spacing="8">
+     <TextBlock Text="{l:T agent.series}" VerticalAlignment="Center"/><TextBox Text="{Binding Series}" Width="60"/>
+     <Button x:Name="AgentApprove" AutomationProperties.AutomationId="AgentApprove" Content="{Binding ApproveLabel}" Command="{Binding ApproveCommand}" Classes="accent"/>
+     <Button x:Name="AgentDeny" AutomationProperties.AutomationId="AgentDeny" Content="{l:T agent.deny}" Command="{Binding DenyCommand}"/>
+     <Button Content="{l:T agent.stop}" Command="{Binding StopPendingCommand}"/>
+    </StackPanel>
+    <TextBlock Text="{l:T agent.control_return}" IsVisible="{Binding IsControlPending}" Classes="caption" TextWrapping="Wrap"/>
+   </StackPanel></ScrollViewer>
+  </Border>
+  <Grid Grid.Row="2" RowDefinitions="Auto,*,Auto" RowSpacing="6">
+   <TextBlock Text="{l:T agent.steps}" FontWeight="SemiBold"/>
+   <TextBox x:Name="AgentLog" AutomationProperties.AutomationId="AgentLog" Grid.Row="1" Text="{Binding Log}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60"/>
+   <TextBlock Grid.Row="2" Text="{Binding Result}" TextWrapping="Wrap" MaxHeight="65"/>
+  </Grid>
+  <StackPanel Grid.Row="3" Spacing="6">
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+    <ComboBox x:Name="AgentRuns" AutomationProperties.AutomationId="AgentRuns" ItemsSource="{Binding Runs}" SelectedItem="{Binding SelectedRun}" HorizontalAlignment="Stretch">
+     <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:AgentRunItem"><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
+    </ComboBox>
+    <Button Grid.Column="1" Content="{l:T agent.history_refresh}" Command="{Binding RefreshHistoryCommand}"/>
+   </Grid>
+   <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+    <ComboBox ItemsSource="{Binding Changes}" SelectedItem="{Binding SelectedChange}" HorizontalAlignment="Stretch">
+     <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:AgentChangeItem"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
+    </ComboBox>
+    <CheckBox Grid.Column="1" Content="{l:T agent.force}" IsChecked="{Binding ForceRollback}"/>
+    <Button x:Name="AgentRollback" AutomationProperties.AutomationId="AgentRollback" Grid.Column="2" Content="{l:T agent.rollback}" Command="{Binding RollbackCommand}"/>
+   </Grid>
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+    <TextBox Text="{Binding HistoryPath}" PlaceholderText="{l:T agent.history_path}"/>
+    <Button Grid.Column="1" Content="{l:T agent.why}" Command="{Binding WhyCommand}"/>
+   </Grid>
+  </StackPanel>
+      <Border x:Name="AgentComposer" AutomationProperties.AutomationId="AgentComposer" Grid.Row="4" Classes="composer" Margin="4,8,4,0">
+        <Grid RowDefinitions="Auto,Auto,Auto">
+          <ItemsControl Grid.Row="0" ItemsSource="{Binding Attachments}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:AttachmentViewModel">
+                <Border Classes="chip" Margin="4,4,6,6">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="{StaticResource icon-attach}" Width="12" Height="12" />
+                    <TextBlock VerticalAlignment="Center" Text="{Binding Label}" />
+                    <Button Classes="icon flat" ToolTip.Tip="{l:T chat.remove_attachment}"
+                            Command="{Binding $parent[UserControl].((vm:AgentViewModel)DataContext).RemoveAttachmentCommand}"
+                            CommandParameter="{Binding}">
+                      <PathIcon Data="{StaticResource icon-close}" Width="10" Height="10" />
+                    </Button>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBox x:Name="AgentInput" AutomationProperties.AutomationId="AgentInput" Grid.Row="1" Classes="bare" MinHeight="40" MaxHeight="200"
+                   AcceptsReturn="True" TextWrapping="Wrap"
+                   PlaceholderText="{l:T chat.input_placeholder}" Text="{Binding Input}" />
+          <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto">
+            <StackPanel Orientation="Horizontal">
+              <Button x:Name="AgentAttachButton" AutomationProperties.AutomationId="AgentAttachButton" Classes="icon" Command="{Binding AttachFilesCommand}"
+                      ToolTip.Tip="{l:T chat.attach_hint}">
+                <PathIcon Data="{StaticResource icon-attach}" />
+              </Button>
+              <!-- 5.2: микрофон — первое нажатие пишет, второе распознаёт в поле ввода -->
+              <Button x:Name="AgentMicButton" AutomationProperties.AutomationId="AgentMicButton" Classes="icon" IsVisible="{Binding !Voice.IsRecording}"
+                      Command="{Binding Voice.ToggleCommand}" ToolTip.Tip="{Binding Voice.Tip}">
+                <PathIcon Data="{StaticResource icon-microphone}" />
+              </Button>
+            </StackPanel>
+            <!-- 5.7: пока выбрано распознавание через API — метка, куда уходит звук -->
+            <TextBlock x:Name="AgentVoiceRemoteLabel" AutomationProperties.AutomationId="AgentVoiceRemoteLabel" Grid.Column="1" Classes="warn" FontSize="12" VerticalAlignment="Center"
+                       Margin="6,0" TextTrimming="CharacterEllipsis" Text="{Binding Voice.RemoteText}"
+                       IsVisible="{Binding Voice.ShowRemote}" />
+            <!-- 5.2: идёт распознавание -->
+            <StackPanel x:Name="AgentTranscribingIndicator" AutomationProperties.AutomationId="AgentTranscribingIndicator" Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                        VerticalAlignment="Center" Margin="6,0" IsVisible="{Binding Voice.IsTranscribing}">
+              <PathIcon Classes="spinner" Data="{StaticResource icon-loading}">
+                <PathIcon.RenderTransform>
+                  <RotateTransform />
+                </PathIcon.RenderTransform>
+              </PathIcon>
+              <TextBlock VerticalAlignment="Center" Text="{l:T voice.transcribing}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+              <Button x:Name="AgentStart" AutomationProperties.AutomationId="AgentStart" Classes="accent" Command="{Binding StartCommand}" IsVisible="{Binding IsIdle}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Data="{StaticResource icon-send}" />
+                  <TextBlock VerticalAlignment="Center" Text="{l:T chat.send}" />
+                </StackPanel>
+              </Button>
+              <Button x:Name="AgentStop" AutomationProperties.AutomationId="AgentStop" Command="{Binding StopCommand}" IsVisible="{Binding IsRunning}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Data="{StaticResource icon-stop}" />
+                  <TextBlock VerticalAlignment="Center" Text="{l:T chat.stop}" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Grid>
+          <!-- Идёт запись: большая «Остановить» посередине поля ввода, чтобы было ясно, что нажать -->
+          <Border x:Name="AgentRecordingOverlay" AutomationProperties.AutomationId="AgentRecordingOverlay" Grid.Row="0" Grid.RowSpan="3" Classes="recording-overlay"
+                  IsVisible="{Binding Voice.IsRecording}">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel x:Name="AgentRecordingIndicator" AutomationProperties.AutomationId="AgentRecordingIndicator" Orientation="Horizontal" Spacing="16"
+                          HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Button x:Name="AgentBigStopButton" AutomationProperties.AutomationId="AgentBigStopButton" Classes="icon recording big" Command="{Binding Voice.ToggleCommand}"
+                        ToolTip.Tip="{l:T voice.stop_hint}">
+                  <PathIcon Data="{StaticResource icon-stop}" Width="28" Height="28" />
+                </Button>
+                <StackPanel VerticalAlignment="Center" Spacing="6">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Ellipse Classes="recording-dot" VerticalAlignment="Center" />
+                    <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{l:T voice.recording}" />
+                    <TextBlock x:Name="AgentRecordingTime" AutomationProperties.AutomationId="AgentRecordingTime" VerticalAlignment="Center" Text="{Binding Voice.Elapsed}" />
+                  </StackPanel>
+                  <ProgressBar x:Name="AgentRecordingLevel" AutomationProperties.AutomationId="AgentRecordingLevel" Width="140" MinWidth="140" Minimum="0" Maximum="1"
+                               Value="{Binding Voice.Level}" />
+                  <TextBlock Classes="caption" Text="{l:T voice.stop_big}" />
+                </StackPanel>
+              </StackPanel>
+              <Button x:Name="AgentCancelRecordingButton" AutomationProperties.AutomationId="AgentCancelRecordingButton" Grid.Column="1" Classes="icon flat" VerticalAlignment="Top"
+                      Command="{Binding Voice.CancelCommand}" ToolTip.Tip="{l:T voice.cancel_hint}">
+                <PathIcon Data="{StaticResource icon-close}" Width="12" Height="12" />
+              </Button>
+            </Grid>
+          </Border>
+        </Grid>
+      </Border>
+ </Grid>
+</UserControl>

@@ -28,9 +28,10 @@ from ramvi_service.agent.commands import CommandProposal, execute_command
 from ramvi_service.agent.files import PatchProposal, WriteProposal
 from ramvi_service.agent.progress import changed_lines
 from ramvi_service.agent.tools import ToolAccess, ToolError, ToolResult, ToolSpec
+from ramvi_service.agent.ui import UIProposal
 from ramvi_service.agent.workspace import AccessDenied
 
-Kind = Literal["write", "command"]
+Kind = Literal["write", "command", "control"]
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,13 @@ class ApprovalRequest:
     files: tuple[str, ...] = ()
     destructive: str | None = None
     network: bool = False
+    application: str = ""
+    window_id: str = ""
+    element_id: str = ""
+    action: str = ""
+    snapshot_id: str = ""
+    plan: str = ""
+    value: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,7 +69,9 @@ Ask = Callable[[ApprovalRequest], Decision]
 
 @dataclass
 class _Series:
-    remaining: dict[str, int] = field(default_factory=lambda: {"write": 0, "command": 0})
+    remaining: dict[str, int] = field(
+        default_factory=lambda: {"write": 0, "command": 0, "control": 0}
+    )
 
 
 class ApprovalGate:
@@ -100,24 +110,39 @@ class ApprovalGate:
             return ApprovalRequest(
                 rid, spec.name, "write", ", ".join(names), diff=proposal.diff, files=names
             )
+        if isinstance(proposal, UIProposal):
+            return ApprovalRequest(
+                rid,
+                spec.name,
+                "control",
+                f"{proposal.action}: {proposal.target_label}",
+                application=proposal.application,
+                window_id=proposal.window_id,
+                element_id=proposal.element_id,
+                action=proposal.action,
+                snapshot_id=proposal.snapshot_id,
+                plan=proposal.plan,
+                value=proposal.value,
+            )
         raise TypeError(f"unsupported proposal: {type(proposal).__name__}")
+
+    def _confirm(self, request: ApprovalRequest) -> bool:
+        return {
+            "write": self.access.confirm_writes,
+            "command": self.access.confirm_commands,
+            "control": self.access.confirm_controls,
+        }[request.kind]
 
     def _needs_question(self, request: ApprovalRequest) -> bool:
         if request.kind == "command" and request.destructive and self.access.confirm_destructive:
             return True
-        confirm = (
-            self.access.confirm_writes if request.kind == "write" else self.access.confirm_commands
-        )
+        confirm = self._confirm(request)
         return confirm and self._series.remaining[request.kind] <= 0
 
     def decide(self, request: ApprovalRequest) -> tuple[Decision, str]:
         """Решение и отметка для журнала: `auto` / `approved` / `denied`."""
         if not self._needs_question(request):
-            confirm = (
-                self.access.confirm_writes
-                if request.kind == "write"
-                else self.access.confirm_commands
-            )
+            confirm = self._confirm(request)
             if confirm:  # в пределах разрешённой серии
                 self._series.remaining[request.kind] -= 1
                 return Decision("approve"), "approved"
@@ -142,6 +167,11 @@ class ApprovalGate:
         if decision.action == "deny":
             params = {"reason": decision.reason} if decision.reason else {}
             return ToolResult.failure("agent.approval.denied", **params), permission
+        if isinstance(proposal, UIProposal):
+            try:
+                return proposal.apply(self.cancel), permission
+            except (ToolError, AccessDenied) as error:
+                return ToolResult.failure(error.code, **error.params), permission
         if isinstance(proposal, CommandProposal):
             return execute_command(proposal, cancel=self.cancel), permission
         assert isinstance(proposal, WriteProposal | PatchProposal)

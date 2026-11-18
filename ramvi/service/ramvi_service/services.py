@@ -58,9 +58,9 @@ def handler(
 
 def _context_permission(payload: Payload) -> tuple[str, str]:
     kind = payload.get("kind", "ui")
-    if kind not in ("ui", "screen"):
+    if kind not in ("ui", "screen", "auto"):
         raise ValueError("kind, application and window are required")
-    return "context." + kind, payload["application"]
+    return "context." + ("ui" if kind == "auto" else kind), payload["application"]
 
 
 STREAM_BUFFER = 256  # кусков в буфере на поток; дальше генерация ждёт чтения
@@ -105,7 +105,9 @@ class ScopedServices:
         timeout: float = 30,
         database: Any = None,
         voice: Any = None,
+        agent: Any = None,
     ) -> None:
+        self.agent = agent  # 6.10: общий Agent Gateway или None
         self.voice = voice  # 5.6: VoiceService (захват и распознавание) или None
         self.database = database  # 3.12: своя база модуля (ModuleDatabase) или None
         self.owner, self.authority, self.grants, self.data, self.secrets = (
@@ -123,6 +125,7 @@ class ScopedServices:
         self._stopping = False
         self._cancel = threading.Event()
         self._streams: dict[str, LLMStream] = {}
+        self._context_history: dict[tuple[str, str], tuple[int, bool, bool]] = {}
 
     def _permission(self, name: str, application: str = "*") -> None:
         self.authority.require(self.owner)
@@ -267,6 +270,22 @@ class ScopedServices:
         if request.get("response_format") and not capabilities.json_schema:
             raise NotImplementedError("Provider did not declare constrained JSON")
         rights: list[tuple[str, str]] = []
+        with self._condition:
+            history = dict(self._context_history)
+        for (application, source), (epoch, has_text, has_image) in history.items():
+            permission = "context." + source
+            if self.grants.epoch(self.owner, permission, application) != epoch:
+                raise PermissionError(
+                    "history contains revoked context; start a new module session"
+                )
+            rights.append((permission, application))
+            if capabilities.external:
+                if has_text:
+                    self.grants.require(self.owner, "egress.text", application)
+                    rights.append(("egress.text", application))
+                if has_image:
+                    self.grants.require(self.owner, "egress.image", application)
+                    rights.append(("egress.image", application))
         if capabilities.external:
             rights.append(("egress.text", "*"))
             self.grants.require(self.owner, "egress.text")
@@ -437,17 +456,60 @@ class ScopedServices:
     def _context_capture(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.context is None:
             raise NotImplementedError("Context Provider is not connected")
+        capture = (
+            self.context.capture_best if payload.get("kind") == "auto" else self.context.capture
+        )
+        snapshot = capture(
+            self.owner,
+            payload["application"],
+            payload["window_id"],
+            **({} if payload.get("kind") == "auto" else {"kind": payload.get("kind", "ui")}),
+            capabilities=self.llm.provider.capabilities if self.llm else None,
+        )
+        epoch = self.grants.epoch(self.owner, "context." + snapshot.source, snapshot.application)
+        self.context.validate_snapshot(self.owner, snapshot)
+        with self._condition:
+            self._context_history[snapshot.application, snapshot.source] = (
+                epoch,
+                snapshot.text is not None or snapshot.structure is not None,
+                snapshot.image is not None,
+            )
+        return {"snapshot": asdict(snapshot)}
+
+    def _agent_gateway(self) -> Any:
+        if self.agent is None:
+            raise NotImplementedError("Agent is not connected")
+        return self.agent
+
+    @handler("agent.create", permission="agent", active=True)
+    def _agent_create(self, payload: Payload) -> Payload:
+        if set(payload) != {"goal", "binding_id"}:
+            raise ValueError("agent.create accepts only goal and binding_id")
         return {
-            "snapshot": asdict(
-                self.context.capture(
-                    self.owner,
-                    payload["application"],
-                    payload["window_id"],
-                    kind=payload.get("kind", "ui"),
-                    capabilities=self.llm.provider.capabilities if self.llm else None,
-                )
+            "task_id": self._agent_gateway().create(
+                self.owner, payload["goal"], payload["binding_id"]
             )
         }
+
+    @handler("agent.status", permission="agent", active=True)
+    def _agent_status(self, payload: Payload) -> Payload:
+        return dict(self._agent_gateway().status(self.owner, payload["task_id"]))
+
+    @handler("agent.events", permission="agent", active=True)
+    def _agent_events(self, payload: Payload) -> Payload:
+        return dict(
+            self._agent_gateway().events(self.owner, payload["task_id"], payload.get("after", 0))
+        )
+
+    @handler("agent.cancel", permission="agent")
+    def _agent_cancel(self, payload: Payload) -> Payload:
+        self._agent_gateway().cancel(self.owner, payload["task_id"])
+        return {"ok": True}
+
+    @handler("agent.forget", permission="agent")
+    def _agent_forget(self, payload: Payload) -> Payload:
+        self._agent_gateway().forget(self.owner, payload["task_id"])
+        return {"ok": True}
 
     # --- 5.6: голос для модулей (Character и др.) ---------------------------------------
 
@@ -497,6 +559,8 @@ class ScopedServices:
                 stream.condition.notify_all()
         if self.llm is not None:
             self.llm.release_owner(self.owner)
+        if self.agent is not None:
+            self.agent.release_owner(self.owner)
         self._voice_release()
         self.events.release_owner(self.owner)
         self.resources.release_owner(self.owner)

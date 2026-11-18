@@ -91,6 +91,14 @@ class AgentJournal:
         """Хронология запуска по порядку: всё, что показывает экран агента."""
         return list(self.runs.events(run_id))
 
+    def experience(self, run_id: str) -> list[dict[str, Any]]:
+        """AG-08: опыт только выбранного запуска; не передаётся модели автоматически.
+
+        Ссылки state.run_id/step и action.call_id ведут к исходной хронологии.
+        Удаляется вместе с журналом; прошлые разрешения повторно не используются.
+        """
+        return [e["payload"] for e in self.runs.events(run_id) if e["kind"] == "agent.experience"]
+
     def errors(self, run_id: str) -> list[dict[str, Any]]:
         """Таймлайн ошибок: ошибки инструментов, отказы, остановка с неудачей."""
         found: list[dict[str, Any]] = []

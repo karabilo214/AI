@@ -50,6 +50,7 @@ class ModuleHost:
         authority: Authority | None = None,
         grants: GrantStore | None = None,
         context: ContextProvider | None = None,
+        agent: Any = None,
         secrets: SecretBackend | None = None,
         controller: Callable[[Manifest], WorkerController] | None = None,
     ) -> None:
@@ -70,13 +71,20 @@ class ModuleHost:
             if grants
             else context.authority
             if context
+            else agent.authority
+            if agent
             else Authority()
         )
-        for service in (llm, grants, context):
+        for service in (llm, grants, context, agent):
             if service is not None and service.authority is not self.authority:
                 raise ValueError("services use different Authority objects")
-        self.grants = grants or (context.grants if context else GrantStore(self.authority))
+        self.grants = grants or (
+            context.grants if context else agent.grants if agent else GrantStore(self.authority)
+        )
+        if agent is not None and agent.grants is not self.grants:
+            raise ValueError("Agent uses a different GrantStore")
         self.resources = ResourceBroker(self.authority, capacity or {"cpu_slots": 1, MICROPHONE: 1})
+        self.agent = agent
         self.voice: Any = None  # 5.6: VoiceService, подключает app.build
         self.events = EventBus(self.authority)
         self.llm, self.context = llm, context
@@ -201,6 +209,8 @@ class ModuleHost:
             available.add("llm")
         if self.context:
             available.add("context")
+        if self.agent:
+            available.add("agent")
         missing = set(entry.manifest.capabilities) - available
         if missing:
             raise NotImplementedError("unavailable services: " + ", ".join(sorted(missing)))
@@ -231,6 +241,7 @@ class ModuleHost:
             timeout=self.timeout,
             database=entry.database,
             voice=self.voice,
+            agent=self.agent,
         )
         entry.owner, entry.services = owner, scope
         for permission in set(entry.approved) & set(entry.manifest.permissions):
@@ -264,6 +275,8 @@ class ModuleHost:
     def approve_application(self, identifier: str, permission: str, application: str) -> None:
         """Только доверенный UI/Host, не RPC модуля: отдельный выбор приложения."""
         entry = self._entry(identifier)
+        if not isinstance(application, str) or not application or application == "*":
+            raise ValueError("select a specific application")
         if permission not in {
             "context.ui",
             "context.screen",

@@ -60,6 +60,9 @@ class FixtureModule:
             )
         )
 
+    def agent(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(self.services.call("agent." + method, payload))
+
     def crash(self) -> dict[str, Any]:
         os._exit(12)
 

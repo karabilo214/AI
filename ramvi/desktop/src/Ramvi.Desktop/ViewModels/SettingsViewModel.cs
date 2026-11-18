@@ -56,6 +56,7 @@ public sealed class SettingsViewModel : ObservableObject
     private string? _savedDefault;
     private SettingsTab? _selectedTab;
     private readonly Func<Task>? _soundChanged;
+    private readonly Func<Task>? _agentLoad;
 
     public SettingsViewModel(
         Func<IChatApi> api,
@@ -68,9 +69,11 @@ public sealed class SettingsViewModel : ObservableObject
         IReadOnlyCollection<ModelInfo>? models = null,
         Func<Task>? openModels = null,
         Func<Task>? defaultChanged = null,
-        Func<Task>? soundChanged = null)
+        Func<Task>? soundChanged = null,
+        Func<Task>? agentLoad = null)
     {
         _soundChanged = soundChanged;
+        _agentLoad = agentLoad;
         _api = api;
         Sound = new SoundSettingsViewModel(api);
         _models = models ?? [];
@@ -129,11 +132,12 @@ public sealed class SettingsViewModel : ObservableObject
                 return;
             }
 
-            foreach (var name in new[] { nameof(IsGeneralTab), nameof(IsSoundTab), nameof(IsModelsTab), nameof(IsModuleTab), nameof(HasFooter) })
+            foreach (var name in new[] { nameof(IsGeneralTab), nameof(IsSoundTab), nameof(IsModelsTab), nameof(IsModuleTab), nameof(IsAgentTab), nameof(HasFooter) })
             {
                 Raise(name);
             }
 
+            if (value.Id == "module:agent" && IsOpen && _agentLoad is not null) _ = _agentLoad();
             if (value.Id == "models" && IsOpen && _openModels is not null)
             {
                 _ = _openModels(); // экран моделей перечитывает каталог и загрузки
@@ -147,7 +151,8 @@ public sealed class SettingsViewModel : ObservableObject
 
     public bool IsModelsTab => _selectedTab?.Id == "models";
 
-    public bool IsModuleTab => _selectedTab?.Id.StartsWith("module:", StringComparison.Ordinal) == true;
+    public bool IsModuleTab => _selectedTab?.Id.StartsWith("module:", StringComparison.Ordinal) == true && !IsAgentTab;
+    public bool IsAgentTab => _selectedTab?.Id == "module:agent";
 
     /// <summary>«Сохранить» — у вкладок с полями; у «Модели» свои кнопки на карточках.</summary>
     public bool HasFooter => IsGeneralTab || IsSoundTab;

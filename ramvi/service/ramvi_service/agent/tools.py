@@ -19,15 +19,18 @@
 import hashlib
 import json
 import re
+import threading
 import time
 from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
-from ramvi_service.agent.workspace import AccessDenied, Permission, Workspace
+from ramvi_service.agent.workspace import PERMISSIONS, AccessDenied, Permission, Workspace
 
 SCHEMA_VERSION = "ramvi.agent.tools/1"
-Effect = Literal["read", "write", "command"]
+Effect = Literal["read", "write", "command", "control"]
+ToolPermission = Permission | Literal["context.ui", "agent.control"]
 Risk = Literal["low", "medium", "high", "critical"]
 
 MAX_RESULT_CHARS = 16_000  # что видит модель
@@ -92,7 +95,7 @@ class ToolSpec:
     name: str
     description: str
     parameters: dict[str, Any]
-    permission: Permission
+    permission: ToolPermission
     effect: Effect = "read"
     risk: Risk = "low"
     version: int = 1
@@ -131,6 +134,7 @@ class ToolAccess:
     allow_destructive_commands: bool = False
     confirm_writes: bool = True
     confirm_commands: bool = True
+    confirm_controls: bool = True
     confirm_destructive: bool = True
     max_series: int = 20
     command_timeout: float | None = 600.0
@@ -248,16 +252,64 @@ def redact(args: Mapping[str, Any]) -> dict[str, Any]:
 class StorageJournal:
     """Журнал в SQLite (таблица `tool_calls`) для одного запуска агента."""
 
-    def __init__(self, runs: Any, run_id: str) -> None:
-        self.runs, self.run_id = runs, run_id
+    def __init__(self, runs: Any, run_id: str, *, private: bool = False) -> None:
+        self.runs, self.run_id, self.private = runs, run_id, private
 
     def begin(self, tool: str, args: dict[str, Any], permission: str) -> str:
-        return str(self.runs.add_tool_call(self.run_id, tool, args, permission).id)
+        return str(
+            self.runs.add_tool_call(
+                self.run_id,
+                tool,
+                private_payload({"args": args})["args"] if self.private else args,
+                permission,
+            ).id
+        )
 
     def finish(
         self, call_id: str, result: str, duration: float, permission: str | None = None
     ) -> None:
+        if self.private:
+            result = json.dumps(private_payload(json.loads(result)), ensure_ascii=False)
         self.runs.finish_tool_call(call_id, result, duration, permission=permission)
+
+
+def private_payload(value: Any) -> Any:
+    """UI-задача: сохранять метаданные, не экран/выделение/введённый текст."""
+    if isinstance(value, dict):
+        clean: dict[str, Any] = {}
+        for key, item in value.items():
+            if key in {
+                "text",
+                "content",
+                "diff",
+                "summary",
+                "image",
+                "structure",
+                "value",
+                "plan",
+                "title",
+                "command",
+                "reason",
+            }:
+                clean[key] = "[private UI content]"
+            elif key == "args":
+                clean[key] = (
+                    {
+                        k: v
+                        for k, v in item.items()
+                        if k in {"application", "window_id", "snapshot_id", "element_id", "action"}
+                    }
+                    if isinstance(item, dict)
+                    else {}
+                )
+            elif key == "result" and isinstance(item, str):
+                clean[key] = "[private UI content]"
+            else:
+                clean[key] = private_payload(item)
+        return clean
+    if isinstance(value, list | tuple):
+        return [private_payload(item) for item in value]
+    return value
 
 
 def _journal_result(result: ToolResult) -> str:
@@ -291,6 +343,27 @@ class ToolRunner:
         self.workspace = workspace
         self.access = access or ToolAccess()
         self.gate = gate
+        self.private = False
+        self._authorizers: dict[str, Callable[[], None]] = {}
+        self.model_context: Callable[[threading.Event], AbstractContextManager[threading.Event]] = (
+            nullcontext
+        )
+
+    def authorize_with(self, permission: str, check: Callable[[], None]) -> None:
+        """Только доверенная сборка tools: независимый грант вне рабочей папки."""
+        self._authorizers[permission] = check
+
+    def _require(self, spec: ToolSpec) -> None:
+        if spec.permission in PERMISSIONS:
+            if self.workspace is not None:
+                self.workspace.require(spec.permission)
+        elif spec.permission in self._authorizers:
+            try:
+                self._authorizers[spec.permission]()
+            except PermissionError:
+                raise AccessDenied("agent.access.permission") from None
+        else:
+            raise AccessDenied("agent.access.permission")
 
     def register(self, spec: ToolSpec, handler: Handler) -> None:
         if spec.name in self._tools:
@@ -307,8 +380,11 @@ class ToolRunner:
         """Инструмент включён в настройках, его право выдано и grant не отозван."""
         if spec.name in self.access.disabled:
             return False
-        ws = self.workspace
-        return ws is None or (not ws.revoked and ws.permissions.allows(spec.permission))
+        try:
+            self._require(spec)
+            return True
+        except AccessDenied:
+            return False
 
     def available(self) -> list[ToolSpec]:
         return [spec for spec in self.specs if self.is_available(spec)]
@@ -347,12 +423,11 @@ class ToolRunner:
         spec, handler = entry
         if spec.name in self.access.disabled:
             return self._reject(journal, name, args, ToolResult.failure("agent.tool.disabled"))
-        if self.workspace is not None:
-            try:
-                self.workspace.require(spec.permission)
-            except AccessDenied as error:
-                failure = ToolResult.failure(error.code, **error.params)
-                return self._reject(journal, name, args, failure)
+        try:
+            self._require(spec)
+        except AccessDenied as error:
+            failure = ToolResult.failure(error.code, **error.params)
+            return self._reject(journal, name, args, failure)
         errors = validate(spec.parameters, args)
         if errors:
             failure = ToolResult.failure("agent.tool.invalid_args", errors=errors)

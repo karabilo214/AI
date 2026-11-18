@@ -3,6 +3,7 @@
         xmlns:l="using:Ramvi.Desktop.Localization"
         xmlns:vm="using:Ramvi.Desktop.ViewModels"
         xmlns:api="using:Ramvi.Desktop.Api"
+        xmlns:views="using:Ramvi.Desktop.Views"
         xmlns:chrome="using:Avalonia.Controls.Chrome"
         x:Class="Ramvi.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
@@ -92,7 +93,7 @@
 
     <!-- Раздел модуля (Agent/Character): вид создаётся при первом открытии и хранится -->
     <Border x:Name="ModuleSection" Grid.Column="1" Classes="card" Margin="8,4,16,16"
-            IsVisible="{Binding Sections.IsModuleSelected}">
+            IsVisible="{Binding Sections.IsPlaceholderSelected}">
       <StackPanel Margin="28" Spacing="8" DataContext="{Binding Sections.Current}" x:DataType="vm:ModuleSectionViewModel">
         <TextBlock x:Name="ModuleTitle" Classes="title" Text="{Binding Title, FallbackValue=''}" />
         <TextBlock x:Name="ModuleState" Classes="muted" Text="{Binding State, FallbackValue=''}" />
@@ -102,6 +103,10 @@
       </StackPanel>
     </Border>
 
+
+    <Border x:Name="AgentPanel" Grid.Column="1" Classes="card" Margin="8,4,16,16" IsVisible="{Binding Sections.IsAgentSelected}">
+      <views:AgentView DataContext="{Binding Agent}"/>
+    </Border>
 
     <!-- Диалог -->
     <DockPanel x:Name="ChatPanel" Grid.Column="1" Margin="8,4,16,16" IsVisible="{Binding Sections.IsChatSelected}">
@@ -634,6 +639,7 @@
               </ScrollViewer>
             </DockPanel>
             <!-- Вкладка модуля: модули добавляют свои настройки (этапы 6 и 9) -->
+            <Border IsVisible="{Binding Settings.IsAgentTab}"><views:AgentSettingsView DataContext="{Binding Agent}"/></Border>
             <StackPanel x:Name="ModuleSettingsTab" Margin="28,8" Spacing="8" IsVisible="{Binding Settings.IsModuleTab}">
               <TextBlock Classes="muted" TextWrapping="Wrap" Text="{l:T settings.module_tab_note}" />
             </StackPanel>

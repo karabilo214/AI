@@ -33,6 +33,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isError;
     private bool _isGenerating;
     private bool _ignoreModelChange;
+    private bool _voiceForAgent;
     private Limits _limits = new(32_000, 5, 128 * 1024, 256 * 1024, 255);
     private CancellationTokenSource? _streamCancel;
     private string? _generatingChatId;
@@ -73,7 +74,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         _connect = connect;
         _loadPoll = loadPoll ?? TimeSpan.FromMilliseconds(300);
-        Sections = new SectionsViewModel(() => _api);
+        Agent = new AgentViewModel(() => _api, pickFolder ?? (_ => Task.FromResult<string?>(null)), Models, pickFiles);
+        Sections = new SectionsViewModel(() => _api, Agent.LoadAsync);
         ModelsScreen = new ModelsViewModel(() => _api, ReloadModelListAsync);
         _pickFolder = pickFolder;
         _chooseDataDir = chooseDataDir;
@@ -88,7 +90,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Models,
             () => ModelsScreen.LoadAsync(),
             ReloadModelListAsync,
-            () => Voice!.LoadAsync());
+            () => Voice!.LoadAsync(),
+            Agent.LoadAsync);
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -97,7 +100,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _copy = copy ?? (_ => Task.CompletedTask);
         _openFolder = openFolder ?? (_ => Task.CompletedTask);
         _status = () => L["status.connecting"];
-        Voice = new VoiceViewModel(() => _api, InsertVoiceText, ShowError, () => IsConnected, send: SendVoiceTextAsync);
+        Voice = new VoiceViewModel(() => _api, InsertVoiceText, e => { if (Sections.IsAgentSelected) Agent.VoiceError(e); else ShowError(e); }, () => IsConnected, send: SendVoiceTextAsync);
+        Agent.Voice = Voice;
+        Voice.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(VoiceViewModel.IsRecording) && Voice.IsRecording) _voiceForAgent = Sections.IsAgentSelected; };
+        Sections.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(SectionsViewModel.IsChatSelected) && Voice.IsRecording) _ = Voice.CancelCommand.RunAsync(); };
         NewChatCommand = new Command(NewChatAsync, () => !IsGenerating && IsConnected);
         SendCommand = new Command(SendAsync, CanSend);
         StopCommand = new Command(StopAsync, () => IsGenerating);
@@ -149,7 +155,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private IChatApi _api => _connected ?? throw new InvalidOperationException("the service is not connected");
 
-    public void Dispose() => _streamCancel?.Cancel();
+    public void Dispose() { _streamCancel?.Cancel(); Agent.Dispose(); }
 
     public ObservableCollection<ChatItemViewModel> Chats { get; } = [];
 
@@ -199,6 +205,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Экран настроек (3.7).</summary>
     public SettingsViewModel Settings { get; }
+    public AgentViewModel Agent { get; }
 
     /// <summary>5.2: кнопка микрофона у поля ввода.</summary>
     public VoiceViewModel Voice { get; }
@@ -329,6 +336,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Raise(nameof(IsConnected));
             var status = await _api.StatusAsync().ConfigureAwait(true);
             _limits = status.Limits;
+            Agent.MessageLimits = status.Limits;
             Raise(nameof(Limits));
             foreach (var model in await _api.ModelsAsync().ConfigureAwait(true))
             {
@@ -339,6 +347,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Localizer.SetModuleTexts(await _api.ModuleTextsAsync().ConfigureAwait(true)); // 3.14
             var onboarding = await _api.OnboardingAsync().ConfigureAwait(true);
             await Sections.LoadAsync().ConfigureAwait(true);
+            if (Sections.Items.Any(s => s.View == "agent")) Settings.AddTab("agent", "section.agent");
             SelectedChat = Chats.FirstOrDefault();
             if (SelectedChat is null)
             {
@@ -379,6 +388,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Перетащенные файлы: лимиты проверяются до отправки.</summary>
     public async Task AddFilesAsync(IReadOnlyList<DroppedFile> files)
     {
+        if (Sections.IsAgentSelected) { await Agent.AddFilesAsync(files).ConfigureAwait(true); return; }
         var result = await AttachmentReader
             .ReadAsync([.. Attachments.Select(a => a.Attachment)], files, _limits)
             .ConfigureAwait(true);
@@ -793,6 +803,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         Sections.Relocalize();
+        Agent.Relocalize();
         ModelsScreen.Relocalize();
         Settings.Relocalize();
         Onboarding.Relocalize();
@@ -1157,6 +1168,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>5.2: распознанный текст дописывается в поле ввода; человек правит и отправляет сам.</summary>
     private void InsertVoiceText(string text)
     {
+        if (_voiceForAgent) { Agent.InsertVoiceText(text); return; }
         Input = string.IsNullOrWhiteSpace(Input) ? text : Input.TrimEnd() + " " + text;
         if (_problem?.Code.StartsWith("voice.", StringComparison.Ordinal) == true)
         {
@@ -1165,7 +1177,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>«Отправлять автоматически»: распознанное уходит в чат, если отправка сейчас возможна.</summary>
-    private Task SendVoiceTextAsync() => SendCommand.CanExecute(null) ? SendCommand.RunAsync() : Task.CompletedTask;
+    private Task SendVoiceTextAsync() => _voiceForAgent
+        ? Sections.IsAgentSelected && Agent.StartCommand.CanExecute(null) ? Agent.StartCommand.RunAsync() : Task.CompletedTask
+        : Sections.IsChatSelected && SendCommand.CanExecute(null) ? SendCommand.RunAsync() : Task.CompletedTask;
 
     private static Dictionary<string, object?> Params(IReadOnlyDictionary<string, JsonElement>? values) =>
         values?.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal)

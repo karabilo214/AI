@@ -19,13 +19,18 @@ from pathlib import Path
 from typing import Any
 
 from ramvi_engine.processes import ParentWatch
-from ramvi_storage.repositories import Model, Models, NotFound
+from ramvi_storage.repositories import AgentRuns, Model, Models, NotFound
 from ramvi_storage.schema import open_core
 
 from ramvi_service import settings as app_settings
+from ramvi_service.agent.desktop import AgentDesktop
+from ramvi_service.agent.gateway import AgentGateway
+from ramvi_service.agent.readiness import facts_from_fit
 from ramvi_service.app_config import AppConfig, check_folder
 from ramvi_service.catalog import Catalog
+from ramvi_service.catalog.support import capabilities
 from ramvi_service.chat import ChatService
+from ramvi_service.context import ContextProvider
 from ramvi_service.contracts.modules import Authority
 from ramvi_service.control_run import ControlRun
 from ramvi_service.download_manager import DownloadManager, register_downloaded
@@ -34,6 +39,7 @@ from ramvi_service.engines import (
     EngineTarget,
     SwitchableProvider,
     default_engine,
+    resolve_model,
 )
 from ramvi_service.guard import Guard
 from ramvi_service.hardware import collect
@@ -47,6 +53,7 @@ from ramvi_service.resources import SharedLLM
 from ramvi_service.secrets_store import os_secrets
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
 from ramvi_service.supervisor import RestartPolicy
+from ramvi_service.system_context import SystemContextAdapter
 from ramvi_service.task_profile import TaskProfile
 from ramvi_service.ui_api import UIServer
 from ramvi_service.voice.service import VoiceService
@@ -114,6 +121,8 @@ def build(
     )
     control = ModelControl(engines, llm, chat.stop_all)
     host = ModuleHost(data_dir, llm=llm)
+    host.agent = AgentGateway(host.authority, host.grants)
+    host.context = ContextProvider(host.authority, host.grants, SystemContextAdapter())
     sections = SectionRegistry(host)
     if root is not None:
         sections.discover(root / "modules")  # процессы модулей не запускаются (3.11)
@@ -195,10 +204,34 @@ def build(
         **{"secrets": os_secrets(data_dir), **(voice_options or {})},
     )
     host.voice = server.voice
+    server.agent_ui = AgentDesktop(
+        data_dir,
+        AgentRuns(db),
+        host,
+        sections,
+        llm,
+        facts=lambda m, context: facts_from_fit(
+            fit.for_file(
+                resolve_model(m, root).path, m.id, task=TaskProfile("agent", context=context)
+            ),
+            capabilities("gguf", m.architecture),
+        ),
+    )
+
+    def stop_all_generations() -> int:
+        count = chat.stop_all()
+        assert server.agent_ui is not None
+        server.agent_ui.close()
+        return count
+
+    control._stop_generations = stop_all_generations
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
     server.on_close.append(db.close)
     server.on_close.append(server.downloads.close)
+    server.on_close.append(host.agent.close)
+    server.on_close.append(host.close)
+    server.on_close.append(server.agent_ui.close)
     server.on_close.append(server.voice.close)  # первым: запись и процесс распознавания
     return server, engines
 

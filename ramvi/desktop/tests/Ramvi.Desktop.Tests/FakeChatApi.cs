@@ -9,6 +9,9 @@ namespace Ramvi.Desktop.Tests;
 internal sealed class FakeChatApi : IChatApi
 {
     private int _next;
+    public Func<string, JsonElement?, JsonElement>? AgentHandler { get; set; }
+    public Task<JsonElement> AgentAsync(string path, JsonElement? body = null, CancellationToken cancel = default) =>
+        Task.FromResult(AgentHandler is { } handle ? handle(path, body) : throw new NotSupportedException());
 
     public List<ChatInfo> Chats { get; } = [];
 

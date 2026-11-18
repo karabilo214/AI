@@ -63,6 +63,9 @@ def test_layout_closure_and_manifest(tmp_path: Path, inputs: tuple[Path, Path, P
     for part in bp.CODE:
         assert (out / "ramvi" / part / "__init__.py").is_file()
     assert (out / "ramvi" / "service" / "ramvi_service" / "app.py").is_file()
+    assert (out / "modules/agent/manifest.json").is_file()
+    assert (out / "ramvi/service/ramvi_service/system_context.py").is_file()
+    assert (out / "ramvi/service/ramvi_service/native/windows_context.ps1").is_file()
     assert not list((out / "ramvi").rglob("__pycache__")) and not list(
         (out / "ramvi").rglob("tests")
     )

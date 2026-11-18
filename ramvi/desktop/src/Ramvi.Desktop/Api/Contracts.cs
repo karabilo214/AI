@@ -260,6 +260,7 @@ public sealed record UnloadResponse(bool Unloaded, EngineStatus Engine);
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(JsonElement))]
 [JsonSerializable(typeof(ChatsResponse))]
 [JsonSerializable(typeof(ChatResponse))]
 [JsonSerializable(typeof(MessagesResponse))]

@@ -66,7 +66,8 @@ public sealed class SectionsViewModel : ObservableObject
     private SectionItem? _selected;
     private ModuleSectionViewModel? _current;
 
-    public SectionsViewModel(Func<IChatApi> api) => _api = api;
+    private readonly Func<Task>? _openAgent;
+    public SectionsViewModel(Func<IChatApi> api, Func<Task>? openAgent = null) { _api = api; _openAgent = openAgent; }
 
     public ObservableCollection<SectionItem> Items { get; } = [];
 
@@ -76,6 +77,8 @@ public sealed class SectionsViewModel : ObservableObject
 
     /// <summary>Открыт раздел модуля (Agent, Character).</summary>
     public bool IsModuleSelected => !IsChatSelected;
+    public bool IsAgentSelected => _selected?.View == "agent";
+    public bool IsPlaceholderSelected => IsModuleSelected && !IsAgentSelected;
 
     /// <summary>Вид открытого раздела модуля (null, когда открыт чат).</summary>
     public ModuleSectionViewModel? Current
@@ -96,6 +99,8 @@ public sealed class SectionsViewModel : ObservableObject
             {
                 Raise(nameof(IsChatSelected));
                 Raise(nameof(IsModuleSelected));
+                Raise(nameof(IsAgentSelected));
+                Raise(nameof(IsPlaceholderSelected));
                 _ = OpenAsync(value);
             }
         }
@@ -145,6 +150,7 @@ public sealed class SectionsViewModel : ObservableObject
         }
 
         view.Refresh();
+        if (item.View == "agent" && _openAgent is not null) await _openAgent().ConfigureAwait(true);
     }
 
     public override void Relocalize()

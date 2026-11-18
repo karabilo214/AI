@@ -1,0 +1,457 @@
+{
+  "schema": "ramvi.agent.stage6.acceptance/1",
+  "date": "2026-11-18",
+  "model": {
+    "name": "qwen3:8b",
+    "backend": "RAMVI Engine",
+    "context": 8192,
+    "temperature": 0
+  },
+  "hardware": {
+    "cpu": "AMD Ryzen 7 260 w/ Radeon 780M Graphics",
+    "ram_bytes": 17179869184,
+    "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "vram_total_mib": 8151,
+    "os": "Майкрософт Windows 11 Pro"
+  },
+  "file_rounds": [
+    {
+      "variant": 1,
+      "runs": [
+        {
+          "task": "cost_approve",
+          "state": "done",
+          "stop_reason": "done",
+          "steps": 7,
+          "seconds": 22.73,
+          "visible_exit": 0,
+          "hidden_exit": 0,
+          "unchanged": false,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            },
+            {
+              "kind": "command"
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file",
+            "run_command"
+          ],
+          "accepted": true,
+          "rollback_original": true
+        },
+        {
+          "task": "distance_approve",
+          "state": "done",
+          "stop_reason": "done",
+          "steps": 6,
+          "seconds": 12.0,
+          "visible_exit": 0,
+          "hidden_exit": 0,
+          "unchanged": false,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            },
+            {
+              "kind": "command"
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file",
+            "run_command"
+          ],
+          "accepted": true,
+          "rollback_original": true
+        },
+        {
+          "task": "ratio_approve",
+          "state": "done",
+          "stop_reason": "done",
+          "steps": 6,
+          "seconds": 11.48,
+          "visible_exit": 0,
+          "hidden_exit": 0,
+          "unchanged": false,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            },
+            {
+              "kind": "command"
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file",
+            "run_command"
+          ],
+          "accepted": true,
+          "rollback_original": true
+        },
+        {
+          "task": "cost_deny",
+          "state": "done",
+          "stop_reason": "done",
+          "steps": 7,
+          "seconds": 11.89,
+          "visible_exit": 1,
+          "hidden_exit": 1,
+          "unchanged": true,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file"
+          ],
+          "accepted": true
+        },
+        {
+          "task": "cost_stop",
+          "state": "cancelled",
+          "stop_reason": "cancelled",
+          "steps": 5,
+          "seconds": 8.69,
+          "visible_exit": 1,
+          "hidden_exit": 1,
+          "unchanged": true,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file"
+          ],
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "variant": 2,
+      "runs": [
+        {
+          "task": "cost_approve",
+          "state": "done",
+          "stop_reason": "done",
+          "steps": 7,
+          "seconds": 24.25,
+          "visible_exit": 0,
+          "hidden_exit": 0,
+          "unchanged": false,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            },
+            {
+              "kind": "command"
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file",
+            "run_command"
+          ],
+          "accepted": true,
+          "rollback_original": true
+        },
+        {
+          "task": "distance_approve",
+          "state": "done",
+          "stop_reason": "done",
+          "steps": 6,
+          "seconds": 12.11,
+          "visible_exit": 0,
+          "hidden_exit": 0,
+          "unchanged": false,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            },
+            {
+              "kind": "command"
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file",
+            "run_command"
+          ],
+          "accepted": true,
+          "rollback_original": true
+        },
+        {
+          "task": "ratio_approve",
+          "state": "done",
+          "stop_reason": "done",
+          "steps": 7,
+          "seconds": 11.3,
+          "visible_exit": 0,
+          "hidden_exit": 0,
+          "unchanged": false,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            },
+            {
+              "kind": "command"
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file",
+            "run_command"
+          ],
+          "accepted": true,
+          "rollback_original": true
+        },
+        {
+          "task": "cost_deny",
+          "state": "failed",
+          "stop_reason": "not_possible",
+          "steps": 7,
+          "seconds": 12.52,
+          "visible_exit": 1,
+          "hidden_exit": 1,
+          "unchanged": true,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file"
+          ],
+          "accepted": true
+        },
+        {
+          "task": "cost_stop",
+          "state": "cancelled",
+          "stop_reason": "cancelled",
+          "steps": 5,
+          "seconds": 8.7,
+          "visible_exit": 1,
+          "hidden_exit": 1,
+          "unchanged": true,
+          "tests_unchanged": true,
+          "approvals": [
+            {
+              "kind": "write",
+              "has_diff": true
+            }
+          ],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "read_file",
+            "edit_file"
+          ],
+          "accepted": true
+        }
+      ]
+    }
+  ],
+  "windows_ui": [
+    {
+      "test": "ui_capture",
+      "elements": 6,
+      "fingerprint": true
+    },
+    {
+      "test": "solvable_reference_set_value",
+      "ok": true
+    },
+    {
+      "test": "solvable_reference_invoke",
+      "ok": true
+    },
+    {
+      "test": "window_screen",
+      "png_bytes": 6243,
+      "ok": true
+    },
+    {
+      "test": "approved_fresh_0",
+      "ok": true
+    },
+    {
+      "test": "approved_fresh_1",
+      "ok": true
+    },
+    {
+      "test": "approved_fresh_2",
+      "ok": true
+    },
+    {
+      "test": "deny_keeps_state",
+      "ok": true
+    },
+    {
+      "test": "focus_changed_during_approval",
+      "ok": true
+    },
+    {
+      "test": "value_changed_during_approval",
+      "ok": true
+    },
+    {
+      "test": "control_revoked_during_approval",
+      "ok": true
+    },
+    {
+      "test": "expired_during_approval",
+      "ok": true
+    }
+  ],
+  "windows_safety": [
+    {
+      "test": "read_file",
+      "args": {
+        "path": "../outside.txt"
+      },
+      "error": "agent.access.parent",
+      "ok": true
+    },
+    {
+      "test": "read_file",
+      "args": {
+        "path": ".env"
+      },
+      "error": "agent.access.secret",
+      "ok": true
+    },
+    {
+      "test": "write_file",
+      "args": {
+        "path": "../outside.txt"
+      },
+      "error": "agent.access.parent",
+      "ok": true
+    },
+    {
+      "test": "run_command",
+      "args": {},
+      "error": "agent.tool.destructive_blocked",
+      "ok": true
+    },
+    {
+      "test": "windows_job_timeout",
+      "ok": true,
+      "seconds": 0.41
+    }
+  ],
+  "cleanup": {
+    "checked_at": "2026-11-18T17:43:41.7350523+02:00",
+    "test_processes": 0,
+    "vram_used_mib": 0,
+    "remaining_tasks": 0
+  },
+  "local_checks": {
+    "related_tests_passed": 320,
+    "packaging_tests_passed": 5,
+    "mypy_files_checked": 39
+  },
+  "windows_main_suite_service_sha256": {
+    "service/ramvi_service/agent/__init__.py": "14e7003b3a2f481117d677688daeeef72f1293ba470c4d843f84b0e79084c85d",
+    "service/ramvi_service/agent/approval.py": "ee57be9515db32863c8ecc1a397920709ffdea10c115ac4e4f9539eb0caf307a",
+    "service/ramvi_service/agent/changes.py": "c809237e632e0ccae99dbbe2c8a76b4eda3416408ba98da2d35291faaf15fb29",
+    "service/ramvi_service/agent/commands.py": "31edb185a77929b9bb45483681c26e0134b473b1d32db49e22d0934648197a53",
+    "service/ramvi_service/agent/experience.py": "4c500e0c4beae3e82e2e99ec516bab7000c23f080be1084b07edf52fe6c3423e",
+    "service/ramvi_service/agent/files.py": "d24188293792a5369964de8c7aea94db19e49d53807e8a31364fd8bc5bf4f181",
+    "service/ramvi_service/agent/gateway.py": "fe11c798af32a20ace58f3242468031c1c4510f9a0bc3c81bbce7d607fb38ed7",
+    "service/ramvi_service/agent/git.py": "b4119bf516ff05ad5f1b2a3108423bdf07ce79a044311ed17fd445013cbff7de",
+    "service/ramvi_service/agent/journal.py": "42b7baa458a0bc1c8bbeeb08ba1999d9ef0e82d514a3362f7138312f386e5dd5",
+    "service/ramvi_service/agent/process.py": "31bea3bd0807f665f5dff64c53c65da3f7f05211cc5cc2510991454f82a845da",
+    "service/ramvi_service/agent/progress.py": "64fb7d57a42fada28257d23f66b464cb31a17a3e20ccdfec7b4aa34eebbaf10b",
+    "service/ramvi_service/agent/readiness.py": "5438178273c96b87921234a9b8326d365dba36d882fe50595eef3869e06dd5c6",
+    "service/ramvi_service/agent/runtime.py": "808a9f8acc1ef88ce5d246e71a8c40d1a070ad801c39fe104a6df93323835f69",
+    "service/ramvi_service/agent/strategy.py": "113edc40c87fe9b160394e51f7d3ac3dda5ad62937e946cad4ec1f594fb2ef35",
+    "service/ramvi_service/agent/toolbox.py": "002ec04cc840b56b3b9c4101bed87d6a5d6f0d193050ad7abce1091a94fd3d6c",
+    "service/ramvi_service/agent/tools.py": "126ea964192f794a35a8b687c49443bd5e190fc0c11d26fd027a83350e8c189f",
+    "service/ramvi_service/agent/ui.py": "89fef52596a17e287143ec9733a7487e1f3f216701ad2ef9ec8300d93ba4556a",
+    "service/ramvi_service/agent/workspace.py": "53bc29a6481b453eb108039e9cf6754b261cf560bd285d3cfdbfeb463488215d",
+    "service/ramvi_service/context.py": "24d34d5b4dcc4f81feeaf2433e7ea67332142f0ec74f47533190b9ad3f17b36a",
+    "service/ramvi_service/system_context.py": "61f2d5f063c8fd9fdb1c38cd454d575e02125c2063f979e5ebd79bf4173c575a",
+    "service/ramvi_service/services.py": "40283ea16ceddc6f6b1c541b640d0b6fdaa2672eb53fc398ae1fa118094cfee5",
+    "service/ramvi_service/cancellation.py": "95caa431c27489392e84bc89a27799a7ee0f29e4ce457d97494a8ff24eb27fcc",
+    "service/ramvi_service/app.py": "e3aa167243d7d1355006c235ad530b245d23e7121aebfdcb9d7dc1412c6f4ae2",
+    "service/ramvi_service/modules/host.py": "e7a2bf53e414d60e273317501cf6cd4186220677b70384954ba80030353ca12b",
+    "service/ramvi_service/native/windows_context.ps1": "521f94442452e40883af5274b72f7cc0b91bfa3850648247ab90c3a07d8a0fae"
+  },
+  "final_service_sha256": {
+    "service/ramvi_service/agent/__init__.py": "14e7003b3a2f481117d677688daeeef72f1293ba470c4d843f84b0e79084c85d",
+    "service/ramvi_service/agent/approval.py": "ee57be9515db32863c8ecc1a397920709ffdea10c115ac4e4f9539eb0caf307a",
+    "service/ramvi_service/agent/changes.py": "c809237e632e0ccae99dbbe2c8a76b4eda3416408ba98da2d35291faaf15fb29",
+    "service/ramvi_service/agent/commands.py": "31edb185a77929b9bb45483681c26e0134b473b1d32db49e22d0934648197a53",
+    "service/ramvi_service/agent/experience.py": "4c500e0c4beae3e82e2e99ec516bab7000c23f080be1084b07edf52fe6c3423e",
+    "service/ramvi_service/agent/files.py": "d24188293792a5369964de8c7aea94db19e49d53807e8a31364fd8bc5bf4f181",
+    "service/ramvi_service/agent/gateway.py": "fe11c798af32a20ace58f3242468031c1c4510f9a0bc3c81bbce7d607fb38ed7",
+    "service/ramvi_service/agent/git.py": "b4119bf516ff05ad5f1b2a3108423bdf07ce79a044311ed17fd445013cbff7de",
+    "service/ramvi_service/agent/journal.py": "42b7baa458a0bc1c8bbeeb08ba1999d9ef0e82d514a3362f7138312f386e5dd5",
+    "service/ramvi_service/agent/process.py": "31bea3bd0807f665f5dff64c53c65da3f7f05211cc5cc2510991454f82a845da",
+    "service/ramvi_service/agent/progress.py": "64fb7d57a42fada28257d23f66b464cb31a17a3e20ccdfec7b4aa34eebbaf10b",
+    "service/ramvi_service/agent/readiness.py": "5438178273c96b87921234a9b8326d365dba36d882fe50595eef3869e06dd5c6",
+    "service/ramvi_service/agent/runtime.py": "808a9f8acc1ef88ce5d246e71a8c40d1a070ad801c39fe104a6df93323835f69",
+    "service/ramvi_service/agent/strategy.py": "113edc40c87fe9b160394e51f7d3ac3dda5ad62937e946cad4ec1f594fb2ef35",
+    "service/ramvi_service/agent/toolbox.py": "002ec04cc840b56b3b9c4101bed87d6a5d6f0d193050ad7abce1091a94fd3d6c",
+    "service/ramvi_service/agent/tools.py": "126ea964192f794a35a8b687c49443bd5e190fc0c11d26fd027a83350e8c189f",
+    "service/ramvi_service/agent/ui.py": "89fef52596a17e287143ec9733a7487e1f3f216701ad2ef9ec8300d93ba4556a",
+    "service/ramvi_service/agent/workspace.py": "53bc29a6481b453eb108039e9cf6754b261cf560bd285d3cfdbfeb463488215d",
+    "service/ramvi_service/context.py": "646a731c5c987f56115ed991210da73dbffa78c82b0630a5483dca89f9269792",
+    "service/ramvi_service/system_context.py": "61f2d5f063c8fd9fdb1c38cd454d575e02125c2063f979e5ebd79bf4173c575a",
+    "service/ramvi_service/services.py": "40283ea16ceddc6f6b1c541b640d0b6fdaa2672eb53fc398ae1fa118094cfee5",
+    "service/ramvi_service/cancellation.py": "95caa431c27489392e84bc89a27799a7ee0f29e4ce457d97494a8ff24eb27fcc",
+    "service/ramvi_service/app.py": "e3aa167243d7d1355006c235ad530b245d23e7121aebfdcb9d7dc1412c6f4ae2",
+    "service/ramvi_service/modules/host.py": "982b10375142c277112c9659c655268e40ba6242875c2526f4cc077975afbe6b",
+    "service/ramvi_service/native/windows_context.ps1": "521f94442452e40883af5274b72f7cc0b91bfa3850648247ab90c3a07d8a0fae"
+  },
+  "windows_final_contract": {
+    "released_snapshot_not_revived": true,
+    "injected_agent_host_identity": true
+  }
+}

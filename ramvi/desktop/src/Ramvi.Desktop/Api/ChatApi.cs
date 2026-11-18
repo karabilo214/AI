@@ -18,6 +18,9 @@ public sealed class ApiException(string code, IReadOnlyDictionary<string, JsonEl
 
 public interface IChatApi
 {
+    Task<JsonElement> AgentAsync(string path, JsonElement? body = null, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
     Task<ServiceStatus> StatusAsync(CancellationToken cancel = default);
 
     Task<IReadOnlyList<ModelInfo>> ModelsAsync(CancellationToken cancel = default);
@@ -309,6 +312,11 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     public Task<VoiceCheck> CheckVoiceApiAsync(string? url, string? model, CancellationToken cancel = default) =>
         PostAsync("voice/api/check", new ApiCheckRequest(url, model), ApiJson.Default.ApiCheckRequest,
             ApiJson.Default.VoiceCheck, cancel);
+
+    public Task<JsonElement> AgentAsync(string path, JsonElement? body = null, CancellationToken cancel = default) =>
+        body is { } payload
+            ? PostAsync("agent/" + path, payload, ApiJson.Default.JsonElement, ApiJson.Default.JsonElement, cancel)
+            : GetAsync("agent/" + path, ApiJson.Default.JsonElement, cancel);
 
     private async IAsyncEnumerable<ChatEvent> StreamAsync(
         string path, HttpContent? content, [EnumeratorCancellation] CancellationToken cancel)

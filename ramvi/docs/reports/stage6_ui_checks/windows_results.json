@@ -1,0 +1,53 @@
+﻿[
+    {
+        "test":  "settings_saved",
+        "data":  {
+                     "terminal":  true,
+                     "write":  true,
+                     "model":  "qwen3-8b-q4_k_m"
+                 }
+    },
+    {
+        "test":  "composer_controls",
+        "data":  {
+                     "voice":  true,
+                     "files":  true
+                 }
+    },
+    {
+        "test":  "approve",
+        "data":  {
+                     "diff":  true,
+                     "seconds":  68.64,
+                     "verified":  true
+                 }
+    },
+    {
+        "test":  "rollback",
+        "data":  {
+                     "exact":  true
+                 }
+    },
+    {
+        "test":  "deny",
+        "data":  {
+                     "diff":  true,
+                     "seconds":  19.8,
+                     "verified":  true
+                 }
+    },
+    {
+        "test":  "stop",
+        "data":  {
+                     "diff":  true,
+                     "seconds":  6.53,
+                     "verified":  true
+                 }
+    },
+    {
+        "test":  "complete",
+        "data":  {
+                     "ok":  true
+                 }
+    }
+]

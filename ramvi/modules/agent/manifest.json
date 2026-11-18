@@ -1,0 +1,1 @@
+{"module_id":"agent","version":"1.0.0","entrypoint":"ramvi_service.agent.module:create","capabilities":["agent"],"ui":{"section":{"view":"agent","title_key":"section.agent","icon":"agent","order":20}}}

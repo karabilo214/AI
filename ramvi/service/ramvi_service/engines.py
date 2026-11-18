@@ -139,6 +139,7 @@ class EngineManager:
         preflight: Callable[[Model], tuple[str, str] | None] = lambda model: None,
     ) -> None:
         self.models, self.run_dir = models, Path(run_dir)
+        self._loaded_context = 0
         self.context = context  # 4.5: контекст из профиля задачи при каждой загрузке
         self.resident_for = resident_for  # 4.7: сохранённый безопасный план (или None)
         self.preflight = preflight  # 4.8: не запускать то, что точно не поместится
@@ -199,15 +200,28 @@ class EngineManager:
         if found is not None:
             self._problem = found
 
-    def ensure(self, model_id: str, *, timeout: float = 600.0, resident: int | None = None) -> None:
+    def ensure(
+        self,
+        model_id: str,
+        *,
+        timeout: float = 600.0,
+        resident: int | None = None,
+        minimum_context: int = 0,
+    ) -> None:
         """Движок с этой моделью готов; иначе EngineError с ключом причины.
 
         `resident` (4.7) — загрузить с этим числом слоёв в видеопамяти (безопасный план);
         иначе — сохранённый безопасный план модели (`resident_for`), если он есть."""
+        if (
+            isinstance(minimum_context, bool)
+            or not isinstance(minimum_context, int)
+            or minimum_context < 0
+        ):
+            raise ValueError("minimum_context must be a nonnegative integer")
         with self._lock:
             if model_id == self._model_id and self._supervisor is not None and resident is None:
                 state = self._supervisor.status()["state"]
-                if state == "ready":
+                if state == "ready" and self._loaded_context >= minimum_context:
                     return
             try:
                 model = resolve_model(self.models.get(model_id), self.model_root)
@@ -224,7 +238,8 @@ class EngineManager:
             try:
                 draft = self.draft_for(model)
                 self._draft_id = None if draft is None else draft.id
-                context = self.context()
+                context = max(self.context(), minimum_context)
+                self._loaded_context = context
                 if resident is None:
                     resident = self.resident_for(model, context)
                 options: dict[str, Any] = {"maxt": context}
@@ -363,8 +378,9 @@ class SwitchableProvider:
     def complete(self, request: dict[str, Any], cancel: threading.Event) -> dict[str, Any]:
         request = dict(request)
         model_id = request.pop(MODEL_FIELD, None)
+        minimum = request.pop("ramvi_min_context", 0)
         if model_id is not None:
-            self.manager.ensure(model_id)
+            self.manager.ensure(model_id, **({"minimum_context": minimum} if minimum else {}))
         provider = self.manager.provider()
         with self._lock:
             self._active = provider
@@ -377,10 +393,11 @@ class SwitchableProvider:
     def stream(self, request: dict[str, Any], cancel: threading.Event) -> Iterator[dict[str, Any]]:
         request = dict(request)
         model_id = request.pop(MODEL_FIELD, None)
+        minimum = request.pop("ramvi_min_context", 0)
         if model_id is not None:
             if self.manager.model_id != model_id or self.manager.status()["state"] != "ready":
                 yield {"type": "status", "state": "loading", "model_id": model_id}
-            self.manager.ensure(model_id)
+            self.manager.ensure(model_id, **({"minimum_context": minimum} if minimum else {}))
             if cancel.is_set():
                 raise InterruptedError("request cancelled")
         provider = self.manager.provider()

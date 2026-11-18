@@ -44,16 +44,34 @@ import json
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field, is_dataclass
-from typing import Any, Literal, Protocol
+from copy import deepcopy
+from dataclasses import asdict, dataclass, is_dataclass
+from typing import Any, Literal
 
+from ramvi_service.agent.experience import decision_state, experience
 from ramvi_service.agent.progress import ProgressMonitor
 from ramvi_service.agent.readiness import ModelFacts, ReadinessCheck
+from ramvi_service.agent.strategy import (
+    Complete as Complete,
+)
+from ramvi_service.agent.strategy import (
+    LLMStrategy as LLMStrategy,
+)
+from ramvi_service.agent.strategy import (
+    ModelReply as ModelReply,
+)
+from ramvi_service.agent.strategy import (
+    Strategy as Strategy,
+)
+from ramvi_service.agent.strategy import (
+    ToolCall as ToolCall,
+)
 from ramvi_service.agent.tools import (
     StopRequested,
     StorageJournal,
     ToolResult,
     ToolRunner,
+    private_payload,
     redact,
 )
 
@@ -148,83 +166,6 @@ OnLimit = Callable[[LimitRequest], bool]
 
 
 @dataclass(frozen=True)
-class ToolCall:
-    id: str
-    name: str
-    arguments: str  # JSON-строка, как её прислала модель
-
-
-@dataclass(frozen=True)
-class ModelReply:
-    content: str
-    tool_calls: tuple[ToolCall, ...] = ()
-    finish_reason: str = "stop"
-    usage: dict[str, int] = field(default_factory=dict)
-
-
-class Strategy(Protocol):
-    """Выбор следующего действия (6.8): план, вызовы инструментов или итог."""
-
-    def decide(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        cancel: threading.Event,
-        max_tokens: int,
-    ) -> ModelReply: ...
-
-
-Complete = Callable[[dict[str, Any], threading.Event], dict[str, Any]]
-
-
-class LLMStrategy:
-    """MVP: решения принимает основная LLM (OpenAI-совместимый ответ с tool_calls)."""
-
-    def __init__(self, complete: Complete, extra: dict[str, Any] | None = None) -> None:
-        self.complete, self.extra = complete, dict(extra or {})
-
-    def decide(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        cancel: threading.Event,
-        max_tokens: int,
-    ) -> ModelReply:
-        request: dict[str, Any] = {
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": max_tokens,
-            **self.extra,
-        }
-        if tools:
-            request["tools"] = tools
-        response = self.complete(request, cancel)
-        choice = (response.get("choices") or [{}])[0]
-        message = choice.get("message") or {}
-        calls = []
-        for index, raw in enumerate(message.get("tool_calls") or []):
-            function = raw.get("function") or {}
-            arguments = function.get("arguments", "")
-            calls.append(
-                ToolCall(
-                    str(raw.get("id") or f"call_{index}"),
-                    str(function.get("name", "")),
-                    arguments if isinstance(arguments, str) else json.dumps(arguments),
-                )
-            )
-        usage = response.get("usage") or {}
-        return ModelReply(
-            content=message.get("content") or "",
-            tool_calls=tuple(calls),
-            finish_reason=str(choice.get("finish_reason") or "stop"),
-            usage={
-                "prompt_tokens": int(usage.get("prompt_tokens", 0)),
-                "completion_tokens": int(usage.get("completion_tokens", 0)),
-            },
-        )
-
-
-@dataclass(frozen=True)
 class RunResult:
     run_id: str
     status: Status
@@ -303,7 +244,11 @@ class AgentRuntime:
             self.runs.add_event(
                 run_id,
                 kind,
-                _bounded({k: v for k, v in payload.items() if k != "step"}),
+                _bounded(
+                    private_payload({k: v for k, v in payload.items() if k != "step"})
+                    if self.tools.private
+                    else {k: v for k, v in payload.items() if k != "step"}
+                ),
                 step=step if isinstance(step, int) else None,
             )
         if self._emit is not None:
@@ -365,17 +310,31 @@ class AgentRuntime:
         model_id: str | None = None,
         cancel: threading.Event | None = None,
         facts: ModelFacts | None = None,
+        run_id: str | None = None,
+        origin: dict[str, str] | None = None,
+        context_data: str = "",
     ) -> RunResult:
         """Выполнить задачу до итога, лимита, ошибки или остановки пользователем.
 
         `facts` — что известно о модели (6.6); без них проверка готовности пропускается."""
         cancel = cancel if cancel is not None else threading.Event()
         run_id = (
-            self.runs.create(goal, workspace, model_id).id
+            self.runs.create(
+                "[private UI task]" if self.tools.private else goal,
+                workspace,
+                model_id,
+                run_id=run_id,
+            ).id
             if self.runs is not None
-            else f"run-{time.monotonic_ns()}"
+            else run_id or f"run-{time.monotonic_ns()}"
         )
-        journal: Any = MemoryJournal() if self.runs is None else StorageJournal(self.runs, run_id)
+        if origin is not None:
+            self.emit(run_id, "agent.origin", **origin)
+        journal: Any = (
+            MemoryJournal()
+            if self.runs is None
+            else StorageJournal(self.runs, run_id, private=self.tools.private)
+        )
         if facts is not None:
             readiness = ReadinessCheck().check(
                 facts, SYSTEM_PROMPT, [*self.tools.openai_tools(), FINISH_TOOL]
@@ -404,6 +363,8 @@ class AgentRuntime:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": goal},
         ]
+        if context_data:
+            messages.append({"role": "user", "content": context_data})
         self._steps, result_text = 0, ""
         status: Status
         try:
@@ -421,7 +382,7 @@ class AgentRuntime:
                 status=status,
                 steps=steps,
                 token_usage=usage,
-                result=result_text,
+                result="[private UI content]" if self.tools.private else result_text,
                 stop_reason=reason,
             )
         self.emit(run_id, "agent.done", status=status, stop_reason=reason, result=result_text)
@@ -488,13 +449,18 @@ class AgentRuntime:
             if self.runs is not None:
                 self.runs.update(run_id, steps=steps, token_usage=usage)
             self.emit(run_id, "agent.step", step=steps)
+            offered = [*self.tools.openai_tools(), FINISH_TOOL]
+            state = decision_state(run_id, steps, messages, offered)
+            state["strategy"] = type(self.strategy).__name__
+            self.emit(run_id, "agent.decision", step=steps, state=state)
             try:
-                reply = self.strategy.decide(
-                    messages,
-                    [*self.tools.openai_tools(), FINISH_TOOL],
-                    cancel,
-                    self.limits.max_completion_tokens,
-                )
+                with self.tools.model_context(cancel) as model_cancel:
+                    reply = self.strategy.decide(
+                        deepcopy(messages),
+                        deepcopy(offered),
+                        model_cancel,
+                        self.limits.max_completion_tokens,
+                    )
             except InterruptedError:
                 raise _Stop("cancelled", "cancelled") from None
             except Exception as error:  # noqa: BLE001 — ошибка модели завершает запуск
@@ -511,6 +477,12 @@ class AgentRuntime:
                 elapsed=round(time.monotonic() - self._started, 3),
             )
             if not reply.tool_calls:
+                self.emit(
+                    run_id,
+                    "agent.experience",
+                    step=steps,
+                    **experience(state, None, outcome="no_action", content=reply.content),
+                )
                 messages.append({"role": "assistant", "content": reply.content})
                 if reply.finish_reason == "length":
                     raise _Stop("failed", "length", result=reply.content)
@@ -541,14 +513,29 @@ class AgentRuntime:
             )
             for index, call in enumerate(calls):
                 if call.name == "finish":
-                    finished = self._finish(run_id, steps, call, reply.content)
+                    finished = self._finish(run_id, steps, call, reply.content, state)
                     if finished is not None:
                         return finished
                     result = ToolResult.failure("agent.tool.invalid_args", tool="finish")
                 elif index >= self.limits.max_calls_per_step:
                     result = ToolResult.failure("agent.run.too_many_calls")
                 else:
-                    result = self._execute(run_id, steps, call, journal)
+                    try:
+                        result = self._execute(run_id, steps, call, journal)
+                    except _Stop:
+                        self.emit(
+                            run_id,
+                            "agent.experience",
+                            step=steps,
+                            **experience(state, call, outcome="cancelled"),
+                        )
+                        raise
+                    self.emit(
+                        run_id,
+                        "agent.experience",
+                        step=steps,
+                        **experience(state, call, result=result),
+                    )
                     if result.error in ("agent.tool.invalid_args", "agent.tool.unknown"):
                         invalid += 1
                     else:
@@ -570,11 +557,20 @@ class AgentRuntime:
                         self._ask_continue(run_id, "stuck", usage, f"{kind}: {where}")
                         monitor.forgive(kind, where)
                         continue
+                if call.name == "finish" or index >= self.limits.max_calls_per_step:
+                    self.emit(
+                        run_id,
+                        "agent.experience",
+                        step=steps,
+                        **experience(state, call, result=result),
+                    )
                 messages.append(
                     {"role": "tool", "tool_call_id": call.id, "content": result.for_model()}
                 )
 
-    def _finish(self, run_id: str, step: int, call: ToolCall, content: str) -> str | None:
+    def _finish(
+        self, run_id: str, step: int, call: ToolCall, content: str, state: dict[str, Any]
+    ) -> str | None:
         """Явный итог. Некорректные аргументы — None (модель получит ошибку)."""
         try:
             args = json.loads(call.arguments) if call.arguments.strip() else {}
@@ -585,6 +581,17 @@ class AgentRuntime:
         summary = str(args.get("summary") or content).strip()
         if not summary:
             return None
+        self.emit(
+            run_id,
+            "agent.experience",
+            step=step,
+            **experience(
+                state,
+                call,
+                outcome="claimed_failure" if args.get("success") is False else "claimed_success",
+                content=summary,
+            ),
+        )
         self.emit(run_id, "agent.message", step=step, text=summary)
         if args.get("success") is False:
             raise _Stop("failed", "not_possible", result=summary)

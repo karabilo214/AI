@@ -40,6 +40,36 @@ class Limits:
     max_name_chars: int = 255
 
 
+def check_attachments(
+    files: list[dict[str, Any]], limits: Limits | None = None
+) -> list[dict[str, Any]]:
+    limits = limits or Limits()
+    if not isinstance(files, list):
+        raise ChatError("chat.attachment_invalid")
+    if len(files) > limits.max_files:
+        raise ChatError("chat.too_many_files", limit=limits.max_files)
+    result, total = [], 0
+    for item in files:
+        if not isinstance(item, dict) or set(item) - {"name", "text"}:
+            raise ChatError("chat.attachment_invalid")
+        name, body = item.get("name"), item.get("text")
+        if not isinstance(name, str) or not isinstance(body, str):
+            raise ChatError("chat.attachment_invalid")
+        name = name.replace("\\", "/").rsplit("/", 1)[-1].strip()
+        if not name or len(name) > limits.max_name_chars:
+            raise ChatError("chat.attachment_invalid")
+        if "\x00" in body:
+            raise ChatError("chat.attachment_not_text", name=name)
+        size = len(body.encode("utf-8"))
+        if size > limits.max_file_bytes:
+            raise ChatError("chat.file_too_large", name=name, limit=limits.max_file_bytes)
+        total += size
+        if total > limits.max_total_bytes:
+            raise ChatError("chat.files_too_large", limit=limits.max_total_bytes)
+        result.append({"name": name, "bytes": size, "text": body})
+    return result
+
+
 class Generation:
     """Поток событий ответа. `close()` освобождает чат, даже если чтение не начиналось."""
 
@@ -306,32 +336,7 @@ class ChatService:
     # --- вспомогательное -------------------------------------------------------------
 
     def check_attachments(self, files: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Только текстовые файлы в пределах лимитов; возвращает нормализованный список."""
-        limits = self.limits
-        if not isinstance(files, list):
-            raise ChatError("chat.attachment_invalid")
-        if len(files) > limits.max_files:
-            raise ChatError("chat.too_many_files", limit=limits.max_files)
-        result, total = [], 0
-        for item in files:
-            if not isinstance(item, dict) or set(item) - {"name", "text"}:
-                raise ChatError("chat.attachment_invalid")
-            name, body = item.get("name"), item.get("text")
-            if not isinstance(name, str) or not isinstance(body, str):
-                raise ChatError("chat.attachment_invalid")
-            name = name.replace("\\", "/").rsplit("/", 1)[-1].strip()
-            if not name or len(name) > limits.max_name_chars:
-                raise ChatError("chat.attachment_invalid")
-            if "\x00" in body:
-                raise ChatError("chat.attachment_not_text", name=name)
-            size = len(body.encode("utf-8"))
-            if size > limits.max_file_bytes:
-                raise ChatError("chat.file_too_large", name=name, limit=limits.max_file_bytes)
-            total += size
-            if total > limits.max_total_bytes:
-                raise ChatError("chat.files_too_large", limit=limits.max_total_bytes)
-            result.append({"name": name, "bytes": size, "text": body})
-        return result
+        return check_attachments(files, self.limits)
 
     def _prompt(self, chat_id: str) -> list[dict[str, str]]:
         prompt = []

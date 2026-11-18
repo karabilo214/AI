@@ -184,9 +184,8 @@ public sealed class MainWindowTests
         await Task.Delay(50, TestContext.Current.CancellationToken);
         Dispatcher.UIThread.RunJobs();
         Assert.False(window.FindControl<DockPanel>("ChatPanel")!.IsVisible);
-        Assert.True(window.FindControl<Border>("ModuleSection")!.IsVisible);
-        Assert.Equal("Агент", window.FindControl<TextBlock>("ModuleTitle")!.Text);
-        Assert.Equal("Работает", window.FindControl<TextBlock>("ModuleState")!.Text);
+        Assert.False(window.FindControl<Border>("ModuleSection")!.IsVisible);
+        Assert.True(window.FindControl<Border>("AgentPanel")!.IsVisible);
 
         window.FindControl<ListBox>("SectionList")!.SelectedIndex = 0;
         Dispatcher.UIThread.RunJobs();

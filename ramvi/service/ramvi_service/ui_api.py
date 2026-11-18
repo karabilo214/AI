@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from ramvi_service.agent.desktop import AgentDesktop
 from ramvi_service.app_config import AppConfig
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatError, ChatService, Generation
@@ -70,6 +71,7 @@ class UIServer:
         self.guard: Guard | None = None  # 4.8: подсказки при нехватке памяти
         self.library: ModelLibrary | None = None  # 4.11: по умолчанию / удалить
         self.voice: VoiceService | None = None  # 5.2: голосовой ввод
+        self.agent_ui: AgentDesktop | None = None
         self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
@@ -104,6 +106,8 @@ class UIServer:
     def route(self, method: str, path: str, body: dict[str, Any]) -> Any:
         """JSON-ответ или Generation для потока."""
         chat = self.chat
+        if path.startswith("/agent/") and self.agent_ui is not None:
+            return self.agent_ui.route(method, path, body)
         if method == "GET" and path == "/status":
             return {"engine": self._status(), "limits": asdict(chat.limits)}
         if method == "GET" and path == "/models":
