@@ -4,6 +4,7 @@
 """
 
 import ctypes
+import ntpath
 import os
 import platform
 import shutil
@@ -392,3 +393,59 @@ if __name__ == "__main__":
     import json
 
     print(json.dumps(collect().to_dict(), ensure_ascii=False, indent=2))
+
+
+# --- 8.2 (PORT-03): вид диска папки моделей -----------------------------------------------
+
+_NETWORK_FS = ("nfs", "nfs4", "cifs", "smbfs", "smb3", "fuse.sshfs", "afpfs", "9p", "davfs")
+# GetDriveTypeW: 0 — неизвестно, 1 — нет такого корня, 2 — съёмный, 3 — встроенный,
+# 4 — сетевой, 5 — CD/DVD, 6 — RAM-диск.
+_WINDOWS_DRIVES = {2: "removable", 3: "local", 4: "network", 5: "removable", 6: "local"}
+
+
+def _linux_kind(path: str, mounts: str) -> str:
+    best, kind = "", "local"
+    for line in mounts.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        point, fs = parts[1].replace("\\040", " "), parts[2]
+        inside = path == point or path.startswith(point.rstrip("/") + "/")
+        if inside and len(point) >= len(best):
+            best = point
+            kind = "network" if fs in _NETWORK_FS else "local"
+    return kind
+
+
+def drive_kind(
+    path: str | os.PathLike[str], *, system: str | None = None, mounts: str | None = None
+) -> str:
+    """Где лежит папка: `local`, `removable` (флешка, внешний диск), `network` или `unknown`.
+
+    Сетевой и съёмный диск допустимы, но модели с них грузятся заметно дольше — интерфейс
+    предупреждает (PORT-03). Windows — GetDriveTypeW и UNC-пути; Linux — /proc/mounts;
+    macOS — тома в /Volumes (внешние или сетевые)."""
+    system = system or platform.system()
+    raw = os.fspath(path)
+    if system == "Windows":
+        if raw.startswith(("\\\\", "//")):
+            return "network"
+        drive = ntpath.splitdrive(ntpath.abspath(raw) if os.name == "nt" else raw)[0]
+        if not drive:
+            return "unknown"
+        try:
+            kind = ctypes.windll.kernel32.GetDriveTypeW(drive + "\\")  # type: ignore[attr-defined]
+        except (AttributeError, OSError):
+            return "unknown"
+        return _WINDOWS_DRIVES.get(kind, "unknown")
+    text = os.path.abspath(raw)
+    if system == "Darwin":
+        return "removable" if text.startswith("/Volumes/") else "local"
+    if system == "Linux":
+        if mounts is None:
+            try:
+                mounts = Path("/proc/mounts").read_text(encoding="utf-8")
+            except OSError:
+                return "unknown"
+        return _linux_kind(text, mounts)
+    return "unknown"

@@ -309,9 +309,11 @@ internal sealed class FakeChatApi : IChatApi
         return Task.FromResult(SaveApiError is { } apiError ? info with { ApiError = apiError } : info);
     }
 
+    public string? ModelsDirWarning { get; set; }
+
     private SettingsInfo Info(IReadOnlyList<string>? restart) =>
         new(AppSettings, new SettingsFolders("/app/" + AppSettings.DataDir, "/app/" + AppSettings.ModelsDir), "/app/data",
-            ["ru", "en"], restart);
+            ["ru", "en"], restart, ModelsDirWarning: ModelsDirWarning);
 
     // --- 4.11: каталог, загрузки, выбор, по умолчанию, удаление ------------------------------
 

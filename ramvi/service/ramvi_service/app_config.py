@@ -7,7 +7,7 @@
 Что когда применяется:
 - `data_dir` — после перезапуска приложения (`restart_required`);
 - `theme` и `language` — сразу: оболочка меняет тему окна (3.16) и язык всех текстов (3.14);
-- `models_dir` — сразу: «Обновить список» подключает найденные в ней модели на месте
+- `models_dir` — сразу (на сетевом или съёмном диске — предупреждение о долгой загрузке, 8.2): «Обновить список» подключает найденные в ней модели на месте
   (`POST /models/scan`, в т.ч. Ollama `blobs`), и туда пойдут загрузки (4.3); ничего не копируется;
 - `api_port`, `network_access`, `network_allow` — сразу: внешний API (7.1, 7.4)
   перезапускается на новом порту / с новым режимом сети без перезапуска приложения.
@@ -20,11 +20,16 @@ from typing import Any
 
 from ramvi_service import settings as st
 from ramvi_service.chat import ChatError
+from ramvi_service.hardware import drive_kind
 from ramvi_service.i18n import UserError
 
 UI_LANGUAGES = ("ru", "en")  # есть каталоги ramvi/i18n/<язык>.json
 FOLDERS = ("data_dir", "models_dir")
-RESTART = ("data_dir",)  # язык и тема применяются сразу (3.14, 3.16)
+RESTART = ("data_dir",)
+SLOW_DRIVE = {
+    "network": "settings.models_dir_network",
+    "removable": "settings.models_dir_removable",
+}  # язык и тема применяются сразу (3.14, 3.16)
 
 
 def check_folder(path: Path) -> None:
@@ -44,11 +49,16 @@ class AppConfig:
 
     def get(self) -> dict[str, Any]:
         current = st.load(self.app_dir)
+        models = current.resolve(self.app_dir, "models_dir").resolve()
+        kind = drive_kind(models)
         return {
             "settings": asdict(current),
             "resolved": {
                 name: str(current.resolve(self.app_dir, name).resolve()) for name in FOLDERS
             },
+            # 8.2 (PORT-03): сетевой или съёмный диск допустим, но модели грузятся дольше.
+            "models_dir_kind": kind,
+            "models_dir_warning": SLOW_DRIVE.get(kind),
             "current_data_dir": str(self.data_dir.resolve()),
             "languages": list(UI_LANGUAGES),
         }

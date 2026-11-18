@@ -46,6 +46,7 @@ public sealed class SettingsViewModel : ObservableObject
     private string _apiPort = "";
     private bool _networkAccess;
     private string _networkAllow = "";
+    private string? _modelsDirWarning;
     private string _currentDataDir = "";
     private string? _error;
     private string? _message;
@@ -277,6 +278,21 @@ public sealed class SettingsViewModel : ObservableObject
         set => Set(ref _networkAccess, value);
     }
 
+    /// <summary>8.2: папка моделей на сетевом или съёмном диске — загрузка дольше.</summary>
+    public string? ModelsDirWarning
+    {
+        get => _modelsDirWarning;
+        private set
+        {
+            if (Set(ref _modelsDirWarning, value))
+            {
+                Raise(nameof(HasModelsDirWarning));
+            }
+        }
+    }
+
+    public bool HasModelsDirWarning => _modelsDirWarning is not null;
+
     /// <summary>7.4: с каких адресов можно при включённой сети (CIDR через запятую).</summary>
     public string NetworkAllow
     {
@@ -415,6 +431,7 @@ public sealed class SettingsViewModel : ObservableObject
         ApiPort = info.Settings.ApiPort.ToString(CultureInfo.InvariantCulture);
         NetworkAccess = info.Settings.NetworkAccess;
         NetworkAllow = info.Settings.NetworkAllow;
+        ModelsDirWarning = info.ModelsDirWarning is { } warning ? L[warning] : null;
         Theme = Themes.FirstOrDefault(t => t.Code == info.Settings.Theme) ?? Themes[0];
         Raise(nameof(DataDirNote));
         SaveCommand.Refresh();

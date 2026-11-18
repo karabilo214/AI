@@ -173,4 +173,20 @@ public sealed class SettingsTests : IDisposable
 
         Assert.Equal(AppSettingsFile.Default, AppSettingsFile.Read(_dir));
     }
+
+    [Fact]
+    public async Task Slow_models_drive_shows_a_warning()
+    {
+        var api = new FakeChatApi { ModelsDirWarning = "settings.models_dir_network" };
+        var model = new MainViewModel(api);
+        await model.InitializeAsync();
+        await model.OpenSettingsCommand.RunAsync();
+        Assert.True(model.Settings.HasModelsDirWarning);
+        Assert.Equal(Ru["settings.models_dir_network"], model.Settings.ModelsDirWarning);
+        var local = new MainViewModel(new FakeChatApi());
+        await local.InitializeAsync();
+        await local.OpenSettingsCommand.RunAsync();
+        Assert.False(local.Settings.HasModelsDirWarning);
+        Assert.Empty(Ru.Missing);
+    }
 }

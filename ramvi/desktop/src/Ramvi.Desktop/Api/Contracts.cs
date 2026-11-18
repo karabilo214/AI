@@ -147,7 +147,8 @@ public sealed record SettingsInfo(
     string CurrentDataDir,
     IReadOnlyList<string> Languages,
     IReadOnlyList<string>? RestartRequired = null,
-    string? ApiError = null);
+    string? ApiError = null,
+    string? ModelsDirWarning = null);
 
 /// <summary>Только изменённые поля; null не отправляется.</summary>
 public sealed record SettingsUpdate(

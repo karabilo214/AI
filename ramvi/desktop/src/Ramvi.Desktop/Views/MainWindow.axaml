@@ -379,6 +379,8 @@
                   <Button Grid.Column="1" Margin="8,0,0,0" Content="{l:T settings.browse}"
                           Command="{Binding Settings.BrowseModelsDirCommand}" />
                 </Grid>
+                <TextBlock x:Name="ModelsDirWarning" FontSize="12" Classes="warn" TextWrapping="Wrap"
+                           Text="{Binding Settings.ModelsDirWarning}" IsVisible="{Binding Settings.HasModelsDirWarning}" />
 
                 <TextBlock Classes="heading" Text="{l:T settings.default_model}" />
                 <StackPanel Orientation="Horizontal" Spacing="10">
