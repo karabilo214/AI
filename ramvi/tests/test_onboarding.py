@@ -51,7 +51,7 @@ def by_id(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 def test_checks_all_ok_on_windows_with_nvidia_and_cuda() -> None:
     result = checks(profile(), CUDA)
 
-    assert [c["id"] for c in result] == ["os", "cpu", "ram", "gpu", "disk", "backend"]
+    assert [c["id"] for c in result] == ["os", "cpu", "ram", "gpu", "driver", "disk", "backend"]
     assert {c["status"] for c in result} == {"ok"}
     found = by_id(result)
     assert found["gpu"]["params"] == {
@@ -61,6 +61,41 @@ def test_checks_all_ok_on_windows_with_nvidia_and_cuda() -> None:
     }
     assert found["ram"]["params"] == {"total_gb": 16.0, "available_gb": 9.0}
     assert found["backend"]["params"] == {"cuda": "12.8", "torch": "2.9.0"}
+
+
+def test_driver_check_names_the_needed_version() -> None:
+    """8.1 (PORT-02): драйвер NVIDIA в диагностике — версия и что нужно для CUDA комплекта."""
+    cuda13 = {**CUDA, "cuda_version": "13.2"}
+    ok = by_id(checks(profile(gpus=(GPUInfo("RTX 5060", "NVIDIA", 8151, 7000, "616.92"),)), cuda13))
+    assert ok["driver"] == {
+        "id": "driver",
+        "status": "ok",
+        "code": "system.driver",
+        "params": {"version": "616.92", "need": "580", "cuda": "13.2"},
+    }
+    old = by_id(
+        checks(profile(gpus=(GPUInfo("RTX 5060", "NVIDIA", 8151, 7000, "572.83"),)), cuda13)
+    )
+    assert old["driver"]["status"] == "fail" and old["driver"]["code"] == "system.driver_old"
+    assert old["driver"]["params"] == {"version": "572.83", "need": "580", "cuda": "13.2"}
+    cuda12 = by_id(checks(profile(gpus=(GPUInfo("RTX", "NVIDIA", 8151, 7000, "528.33"),)), CUDA))
+    assert cuda12["driver"]["status"] == "ok" and cuda12["driver"]["params"]["need"] == "528.33"
+    linux = by_id(
+        checks(
+            profile(os="Linux 6.8", gpus=(GPUInfo("RTX", "NVIDIA", 8151, 7000, "525.60.12"),)), CUDA
+        )
+    )
+    assert linux["driver"]["code"] == "system.driver_old"  # 525.60.12 < 525.60.13
+    missing = by_id(checks(profile(gpus=(GPUInfo("RTX", "NVIDIA", None, None, None),)), cuda13))
+    assert missing["driver"] == {
+        "id": "driver",
+        "status": "fail",
+        "code": "system.driver_missing",
+        "params": {"need": "580"},
+    }
+    unknown = by_id(checks(profile(), {"torch": "2.9.0", "cuda": False, "cuda_version": None}))
+    assert unknown["driver"]["code"] == "system.driver_found"
+    assert unknown["driver"]["params"] == {"version": "580.1"}
 
 
 def test_checks_mac_without_nvidia_explains_each_problem() -> None:

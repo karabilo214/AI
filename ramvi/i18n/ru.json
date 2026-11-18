@@ -600,5 +600,9 @@
   "connections.revoke": "Отозвать",
   "connections.revoke_confirm": "Точно отозвать?",
   "connections.revoked": "Ключ «{name}» отозван; остановлено запросов: {stopped}",
-  "connections.no_permissions": "Выберите хотя бы одно право ключа"
+  "connections.no_permissions": "Выберите хотя бы одно право ключа",
+  "system.driver": "Драйвер NVIDIA {version} — подходит (для CUDA {cuda} нужен не ниже {need})",
+  "system.driver_found": "Драйвер NVIDIA {version}",
+  "system.driver_old": "Драйвер NVIDIA {version} устарел: для CUDA {cuda} из комплекта нужен не ниже {need}. Обновите драйвер с сайта NVIDIA",
+  "system.driver_missing": "Видеокарта NVIDIA есть, но драйвер не найден. Установите драйвер NVIDIA (не ниже {need}); CUDA Toolkit ставить не нужно"
 }

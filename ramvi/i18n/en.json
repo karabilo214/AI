@@ -600,5 +600,9 @@
   "connections.revoke": "Revoke",
   "connections.revoke_confirm": "Revoke for sure?",
   "connections.revoked": "Key “{name}” revoked; requests stopped: {stopped}",
-  "connections.no_permissions": "Choose at least one key permission"
+  "connections.no_permissions": "Choose at least one key permission",
+  "system.driver": "NVIDIA driver {version} — compatible (CUDA {cuda} needs {need} or newer)",
+  "system.driver_found": "NVIDIA driver {version}",
+  "system.driver_old": "NVIDIA driver {version} is too old: the bundled CUDA {cuda} needs {need} or newer. Update the driver from the NVIDIA site",
+  "system.driver_missing": "An NVIDIA GPU is present but no driver was found. Install the NVIDIA driver ({need} or newer); the CUDA Toolkit is not needed"
 }

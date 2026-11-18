@@ -80,6 +80,49 @@ def probe_backends(timeout: float = 120.0) -> dict[str, Any]:
         return {"torch": None, "cuda": False, "error": f"{type(error).__name__}: {error}"}
 
 
+# 8.1 (PORT-02): наименьший драйвер NVIDIA для CUDA из комплекта (torch.version.cuda).
+# По таблице NVIDIA «minor version compatibility» (CUDA Toolkit Release Notes):
+# CUDA 12.x — Linux 525.60.13, Windows 528.33; CUDA 13.x — 580 на обеих системах.
+MIN_DRIVER = {
+    12: {"Linux": "525.60.13", "Windows": "528.33"},
+    13: {"Linux": "580", "Windows": "580"},
+}
+
+
+def _version(text: str) -> tuple[int, ...] | None:
+    parts = text.strip().split(".")
+    try:
+        return tuple(int(p) for p in parts)
+    except ValueError:
+        return None
+
+
+def min_driver(cuda: str | None, system: str) -> str | None:
+    """Наименьшая версия драйвера для CUDA `cuda` («13.2») на системе; None — неизвестно."""
+    version = _version(cuda or "")
+    if not version:
+        return None
+    return MIN_DRIVER.get(version[0], {}).get(system)
+
+
+def _driver_check(nvidia: list[Any], backends: dict[str, Any], system: str) -> dict[str, Any]:
+    """Драйвер NVIDIA: найден ли и достаточно ли новый для CUDA комплекта."""
+    driver = next((g.driver for g in nvidia if g.driver), None)
+    cuda = backends.get("cuda_version")
+    need = min_driver(cuda, system)
+    if driver is None:
+        return _check("driver", "fail", "system.driver_missing", need=need or "?")
+    have = _version(driver)
+    if need is None or have is None:
+        return _check("driver", "ok", "system.driver_found", version=driver)
+    required = _version(need) or ()
+    if have < required:
+        return _check(
+            "driver", "fail", "system.driver_old", version=driver, need=need, cuda=cuda or "?"
+        )
+    return _check("driver", "ok", "system.driver", version=driver, need=need, cuda=cuda or "?")
+
+
 def _gb(mb: int | None) -> float | None:
     return None if mb is None else round(mb / GIB_MB, 1)
 
@@ -89,7 +132,8 @@ def _check(item: str, status: str, code: str, **params: Any) -> dict[str, Any]:
 
 
 def checks(hw: HardwareProfile, backends: dict[str, Any]) -> list[dict[str, Any]]:
-    """Проверки для экрана мастера. Порядок: ОС, CPU, RAM, GPU, диск, бэкенд."""
+    """Проверки для экрана мастера. Порядок: ОС, CPU, RAM, GPU, драйвер (если есть NVIDIA),
+    диск, бэкенд."""
     result = []
     system = hw.os.split()[0] if hw.os else ""
     if system in ("Windows", "Linux"):
@@ -135,6 +179,7 @@ def checks(hw: HardwareProfile, backends: dict[str, Any]) -> list[dict[str, Any]
                 free_gb=_gb(best.vram_free_mb) if best.vram_free_mb is not None else "?",
             )
         )
+        result.append(_driver_check(nvidia, backends, system))
     elif hw.gpus:
         names = ", ".join(g.name for g in hw.gpus)
         result.append(_check("gpu", "fail", "system.gpu_no_nvidia", names=names))

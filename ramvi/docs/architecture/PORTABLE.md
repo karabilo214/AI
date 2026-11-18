@@ -31,6 +31,19 @@ RAMVI/
   «Выбрать папку данных…»; выбор запоминается в `%LOCALAPPDATA%/RAMVI/locations.json`
   («папка приложения → папка данных») и применяется, только пока в папку приложения писать нельзя.
 
+## Драйвер NVIDIA в диагностике (8.1, PORT-02)
+
+Комплект не требует ни Python, ни CUDA Toolkit, но нужен совместимый драйвер NVIDIA. Мастер первого запуска показывает отдельную проверку «драйвер» (`onboarding.checks`, после видеокарты NVIDIA): версию драйвера из `nvidia-smi` и наименьшую версию для CUDA из комплекта (`torch.version.cuda`) по таблице NVIDIA «minor version compatibility» (CUDA Toolkit Release Notes): CUDA 13.x — 580, CUDA 12.x — 528.33 на Windows и 525.60.13 на Linux (`MIN_DRIVER`).
+
+| Итог | Код |
+|---|---|
+| драйвер подходит | `system.driver` (версия, нужная, CUDA) |
+| драйвер старше нужного | `system.driver_old` — «обновите драйвер с сайта NVIDIA», с нужной версией |
+| видеокарта NVIDIA есть, драйвера нет | `system.driver_missing` — «установите драйвер; CUDA Toolkit не нужен» |
+| версия CUDA комплекта неизвестна | `system.driver_found` — только версия |
+
+На ASUS (2026-11-18): драйвер 616.92, CUDA комплекта 13.2 (torch 2.15.0+cu132) — подходит.
+
 ## Проверка на ASUS (Windows 11, RTX 5060), 2026-11-16
 
 - Сборка из `C:\anm\.venv`: 49 пакетов (torch 2.15.0+cu132, triton-windows 3.9.0.post30, numba
