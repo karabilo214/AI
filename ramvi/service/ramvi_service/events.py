@@ -10,6 +10,8 @@ from typing import Any
 
 from ramvi_service.contracts.modules import Authority, Owner
 
+EVENT_VERSION = 1  # версия формата событий (общий EventFactory движка, version=1)
+
 
 @dataclass(frozen=True)
 class EventSpec:
@@ -70,6 +72,22 @@ class EventBus:
         self._responses: dict[str, tuple[str, str, Any]] = {}
         self._schemas: dict[tuple[str, str], EventSpec] = {}
         self._subscriptions: dict[str, Subscription] = {}
+
+    def schemas(self) -> list[dict[str, Any]]:
+        """Объявленные события модулей (7.6): тип, версия, поля и их типы."""
+        with self._lock:
+            items = sorted(self._schemas.items())
+        return [
+            {
+                "module_id": module,
+                "name": name,
+                "type": f"module.{module}.{name}",
+                "version": EVENT_VERSION,
+                "required": {k: v.__name__ for k, v in spec.required.items()},
+                "optional": {k: v.__name__ for k, v in (spec.optional or {}).items()},
+            }
+            for (module, name), spec in items
+        ]
 
     def register_schema(self, module: str, name: str, schema: EventSpec) -> None:
         from ramvi_service.contracts.modules import module_id

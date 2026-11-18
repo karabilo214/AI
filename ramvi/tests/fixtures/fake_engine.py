@@ -58,6 +58,7 @@ load()
 DELAY = float(os.environ.get("FAKE_ENGINE_DELAY", "0.01"))
 cancelled: set[str] = set()
 lock = threading.Lock()
+last_body: dict[str, Any] = {}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -71,6 +72,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(
                 {"instance_id": os.environ["RAMVI_INSTANCE_ID"], "versions": {"api": API_VERSION}}
             )
+        elif self.path == "/debug/last_body":  # 7.6: что именно дошло до движка
+            with lock:
+                self._json({"body": last_body})
         elif self.path == "/debug/cancelled":  # 7.1: проверка отмены по разрыву клиента
             with lock:
                 self._json({"cancelled": sorted(cancelled)})
@@ -84,6 +88,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "unauthorized"}, 401)
             return
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+        global last_body
+        with lock:
+            last_body = body
         if self.path == "/engine/cancel":
             with lock:
                 cancelled.add(body.get("request_id", ""))

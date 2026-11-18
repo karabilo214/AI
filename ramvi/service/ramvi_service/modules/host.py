@@ -146,6 +146,35 @@ class ModuleHost:
                 raise KeyError("module is not installed")
             return self._entries[identifier]
 
+    def describe(self) -> list[dict[str, Any]]:
+        """Модули для описания возможностей (7.6): версии, права, объявленные события.
+
+        Права определяет Host: `permissions_approved` — одобренные при регистрации,
+        запрошенные манифестом сверх них модулю не даются."""
+        with self._lock:
+            entries = list(self._entries.values())
+        events = self.events.schemas()
+        result = []
+        for entry in entries:
+            manifest = entry.manifest
+            with entry.lock:
+                state = entry.state
+            result.append(
+                {
+                    "module_id": manifest.module_id,
+                    "version": manifest.version,
+                    "api_version": manifest.api_version,
+                    "state": state,
+                    "capabilities": list(manifest.capabilities),
+                    "permissions_requested": list(manifest.permissions),
+                    "permissions_approved": list(entry.approved),
+                    "required": list(manifest.required),
+                    "optional": list(manifest.optional),
+                    "events": [e for e in events if e["module_id"] == manifest.module_id],
+                }
+            )
+        return sorted(result, key=lambda item: item["module_id"])
+
     def status(self, identifier: str | None = None) -> dict[str, Any]:
         with self._lock:
             entries = [self._entry(identifier)] if identifier else list(self._entries.values())

@@ -20,6 +20,7 @@ from typing import Any
 from ramvi_service.agent.desktop import AgentDesktop
 from ramvi_service.api_server import ApiOptions
 from ramvi_service.app_config import AppConfig
+from ramvi_service.capabilities_api import describe
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatError, ChatService, Generation
 from ramvi_service.client_keys import ClientKeyError
@@ -154,6 +155,9 @@ class UIServer:
             return self._downloads_route(method, path, body)
         if path == "/voice" or path.startswith("/voice/"):
             return self._voice_route(method, path, body)
+        if method == "GET" and path == "/capabilities":
+            host = None if self.sections is None else self.sections.host
+            return describe(host, self.api)
         if path == "/connections" or path.startswith("/connections/"):
             return self._connections_route(method, path, body)
         if method == "GET" and path == "/recommendations":

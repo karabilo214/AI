@@ -237,6 +237,7 @@ def build(
         data_dir / "run",
         ApiOptions.from_settings(current_settings()),
     )
+    server.api.host = host
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
     server.on_close.append(db.close)

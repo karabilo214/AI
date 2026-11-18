@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from ramvi_service.capabilities_api import describe
 from ramvi_service.client_keys import KeyStore, permission_for
 from ramvi_service.resources import SharedLLM
 
@@ -53,6 +54,19 @@ GENERATION = frozenset(
     {"/v1/chat/completions", "/v1/completions", "/v1/messages", "/api/chat", "/api/generate"}
 )
 MAX_BODY = 8 * 1024 * 1024
+# 7.6: служебные поля RAMVI и поля владельца в теле внешнего запроса не действуют —
+# владелец и права берутся из ключа, модель не переключается (ramvi_model_id и т. п.).
+RESERVED = frozenset({"module_id", "owner", "principal", "principal_id", "session_id", "token"})
+
+
+def strip_reserved(body: dict[str, Any]) -> list[str]:
+    """Убрать служебные поля из тела; вернуть, какие были."""
+    dropped = [k for k in body if k in RESERVED or k.lower().startswith("ramvi")]
+    for key in dropped:
+        del body[key]
+    return dropped
+
+
 DISCOVERY_VERSION = 1
 
 
@@ -247,6 +261,7 @@ class ApiServer:
         self._active: list[_Active] = []
         self._lock = threading.Lock()
         self.gate = FairGate()
+        self.host: Any = None  # ModuleHost — для описания возможностей (7.6)
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -463,6 +478,8 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                     return self._send_json(200, {"service": "ramvi", "status": "ok"})
                 if path in ("/v1/models", "/api/tags", "/api/version"):
                     return self._send_json(200, api.models_payload(path))
+                if path == "/ramvi/v1/capabilities":
+                    return self._send_json(200, describe(api.host, api, external=True))
                 raise ApiError(404, "api.not_found", f"unknown route {path}")
             except ApiError as error:
                 self._error(error)
@@ -484,6 +501,7 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                     raise ApiError(400, "api.bad_json", "body must be JSON") from None
                 if not isinstance(body, dict):
                     raise ApiError(400, "api.bad_json", "body must be a JSON object")
+                strip_reserved(body)
                 self._generate(client, path, body)
             except ApiError as error:
                 self._error(error)
