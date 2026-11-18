@@ -303,10 +303,42 @@
                    AcceptsReturn="True" TextWrapping="Wrap"
                    PlaceholderText="{l:T chat.input_placeholder}" Text="{Binding Input}" />
           <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto">
-            <Button x:Name="AttachButton" Classes="icon" Command="{Binding AttachFilesCommand}"
-                    ToolTip.Tip="{l:T chat.attach_hint}">
-              <PathIcon Data="{StaticResource icon-attach}" />
-            </Button>
+            <StackPanel Orientation="Horizontal">
+              <Button x:Name="AttachButton" Classes="icon" Command="{Binding AttachFilesCommand}"
+                      ToolTip.Tip="{l:T chat.attach_hint}">
+                <PathIcon Data="{StaticResource icon-attach}" />
+              </Button>
+              <!-- 5.2: микрофон — первое нажатие пишет, второе распознаёт в поле ввода -->
+              <Button x:Name="MicButton" Classes="icon" Classes.recording="{Binding Voice.IsRecording}"
+                      Command="{Binding Voice.ToggleCommand}" ToolTip.Tip="{Binding Voice.Tip}">
+                <Panel>
+                  <PathIcon Data="{StaticResource icon-microphone}" IsVisible="{Binding !Voice.IsRecording}" />
+                  <PathIcon Data="{StaticResource icon-stop}" IsVisible="{Binding Voice.IsRecording}" />
+                </Panel>
+              </Button>
+            </StackPanel>
+            <!-- 5.2: индикатор записи и распознавания -->
+            <StackPanel x:Name="RecordingIndicator" Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                        VerticalAlignment="Center" Margin="6,0" IsVisible="{Binding Voice.IsRecording}">
+              <Ellipse Classes="recording-dot" VerticalAlignment="Center" />
+              <TextBlock VerticalAlignment="Center" Text="{l:T voice.recording}" />
+              <TextBlock x:Name="RecordingTime" VerticalAlignment="Center" Classes="caption" Text="{Binding Voice.Elapsed}" />
+              <ProgressBar x:Name="RecordingLevel" Width="60" MinWidth="60" VerticalAlignment="Center" Minimum="0" Maximum="1"
+                           Value="{Binding Voice.Level}" />
+              <Button x:Name="CancelRecordingButton" Classes="icon flat" Command="{Binding Voice.CancelCommand}"
+                      ToolTip.Tip="{l:T voice.cancel_hint}">
+                <PathIcon Data="{StaticResource icon-close}" Width="10" Height="10" />
+              </Button>
+            </StackPanel>
+            <StackPanel x:Name="TranscribingIndicator" Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                        VerticalAlignment="Center" Margin="6,0" IsVisible="{Binding Voice.IsTranscribing}">
+              <PathIcon Classes="spinner" Data="{StaticResource icon-loading}">
+                <PathIcon.RenderTransform>
+                  <RotateTransform />
+                </PathIcon.RenderTransform>
+              </PathIcon>
+              <TextBlock VerticalAlignment="Center" Text="{l:T voice.transcribing}" />
+            </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal">
               <Button x:Name="SendButton" Classes="accent" Command="{Binding SendCommand}" IsVisible="{Binding IsIdle}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -456,6 +488,53 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
+
+            <!-- 5.2: голосовой ввод — микрофон, язык и модель распознавания (whisper.cpp, локально) -->
+            <TextBlock Classes="heading" Text="{l:T voice.section}" />
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" >
+              <TextBlock Grid.Row="0" VerticalAlignment="Center" Margin="0,0,12,0" Text="{l:T voice.device}" />
+              <ComboBox x:Name="VoiceDeviceBox" Grid.Row="0" Grid.Column="1" MinWidth="240"
+                        ItemsSource="{Binding Settings.Sound.Devices}" SelectedItem="{Binding Settings.Sound.Device}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:VoiceOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <TextBlock Grid.Row="1" VerticalAlignment="Center" Margin="0,0,12,0" Text="{l:T voice.language}" />
+              <ComboBox x:Name="VoiceLanguageBox" Grid.Row="1" Grid.Column="1" MinWidth="240"
+                        ItemsSource="{Binding Settings.Sound.Languages}" SelectedItem="{Binding Settings.Sound.Language}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:VoiceOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <TextBlock Grid.Row="2" VerticalAlignment="Center" Margin="0,0,12,0" Text="{l:T voice.model}" />
+              <ComboBox x:Name="VoiceModelBox" Grid.Row="2" Grid.Column="1" MinWidth="240"
+                        ItemsSource="{Binding Settings.Sound.Models}" SelectedItem="{Binding Settings.Sound.Model}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:VoiceOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <TextBlock x:Name="VoiceModelStatus" VerticalAlignment="Center" TextWrapping="Wrap"
+                         Text="{Binding Settings.Sound.ModelStatus}" />
+              <Button x:Name="VoiceDownloadButton" Classes="icon" ToolTip.Tip="{l:T voice.download}"
+                      Command="{Binding Settings.Sound.DownloadCommand}" IsVisible="{Binding !Settings.Sound.IsDownloading}">
+                <PathIcon Data="{StaticResource icon-download}" />
+              </Button>
+              <Button x:Name="VoiceCancelDownloadButton" Classes="icon" ToolTip.Tip="{l:T voice.download_cancel}"
+                      Command="{Binding Settings.Sound.CancelDownloadCommand}" IsVisible="{Binding Settings.Sound.IsDownloading}">
+                <PathIcon Data="{StaticResource icon-close}" />
+              </Button>
+            </StackPanel>
+            <TextBlock x:Name="VoiceError" Classes="error" TextWrapping="Wrap" Text="{Binding Settings.Sound.Error}"
+                       IsVisible="{Binding Settings.Sound.HasError}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T voice.note}" />
 
             <TextBlock Classes="heading" Text="{l:T settings.api_port}" />
             <TextBox x:Name="ApiPortBox" MaxWidth="160" HorizontalAlignment="Left" Text="{Binding Settings.ApiPort}" />

@@ -615,6 +615,35 @@ public sealed class StyleTests
         window.Close();
     }
 
+    /// <summary>5.2: снимки голосового ввода — запись, распознавание, раздел «Звук» — в обеих темах.</summary>
+    [AvaloniaFact]
+    public async Task Snapshot_voice_input()
+    {
+        var api = new FakeChatApi { VoiceSeconds = 7.3, VoiceStopGate = new TaskCompletionSource() };
+        api.AddChat("Голос", "model-a", Msg("user", "Привет"), Msg("assistant", "Здравствуйте!"));
+        var (window, model, _) = await OpenAsync(api);
+        model.Input = "Переведи:";
+        await model.Voice.ToggleCommand.RunAsync();
+        await UntilAsync(() => model.Voice.Elapsed == "0:07", "длительность записи");
+        Shoot(window, "voice-recording");
+
+        var stop = model.Voice.ToggleCommand.RunAsync();
+        await UntilAsync(() => model.Voice.IsTranscribing, "распознавание");
+        Shoot(window, "voice-transcribing");
+        api.VoiceStopGate.SetResult();
+        await stop;
+
+        await model.Settings.OpenAsync();
+        api.VoiceDownloadState = new VoiceDownload("running", "large-v3-turbo-q5_0", 200_000_000, 574_041_195);
+        await model.Settings.Sound.LoadAsync(api.AppSettings);
+        Pump();
+        window.FindControl<Control>("VoiceModelStatus")!.BringIntoView();
+        Shoot(window, "voice-settings");
+        await model.Settings.CloseCommand.RunAsync();
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+        window.Close();
+    }
+
     /// <summary>4.11: снимок экрана «Модели» (иллюстрация ТЗ «Каталог моделей») в обеих темах.</summary>
     [AvaloniaFact]
     public async Task Snapshot_models_screen()

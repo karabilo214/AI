@@ -98,6 +98,27 @@ public interface IChatApi
 
     /// <summary>4.11: забыть модель; файл удаляется, только если его скачал RAMVI и это выбрано.</summary>
     Task<DeleteModelResult> DeleteModelAsync(string modelId, bool deleteFile, CancellationToken cancel = default);
+
+    /// <summary>5.2: состояние голосового ввода и модели распознавания.</summary>
+    Task<VoiceStatus> VoiceStatusAsync(CancellationToken cancel = default);
+
+    /// <summary>5.2: микрофоны системы.</summary>
+    Task<IReadOnlyList<VoiceDevice>> VoiceDevicesAsync(CancellationToken cancel = default);
+
+    /// <summary>5.2: начать запись (микрофон из настроек, если не указан).</summary>
+    Task<VoiceStatus> StartVoiceAsync(string? device = null, CancellationToken cancel = default);
+
+    /// <summary>5.2: остановить запись и распознать.</summary>
+    Task<VoiceResult> StopVoiceAsync(CancellationToken cancel = default);
+
+    /// <summary>5.2: прекратить запись без распознавания.</summary>
+    Task<VoiceStatus> CancelVoiceAsync(CancellationToken cancel = default);
+
+    /// <summary>5.2: скачать модель распознавания (по умолчанию — выбранную в настройках).</summary>
+    Task<VoiceStatus> DownloadVoiceModelAsync(string? model = null, CancellationToken cancel = default);
+
+    /// <summary>5.2: прервать скачивание модели распознавания.</summary>
+    Task<VoiceStatus> CancelVoiceDownloadAsync(CancellationToken cancel = default);
 }
 
 /// <summary>HTTP-клиент `ramvi_service.ui_api`: только loopback, ключ в заголовке.</summary>
@@ -244,6 +265,30 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     public Task<DeleteModelResult> DeleteModelAsync(string modelId, bool deleteFile, CancellationToken cancel = default) =>
         PostAsync($"models/{Id(modelId)}/delete", new DeleteModelRequest(deleteFile),
             ApiJson.Default.DeleteModelRequest, ApiJson.Default.DeleteModelResult, cancel);
+
+    public Task<VoiceStatus> VoiceStatusAsync(CancellationToken cancel = default) =>
+        GetAsync("voice", ApiJson.Default.VoiceStatus, cancel);
+
+    public async Task<IReadOnlyList<VoiceDevice>> VoiceDevicesAsync(CancellationToken cancel = default) =>
+        (await GetAsync("voice/devices", ApiJson.Default.VoiceDevicesResponse, cancel).ConfigureAwait(false)).Devices;
+
+    public Task<VoiceStatus> StartVoiceAsync(string? device = null, CancellationToken cancel = default) =>
+        PostAsync("voice/start", new DeviceRequest(device), ApiJson.Default.DeviceRequest,
+            ApiJson.Default.VoiceStatus, cancel);
+
+    public Task<VoiceResult> StopVoiceAsync(CancellationToken cancel = default) =>
+        PostAsync("voice/stop", new ModelRequest(null), ApiJson.Default.ModelRequest, ApiJson.Default.VoiceResult, cancel);
+
+    public Task<VoiceStatus> CancelVoiceAsync(CancellationToken cancel = default) =>
+        PostAsync("voice/cancel", new ModelRequest(null), ApiJson.Default.ModelRequest, ApiJson.Default.VoiceStatus, cancel);
+
+    public Task<VoiceStatus> DownloadVoiceModelAsync(string? model = null, CancellationToken cancel = default) =>
+        PostAsync("voice/model/download", new VoiceModelRequest(model), ApiJson.Default.VoiceModelRequest,
+            ApiJson.Default.VoiceStatus, cancel);
+
+    public Task<VoiceStatus> CancelVoiceDownloadAsync(CancellationToken cancel = default) =>
+        PostAsync("voice/model/cancel", new ModelRequest(null), ApiJson.Default.ModelRequest,
+            ApiJson.Default.VoiceStatus, cancel);
 
     private async IAsyncEnumerable<ChatEvent> StreamAsync(
         string path, HttpContent? content, [EnumeratorCancellation] CancellationToken cancel)

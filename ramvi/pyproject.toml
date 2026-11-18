@@ -143,3 +143,8 @@ addopts = "-ra --strict-config --strict-markers"
 [[tool.mypy.overrides]]
 module = ["ramvi.engine.tools", "ramvi.engine.tools.*"]
 follow_imports = "skip"
+
+# 5.2: голосовые зависимости ставятся только в комплект и не нужны проверкам CI.
+[[tool.mypy.overrides]]
+module = ["numpy", "sounddevice", "pywhispercpp.*", "_pywhispercpp"]
+ignore_missing_imports = true

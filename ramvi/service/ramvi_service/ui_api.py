@@ -31,6 +31,7 @@ from ramvi_service.model_library import ModelLibrary
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.recommend import rank
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
+from ramvi_service.voice.service import VoiceService
 
 MAX_BODY = 2 * 2**20
 PREFIX = "/ui/v1"
@@ -68,6 +69,7 @@ class UIServer:
         self.control: ControlRun | None = None  # 4.7: контрольный прогон
         self.guard: Guard | None = None  # 4.8: подсказки при нехватке памяти
         self.library: ModelLibrary | None = None  # 4.11: по умолчанию / удалить
+        self.voice: VoiceService | None = None  # 5.2: голосовой ввод
         self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
@@ -131,6 +133,8 @@ class UIServer:
                 return self.config.update(body)
         if path == "/downloads" or path.startswith("/downloads/"):
             return self._downloads_route(method, path, body)
+        if path == "/voice" or path.startswith("/voice/"):
+            return self._voice_route(method, path, body)
         if method == "GET" and path == "/recommendations":
             return self._recommendations()
         if path in ("/catalog", "/catalog/refresh"):
@@ -232,6 +236,27 @@ class UIServer:
             raise ChatError("api.not_found")
         action = {"pause": downloads.pause, "resume": downloads.resume, "cancel": downloads.cancel}
         return {"download": action[match.group(2)](match.group(1))}
+
+    def _voice_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
+        """5.2: голосовой ввод — запись, распознавание, устройства, модель."""
+        voice = self.voice
+        if voice is None:
+            raise ChatError("api.not_found")
+        if method == "GET" and path == "/voice":
+            return voice.status()
+        if method == "GET" and path == "/voice/devices":
+            return voice.devices()
+        if method == "POST" and path == "/voice/start":
+            return voice.start(_optional_str(body, "device"))
+        if method == "POST" and path == "/voice/stop":
+            return voice.stop()
+        if method == "POST" and path == "/voice/cancel":
+            return voice.cancel()
+        if method == "POST" and path == "/voice/model/download":
+            return voice.download_model(_optional_str(body, "model"))
+        if method == "POST" and path == "/voice/model/cancel":
+            return voice.cancel_download()
+        raise ChatError("api.not_found")
 
     def _status(self) -> dict[str, Any]:
         """Статус движка; при нехватке памяти — проверенные подсказки, что сделать (4.8)."""

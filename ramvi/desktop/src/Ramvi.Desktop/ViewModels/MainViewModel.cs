@@ -97,6 +97,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _copy = copy ?? (_ => Task.CompletedTask);
         _openFolder = openFolder ?? (_ => Task.CompletedTask);
         _status = () => L["status.connecting"];
+        Voice = new VoiceViewModel(() => _api, InsertVoiceText, ShowError, () => IsConnected);
         NewChatCommand = new Command(NewChatAsync, () => !IsGenerating && IsConnected);
         SendCommand = new Command(SendAsync, CanSend);
         StopCommand = new Command(StopAsync, () => IsGenerating);
@@ -198,6 +199,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Экран настроек (3.7).</summary>
     public SettingsViewModel Settings { get; }
+
+    /// <summary>5.2: кнопка микрофона у поля ввода.</summary>
+    public VoiceViewModel Voice { get; }
 
     public Command OpenSettingsCommand { get; }
 
@@ -1152,6 +1156,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                  })
         {
             command.Refresh();
+        }
+
+        Voice.Refresh();
+    }
+
+    /// <summary>5.2: распознанный текст дописывается в поле ввода; человек правит и отправляет сам.</summary>
+    private void InsertVoiceText(string text)
+    {
+        Input = string.IsNullOrWhiteSpace(Input) ? text : Input.TrimEnd() + " " + text;
+        if (_problem?.Code.StartsWith("voice.", StringComparison.Ordinal) == true)
+        {
+            SetProblem(null); // прошлая ошибка голоса больше не актуальна
         }
     }
 

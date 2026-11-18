@@ -48,6 +48,7 @@ from ramvi_service.sections import ModuleDataApi, SectionRegistry
 from ramvi_service.supervisor import RestartPolicy
 from ramvi_service.task_profile import TaskProfile
 from ramvi_service.ui_api import UIServer
+from ramvi_service.voice.service import VoiceService
 
 TOKEN_ENV = "RAMVI_UI_TOKEN"
 
@@ -63,6 +64,7 @@ def build(
     catalog: Catalog | None = None,
     download_options: dict[str, Any] | None = None,
     auto_control: bool | None = None,
+    voice_options: dict[str, Any] | None = None,
 ) -> tuple[UIServer, EngineManager]:
     """Собрать сервис; `engine_command` — только для проверок без модели."""
     db = open_core(data_dir)
@@ -170,10 +172,19 @@ def build(
         lambda model_id: runs.status(model_id)["state"] in ("queued", "running"),
     )
     server.app_dir = root
+
+    def current_settings() -> app_settings.Settings:
+        try:
+            return app_settings.load(root or data_dir)
+        except (OSError, ValueError):
+            return app_settings.Settings()
+
+    server.voice = VoiceService(onboarding.models_folder, current_settings, **(voice_options or {}))
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
     server.on_close.append(db.close)
     server.on_close.append(server.downloads.close)
+    server.on_close.append(server.voice.close)  # первым: запись и процесс распознавания
     return server, engines
 
 

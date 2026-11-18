@@ -15,6 +15,10 @@ from typing import Any
 
 from ramvi_service.i18n import UserError
 from ramvi_service.task_profile import TaskProfile
+from ramvi_service.voice.models import LANGUAGES as VOICE_LANGUAGES
+from ramvi_service.voice.models import MODELS
+
+VOICE_MODELS = tuple(MODELS)
 
 LANGUAGES = ("ru", "en", "uk")
 THEMES = ("system", "light", "dark")  # 3.16: тема окна оболочки
@@ -37,6 +41,10 @@ class Settings:
     task_mode: str = "chat"
     task_priority: str = "balanced"
     task_context: int = 0
+    # 5.2: голос — микрофон («» — системный), язык распознавания, модель whisper.cpp
+    voice_device: str = ""
+    voice_language: str = "auto"
+    voice_model: str = "large-v3-turbo-q5_0"
 
     @property
     def task(self) -> TaskProfile:
@@ -55,6 +63,12 @@ class Settings:
             raise SettingsError("settings.bad_theme", allowed=", ".join(THEMES))
         if not isinstance(self.network_access, bool):
             raise SettingsError("settings.bad_network")
+        if not isinstance(self.voice_device, str):
+            raise SettingsError("settings.bad_voice_device")
+        if self.voice_language not in VOICE_LANGUAGES:
+            raise SettingsError("settings.bad_voice_language", allowed=", ".join(VOICE_LANGUAGES))
+        if self.voice_model not in VOICE_MODELS:
+            raise SettingsError("settings.bad_voice_model", allowed=", ".join(VOICE_MODELS))
         problem = self.task.problem()
         if problem is not None:
             raise SettingsError(problem[0], **problem[1])

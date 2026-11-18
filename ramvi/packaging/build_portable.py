@@ -33,7 +33,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CODE = ("service/ramvi_service", "engine/ramvi_engine", "storage/ramvi_storage")
 SKIP = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "build", "*.egg-info")
-# Прямые зависимости движка (engine/pyproject.toml) и triton для ядер на GPU.
+# Прямые зависимости движка (engine/pyproject.toml), triton для ядер на GPU и голос (5.2).
 ROOTS = (
     "torch",
     "numpy",
@@ -43,6 +43,9 @@ ROOTS = (
     "xgrammar",
     "jsonschema",
     "triton",
+    # 5.2 (ADR-0004): голосовой ввод — запись звука (PortAudio) и whisper.cpp, только CPU
+    "sounddevice",
+    "pywhispercpp",
 )
 TOKENIZER_FILES = (
     "tokenizer.json",

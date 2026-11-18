@@ -255,7 +255,8 @@ internal sealed class FakeChatApi : IChatApi
         AppSettings = new AppSettings(
             update.DataDir ?? before.DataDir, update.ModelsDir ?? before.ModelsDir, update.Language ?? before.Language,
             update.ApiPort ?? before.ApiPort, update.NetworkAccess ?? before.NetworkAccess,
-            update.Theme ?? before.Theme);
+            update.Theme ?? before.Theme, update.VoiceDevice ?? before.VoiceDevice,
+            update.VoiceLanguage ?? before.VoiceLanguage, update.VoiceModel ?? before.VoiceModel);
         var restart = new List<string>();
         if (AppSettings.DataDir != before.DataDir)
         {
@@ -343,6 +344,101 @@ internal sealed class FakeChatApi : IChatApi
         Models.RemoveAll(m => m.Id == modelId);
         return Task.FromResult(new DeleteModelResult(true, deleteFile));
     }
+
+    // --- 5.2: голосовой ввод ------------------------------------------------------------------
+
+    public List<string> VoiceCalls { get; } = [];
+
+    public string VoiceState { get; set; } = "idle";
+
+    public double VoiceSeconds { get; set; }
+
+    public bool VoiceLimit { get; set; }
+
+    public string VoiceText { get; set; } = "привет мир";
+
+    /// <summary>Ошибка следующего вызова голоса (start/stop/cancel).</summary>
+    public ApiException? VoiceError { get; set; }
+
+    /// <summary>Пока не завершён, «Стоп» ждёт (распознавание идёт).</summary>
+    public TaskCompletionSource? VoiceStopGate { get; set; }
+
+    public List<VoiceDevice> VoiceDeviceList { get; } = [new("Mic A", true), new("Mic B", false)];
+
+    public List<VoiceModelOption> VoiceModels { get; } =
+        [new("large-v3-turbo-q5_0", 574_041_195), new("small-q5_1", 190_085_487, true)];
+
+    public VoiceDownload VoiceDownloadState { get; set; } = new("idle");
+
+    public VoiceStatus Voice() => new(
+        VoiceState, VoiceSeconds, 0.5, VoiceLimit, 120, AppSettings.VoiceLanguage, ["auto", "ru", "en", "uk"],
+        AppSettings.VoiceDevice,
+        new VoiceModelState(AppSettings.VoiceModel, VoiceModels.First(m => m.Id == AppSettings.VoiceModel).Installed,
+            1),
+        [.. VoiceModels], VoiceDownloadState);
+
+    private Task<T> VoiceCall<T>(string call, Func<T> result)
+    {
+        VoiceCalls.Add(call);
+        if (VoiceError is { } error)
+        {
+            VoiceError = null;
+            return Task.FromException<T>(error);
+        }
+
+        return Task.FromResult(result());
+    }
+
+    public Task<VoiceStatus> VoiceStatusAsync(CancellationToken cancel = default) => Task.FromResult(Voice());
+
+    public Task<IReadOnlyList<VoiceDevice>> VoiceDevicesAsync(CancellationToken cancel = default) =>
+        Task.FromResult<IReadOnlyList<VoiceDevice>>([.. VoiceDeviceList]);
+
+    public Task<VoiceStatus> StartVoiceAsync(string? device = null, CancellationToken cancel = default) =>
+        VoiceCall("start", () =>
+        {
+            VoiceState = "recording";
+            return Voice();
+        });
+
+    public async Task<VoiceResult> StopVoiceAsync(CancellationToken cancel = default)
+    {
+        VoiceState = "transcribing";
+        if (VoiceStopGate is { } gate)
+        {
+            await gate.Task.ConfigureAwait(true);
+        }
+
+        try
+        {
+            return await VoiceCall("stop", () => new VoiceResult(VoiceText, "ru", VoiceSeconds, 0.1)).ConfigureAwait(true);
+        }
+        finally
+        {
+            VoiceState = "idle";
+        }
+    }
+
+    public Task<VoiceStatus> CancelVoiceAsync(CancellationToken cancel = default) =>
+        VoiceCall("cancel", () =>
+        {
+            VoiceState = "idle";
+            return Voice();
+        });
+
+    public Task<VoiceStatus> DownloadVoiceModelAsync(string? model = null, CancellationToken cancel = default) =>
+        VoiceCall($"download {model}", () =>
+        {
+            VoiceDownloadState = new VoiceDownload("running", model, 0, 100);
+            return Voice();
+        });
+
+    public Task<VoiceStatus> CancelVoiceDownloadAsync(CancellationToken cancel = default) =>
+        VoiceCall("download-cancel", () =>
+        {
+            VoiceDownloadState = new VoiceDownload("idle");
+            return Voice();
+        });
 
     /// <summary>Сообщение сервиса <c>{code, params}</c>, как его присылает API.</summary>
     public static JsonElement Message(string code, params (string Name, object Value)[] values)

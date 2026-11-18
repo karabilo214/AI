@@ -134,7 +134,8 @@ public sealed record OnboardingState(bool Done, string? DefaultModel);
 
 /// <summary>3.7: настройки приложения (как в `ramvi_service.settings.Settings`).</summary>
 public sealed record AppSettings(
-    string DataDir, string ModelsDir, string Language, int ApiPort, bool NetworkAccess, string Theme = "system");
+    string DataDir, string ModelsDir, string Language, int ApiPort, bool NetworkAccess, string Theme = "system",
+    string VoiceDevice = "", string VoiceLanguage = "auto", string VoiceModel = "large-v3-turbo-q5_0");
 
 public sealed record SettingsFolders(string DataDir, string ModelsDir);
 
@@ -148,7 +149,42 @@ public sealed record SettingsInfo(
 /// <summary>Только изменённые поля; null не отправляется.</summary>
 public sealed record SettingsUpdate(
     string? DataDir = null, string? ModelsDir = null, string? Language = null, int? ApiPort = null,
-    bool? NetworkAccess = null, string? Theme = null);
+    bool? NetworkAccess = null, string? Theme = null, string? VoiceDevice = null, string? VoiceLanguage = null,
+    string? VoiceModel = null);
+
+/// <summary>5.2: модель распознавания речи — скачана ли, размер, держится ли в памяти.</summary>
+public sealed record VoiceModelState(string Id, bool Installed, long Size, bool Loaded = false);
+
+public sealed record VoiceModelOption(string Id, long Size, bool Installed = false);
+
+/// <summary>5.2: скачивание модели распознавания (idle, running, done, failed).</summary>
+public sealed record VoiceDownload(string State, string? Model = null, long? Done = null, long? Total = null,
+    ApiError? Error = null);
+
+/// <summary>5.2: состояние голосового ввода: idle, recording, transcribing.</summary>
+public sealed record VoiceStatus(
+    string State,
+    double Seconds,
+    double Level,
+    bool LimitReached,
+    double MaxSeconds,
+    string Language,
+    IReadOnlyList<string> Languages,
+    string Device,
+    VoiceModelState Model,
+    IReadOnlyList<VoiceModelOption> Models,
+    VoiceDownload Download);
+
+public sealed record VoiceDevice(string Name, bool Default);
+
+internal sealed record VoiceDevicesResponse(IReadOnlyList<VoiceDevice> Devices);
+
+/// <summary>5.2: распознанный текст — в поле ввода, не в чат.</summary>
+public sealed record VoiceResult(string Text, string? Language, double AudioS, double ProcS);
+
+internal sealed record DeviceRequest(string? Device);
+
+internal sealed record VoiceModelRequest(string? Model);
 
 /// <summary>3.11: раздел интерфейса (встроенный или модуля) и его состояние.</summary>
 public sealed record SectionInfo(
@@ -229,4 +265,9 @@ public sealed record UnloadResponse(bool Unloaded, EngineStatus Engine);
 [JsonSerializable(typeof(DeleteModelRequest))]
 [JsonSerializable(typeof(DeleteModelResult))]
 [JsonSerializable(typeof(DefaultModelResponse))]
+[JsonSerializable(typeof(VoiceStatus))]
+[JsonSerializable(typeof(VoiceDevicesResponse))]
+[JsonSerializable(typeof(VoiceResult))]
+[JsonSerializable(typeof(DeviceRequest))]
+[JsonSerializable(typeof(VoiceModelRequest))]
 internal sealed partial class ApiJson : JsonSerializerContext;

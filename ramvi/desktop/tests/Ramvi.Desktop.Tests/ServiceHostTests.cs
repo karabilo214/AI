@@ -150,6 +150,33 @@ public sealed class RealServiceStartTests
                 var noDelete = await Assert.ThrowsAsync<Api.ApiException>(() => client.DeleteModelAsync("no-such-model", true, cancel));
                 Assert.Equal("chat.model_not_found", noDelete.Code);
                 Assert.Contains(await client.SectionsAsync(cancel), section => section.View == "models");
+                // 5.2: голос — те же поля, что у сервиса; модель распознавания не скачана.
+                var voice = await client.VoiceStatusAsync(cancel);
+                Assert.Equal(("idle", "auto", "large-v3-turbo-q5_0", false),
+                    (voice.State, voice.Language, voice.Model.Id, voice.Model.Installed));
+                Assert.Equal(["large-v3-turbo-q5_0", "small-q5_1"], voice.Models.Select(m => m.Id));
+                Assert.Equal("idle", voice.Download.State);
+                var voiceSaved = await client.SaveSettingsAsync(
+                    new Api.SettingsUpdate(VoiceLanguage: "uk", VoiceModel: "small-q5_1", VoiceDevice: "Mic"), cancel);
+                Assert.Equal(("uk", "small-q5_1", "Mic"),
+                    (voiceSaved.Settings.VoiceLanguage, voiceSaved.Settings.VoiceModel, voiceSaved.Settings.VoiceDevice));
+                var noModel = await Assert.ThrowsAsync<Api.ApiException>(() => client.StartVoiceAsync(null, cancel));
+                Assert.Equal("voice.model_missing", noModel.Code);
+                Assert.Equal("small-q5_1", noModel.Parameters["model"].GetString());
+                var notRecording = await Assert.ThrowsAsync<Api.ApiException>(() => client.StopVoiceAsync(cancel));
+                Assert.Equal("voice.not_recording", notRecording.Code);
+                Assert.Equal("idle", (await client.CancelVoiceAsync(cancel)).State);
+                var badModel = await Assert.ThrowsAsync<Api.ApiException>(
+                    () => client.DownloadVoiceModelAsync("no-such", cancel));
+                Assert.Equal("voice.unknown_model", badModel.Code); // тело дошло: модель из запроса
+                try
+                {
+                    Assert.NotNull(await client.VoiceDevicesAsync(cancel)); // есть ли микрофоны — зависит от машины
+                }
+                catch (Api.ApiException noDevices)
+                {
+                    Assert.StartsWith("voice.", noDevices.Code, StringComparison.Ordinal);
+                }
             }
             finally
             {

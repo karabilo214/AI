@@ -40,6 +40,9 @@ def test_defaults_are_inside_app_folder(config: AppConfig) -> None:
         "task_mode": "chat",
         "task_priority": "balanced",
         "task_context": 0,
+        "voice_device": "",
+        "voice_language": "auto",
+        "voice_model": "large-v3-turbo-q5_0",
     }
     assert got["resolved"]["data_dir"] == str((config.app_dir / "data").resolve())
     assert got["current_data_dir"] == str((config.app_dir / "data").resolve())

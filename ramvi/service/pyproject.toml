@@ -9,6 +9,10 @@ description = "Лёгкие контракты и координация мод�
 requires-python = ">=3.12"
 dependencies = ["ramvi-engine>=0.1.0", "ramvi-storage>=0.1.0"]
 
+[project.optional-dependencies]
+# 5.2 (ADR-0004): голосовой ввод — запись звука и whisper.cpp; без них сервис работает, голос недоступен.
+voice = ["sounddevice==0.5.6", "pywhispercpp==1.5.1"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ramvi_service*"]

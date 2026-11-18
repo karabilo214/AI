@@ -57,6 +57,7 @@ public sealed class SettingsViewModel : ObservableObject
         Func<Task>? defaultChanged = null)
     {
         _api = api;
+        Sound = new SoundSettingsViewModel(api);
         _models = models ?? [];
         _openModels = openModels;
         _defaultChanged = defaultChanged;
@@ -86,6 +87,7 @@ public sealed class SettingsViewModel : ObservableObject
         CloseCommand = new Command(() =>
         {
             IsOpen = false;
+            Sound.Stop();
             return Task.CompletedTask;
         });
         BrowseDataDirCommand = new Command(async () => DataDir = await _pickFolder(DataDir).ConfigureAwait(true) ?? DataDir);
@@ -97,6 +99,9 @@ public sealed class SettingsViewModel : ObservableObject
     private static Localizer L => Localizer.Current;
 
     public Command SaveCommand { get; }
+
+    /// <summary>5.2: раздел «Звук» — микрофон, язык и модель распознавания речи.</summary>
+    public SoundSettingsViewModel Sound { get; }
 
     public Command CloseCommand { get; }
 
@@ -242,7 +247,9 @@ public sealed class SettingsViewModel : ObservableObject
         IsOpen = true;
         try
         {
-            Show(await _api().SettingsAsync().ConfigureAwait(true));
+            var info = await _api().SettingsAsync().ConfigureAwait(true);
+            Show(info);
+            await Sound.LoadAsync(info.Settings).ConfigureAwait(true);
             ShowEngine((await _api().StatusAsync().ConfigureAwait(true)).Engine);
             _savedDefault = (await _api().OnboardingAsync().ConfigureAwait(true)).DefaultModel;
             Raise(nameof(Models));
@@ -285,6 +292,7 @@ public sealed class SettingsViewModel : ObservableObject
         Themes = [.. ThemeOptions()];
         Languages = [.. Languages.Select(l => new LanguageOption(l.Code, L[$"settings.lang.{l.Code}"]))];
         base.Relocalize();
+        Sound.Relocalize();
         Theme = Themes.FirstOrDefault(t => t.Code == theme);
         Language = Languages.FirstOrDefault(l => l.Code == language);
     }
@@ -328,6 +336,8 @@ public sealed class SettingsViewModel : ObservableObject
             ApiPort: port != saved.ApiPort ? port : null,
             NetworkAccess: NetworkAccess != saved.NetworkAccess ? NetworkAccess : null,
             Theme: Theme is { } theme && theme.Code != saved.Theme ? theme.Code : null);
+        var sound = Sound.Changes(saved);
+        update = update with { VoiceDevice = sound.Device, VoiceLanguage = sound.Language, VoiceModel = sound.Model };
         var newDefault = DefaultModel?.Id is { } id && id != _savedDefault ? id : null;
         if (update == new SettingsUpdate() && newDefault is null)
         {
@@ -355,6 +365,7 @@ public sealed class SettingsViewModel : ObservableObject
 
             var info = await _api().SaveSettingsAsync(update).ConfigureAwait(true);
             Show(info);
+            Sound.Show(info.Settings);
             if (update.Theme is not null)
             {
                 _applyTheme?.Invoke(info.Settings.Theme);
