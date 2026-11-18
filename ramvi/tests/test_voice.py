@@ -97,6 +97,7 @@ class VS:
     voice_backend: str = "local"
     voice_api_url: str = ""
     voice_api_model: str = "whisper-1"
+    voice_auto_send: bool = True
 
 
 class Env:
@@ -1348,3 +1349,12 @@ def test_stt_models_stay_in_app_folder_when_llm_models_live_elsewhere(tmp_path: 
     finally:
         server.close()
         engines.stop()
+
+
+def test_auto_send_setting_is_in_status_and_validated(tmp_path: Path) -> None:
+    env = Env(tmp_path)
+    assert env.voice.status()["auto_send"] is True  # по умолчанию включено
+    env.settings = VS(voice_auto_send=False)
+    assert env.voice.status()["auto_send"] is False
+    with pytest.raises(st.SettingsError):
+        st.Settings(voice_auto_send="yes").validate()  # type: ignore[arg-type]

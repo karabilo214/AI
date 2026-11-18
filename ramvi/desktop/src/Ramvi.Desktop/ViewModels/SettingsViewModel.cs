@@ -416,6 +416,7 @@ public sealed class SettingsViewModel : ObservableObject
         {
             VoiceDevice = sound.Device, VoiceLanguage = sound.Language, VoiceModel = sound.Model,
             VoiceBackend = api.Backend, VoiceApiUrl = api.Url, VoiceApiModel = api.Model,
+            VoiceAutoSend = Sound.AutoSendChange(saved),
         };
         var newDefault = DefaultModel?.Id is { } id && id != _savedDefault ? id : null;
         if (update == new SettingsUpdate() && newDefault is null)

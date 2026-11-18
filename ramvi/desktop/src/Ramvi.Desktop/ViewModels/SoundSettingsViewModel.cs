@@ -29,6 +29,7 @@ public sealed class SoundSettingsViewModel : ObservableObject
     private string _apiModel = "whisper-1";
     private string _apiKey = "";
     private string? _checkResult;
+    private bool _autoSend = true;
 
     public SoundSettingsViewModel(Func<IChatApi> api, TimeSpan? poll = null)
     {
@@ -46,6 +47,13 @@ public sealed class SoundSettingsViewModel : ObservableObject
     }
 
     public static IReadOnlyList<string> BackendCodes { get; } = ["local", "api"];
+
+    /// <summary>Распознанный текст сразу уходит в чат (по умолчанию включено).</summary>
+    public bool AutoSend
+    {
+        get => _autoSend;
+        set => Set(ref _autoSend, value);
+    }
 
     /// <summary>5.7: способ распознавания — локально или через API.</summary>
     public List<VoiceOption> Backends { get; private set; }
@@ -328,7 +336,11 @@ public sealed class SoundSettingsViewModel : ObservableObject
         Backend = Backends.FirstOrDefault(b => b.Code == saved.VoiceBackend) ?? Backends[0];
         ApiUrl = saved.VoiceApiUrl;
         ApiModel = saved.VoiceApiModel;
+        AutoSend = saved.VoiceAutoSend;
     }
+
+    /// <summary>Изменилась ли галочка «Отправлять автоматически» (null — нет).</summary>
+    public bool? AutoSendChange(AppSettings saved) => AutoSend != saved.VoiceAutoSend ? AutoSend : null;
 
     /// <summary>5.7: изменённые поля API (null — без изменений).</summary>
     public (string? Backend, string? Url, string? Model) ApiChanges(AppSettings saved) => (

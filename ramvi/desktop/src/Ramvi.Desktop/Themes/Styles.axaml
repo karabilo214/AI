@@ -243,6 +243,17 @@
     <Setter Property="Background" Value="{DynamicResource ramvi-error-bg}" />
     <Setter Property="Foreground" Value="{DynamicResource ramvi-error}" />
   </Style>
+  <!-- Большая «Остановить» во время записи: вдвое крупнее обычного значка -->
+  <Style Selector="Button.icon.big">
+    <Setter Property="Padding" Value="22" />
+    <Setter Property="CornerRadius" Value="40" />
+  </Style>
+  <!-- Слой записи поверх поля ввода: тот же фон, текст под ним не мешает -->
+  <Style Selector="Border.recording-overlay">
+    <Setter Property="Background" Value="{DynamicResource ramvi-background}" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="Padding" Value="8" />
+  </Style>
   <!-- Мигающая точка «идёт запись» -->
   <Style Selector="Ellipse.recording-dot">
     <Setter Property="Width" Value="10" />

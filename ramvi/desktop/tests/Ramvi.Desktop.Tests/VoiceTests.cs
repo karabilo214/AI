@@ -40,11 +40,14 @@ public sealed class VoiceTests
     }
 
     [Fact]
-    public async Task Two_clicks_record_then_put_text_into_input()
+    public async Task Two_clicks_record_and_send_automatically_by_default()
     {
         var api = new FakeChatApi();
+        var chat = api.AddChat("t");
+        api.Stream.Writer.Complete();
         var model = new MainViewModel(api);
         await model.InitializeAsync();
+        Assert.True(model.Voice.AutoSend); // по умолчанию — отправлять сразу
         model.Input = "Вопрос:";
 
         await model.Voice.ToggleCommand.RunAsync();
@@ -53,10 +56,41 @@ public sealed class VoiceTests
         await model.Voice.ToggleCommand.RunAsync();
 
         Assert.Equal(["start", "stop"], api.VoiceCalls);
+        await Until(() => api.Calls.Count == 1, "сообщение отправлено");
+        Assert.Equal([$"send {chat} Вопрос: привет мир files=0"], api.Calls);
+        Assert.True(model.Voice.IsIdle);
+    }
+
+    [Fact]
+    public async Task Without_auto_send_text_waits_in_the_input_field()
+    {
+        var api = new FakeChatApi();
+        api.AppSettings = api.AppSettings with { VoiceAutoSend = false };
+        var model = new MainViewModel(api);
+        await model.InitializeAsync();
+        Assert.False(model.Voice.AutoSend);
+        model.Input = "Вопрос:";
+
+        await model.Voice.ToggleCommand.RunAsync();
+        await model.Voice.ToggleCommand.RunAsync();
+
         Assert.Equal("Вопрос: привет мир", model.Input); // в поле ввода, не в чат
         Assert.Empty(api.Calls);
-        Assert.True(model.Voice.IsIdle);
         Assert.True(model.SendCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Auto_send_checkbox_is_saved_and_applies_at_once()
+    {
+        var api = new FakeChatApi();
+        var model = new MainViewModel(api);
+        await model.InitializeAsync();
+        await model.Settings.OpenAsync("sound");
+        Assert.True(model.Settings.Sound.AutoSend);
+        model.Settings.Sound.AutoSend = false;
+        await model.Settings.SaveCommand.RunAsync();
+        Assert.Equal(new SettingsUpdate(VoiceAutoSend: false), api.SettingsUpdates.Single());
+        Assert.False(model.Voice.AutoSend); // сразу после «Сохранить»
     }
 
     [Fact]
@@ -112,6 +146,7 @@ public sealed class VoiceTests
     public async Task Errors_are_shown_and_chat_keeps_working()
     {
         var api = new FakeChatApi { VoiceError = Error("voice.model_missing", ("model", "large-v3-turbo-q5_0")) };
+        api.AppSettings = api.AppSettings with { VoiceAutoSend = false };
         var model = new MainViewModel(api);
         await model.InitializeAsync();
         model.Input = "текст";
@@ -347,21 +382,26 @@ public sealed class VoiceTests
         Dispatcher.UIThread.RunJobs();
 
         var mic = window.FindControl<Button>("MicButton")!;
-        var indicator = window.FindControl<StackPanel>("RecordingIndicator")!;
-        Assert.True(mic.IsEffectivelyVisible && mic.IsEffectivelyEnabled);
-        Assert.False(indicator.IsVisible);
+        var overlay = window.FindControl<Border>("RecordingOverlay")!;
+        var bigStop = window.FindControl<Button>("BigStopButton")!;
+        Assert.True(Shown(mic) && mic.IsEffectivelyEnabled);
+        Assert.False(Shown(overlay));
         Assert.Equal(Ru["voice.start_hint"], ToolTip.GetTip(mic));
 
         await model.Voice.ToggleCommand.RunAsync();
         Dispatcher.UIThread.RunJobs();
-        Assert.True(indicator.IsEffectivelyVisible);
-        Assert.Contains("recording", mic.Classes);
-        Assert.NotEmpty(indicator.GetVisualDescendants().OfType<Ellipse>());
+        Assert.True(Shown(overlay) && Shown(bigStop)); // большая «Остановить» посередине поля ввода
+        Assert.False(Shown(mic)); // маленький микрофон не путает
+        Assert.Contains("big", bigStop.Classes);
+        Assert.Equal(Avalonia.Layout.HorizontalAlignment.Center,
+            window.FindControl<StackPanel>("RecordingIndicator")!.HorizontalAlignment);
+        Assert.True(bigStop.Bounds.Width >= 2 * mic.Bounds.Width - 1, $"{bigStop.Bounds.Width} vs {mic.Bounds.Width}");
+        Assert.NotEmpty(overlay.GetVisualDescendants().OfType<Ellipse>());
 
         await model.Voice.CancelCommand.RunAsync();
         Dispatcher.UIThread.RunJobs();
-        Assert.False(indicator.IsVisible);
-        Assert.DoesNotContain("recording", mic.Classes);
+        Assert.False(Shown(overlay));
+        Assert.True(Shown(mic));
 
         await model.OpenSettingsCommand.RunAsync();
         Dispatcher.UIThread.RunJobs();

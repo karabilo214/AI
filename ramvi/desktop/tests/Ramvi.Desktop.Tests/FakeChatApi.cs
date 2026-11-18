@@ -258,7 +258,7 @@ internal sealed class FakeChatApi : IChatApi
             update.Theme ?? before.Theme, update.VoiceDevice ?? before.VoiceDevice,
             update.VoiceLanguage ?? before.VoiceLanguage, update.VoiceModel ?? before.VoiceModel,
             update.VoiceBackend ?? before.VoiceBackend, update.VoiceApiUrl ?? before.VoiceApiUrl,
-            update.VoiceApiModel ?? before.VoiceApiModel);
+            update.VoiceApiModel ?? before.VoiceApiModel, update.VoiceAutoSend ?? before.VoiceAutoSend);
         var restart = new List<string>();
         if (AppSettings.DataDir != before.DataDir)
         {
@@ -398,7 +398,8 @@ internal sealed class FakeChatApi : IChatApi
         AppSettings.VoiceDevice,
         new VoiceModelState(AppSettings.VoiceModel, VoiceModels.First(m => m.Id == AppSettings.VoiceModel).Installed,
             1),
-        [.. VoiceModels], VoiceDownloadState, null, VoiceLastState, VoiceAccelState, VoiceApiState);
+        [.. VoiceModels], VoiceDownloadState, null, VoiceLastState, VoiceAccelState, VoiceApiState,
+        AppSettings.VoiceAutoSend);
 
     private Task<T> VoiceCall<T>(string call, Func<T> result)
     {

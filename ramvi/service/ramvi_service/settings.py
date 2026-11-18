@@ -52,6 +52,7 @@ class Settings:
     voice_backend: str = "local"
     voice_api_url: str = ""
     voice_api_model: str = "whisper-1"
+    voice_auto_send: bool = True  # распознанный текст сразу уходит в чат (замечание владельца)
 
     @property
     def task(self) -> TaskProfile:
@@ -76,6 +77,8 @@ class Settings:
             raise SettingsError("settings.bad_voice_language", allowed=", ".join(VOICE_LANGUAGES))
         if self.voice_model not in VOICE_MODELS:
             raise SettingsError("settings.bad_voice_model", allowed=", ".join(VOICE_MODELS))
+        if not isinstance(self.voice_auto_send, bool):
+            raise SettingsError("settings.bad_voice_auto_send")
         if self.voice_backend not in VOICE_BACKENDS:
             raise SettingsError("settings.bad_voice_backend", allowed=", ".join(VOICE_BACKENDS))
         if not isinstance(self.voice_api_url, str) or (

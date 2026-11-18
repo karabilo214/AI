@@ -46,6 +46,7 @@ def test_defaults_are_inside_app_folder(config: AppConfig) -> None:
         "voice_backend": "local",
         "voice_api_url": "",
         "voice_api_model": "whisper-1",
+        "voice_auto_send": True,
     }
     assert got["resolved"]["data_dir"] == str((config.app_dir / "data").resolve())
     assert got["current_data_dir"] == str((config.app_dir / "data").resolve())

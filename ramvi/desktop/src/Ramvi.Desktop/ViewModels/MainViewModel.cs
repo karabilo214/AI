@@ -97,7 +97,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _copy = copy ?? (_ => Task.CompletedTask);
         _openFolder = openFolder ?? (_ => Task.CompletedTask);
         _status = () => L["status.connecting"];
-        Voice = new VoiceViewModel(() => _api, InsertVoiceText, ShowError, () => IsConnected);
+        Voice = new VoiceViewModel(() => _api, InsertVoiceText, ShowError, () => IsConnected, send: SendVoiceTextAsync);
         NewChatCommand = new Command(NewChatAsync, () => !IsGenerating && IsConnected);
         SendCommand = new Command(SendAsync, CanSend);
         StopCommand = new Command(StopAsync, () => IsGenerating);
@@ -1163,6 +1163,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             SetProblem(null); // прошлая ошибка голоса больше не актуальна
         }
     }
+
+    /// <summary>«Отправлять автоматически»: распознанное уходит в чат, если отправка сейчас возможна.</summary>
+    private Task SendVoiceTextAsync() => SendCommand.CanExecute(null) ? SendCommand.RunAsync() : Task.CompletedTask;
 
     private static Dictionary<string, object?> Params(IReadOnlyDictionary<string, JsonElement>? values) =>
         values?.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal)

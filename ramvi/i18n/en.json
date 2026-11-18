@@ -370,5 +370,9 @@
   "settings.tab.sound": "Sound",
   "settings.tab.models": "Models",
   "settings.module_tab_note": "Module settings will appear with the module.",
-  "models.tab_note": "Model catalog: download, set default, delete"
+  "models.tab_note": "Model catalog: download, set default, delete",
+  "settings.bad_voice_auto_send": "“send automatically” must be yes or no",
+  "voice.auto_send": "Send automatically",
+  "voice.auto_send_note": "Recognized text is sent to the chat right away. Without the check box the text appears in the input field — you can edit and send it yourself",
+  "voice.stop_big": "Stop recording"
 }

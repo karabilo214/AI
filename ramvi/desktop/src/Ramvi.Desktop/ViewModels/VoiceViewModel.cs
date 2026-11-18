@@ -22,15 +22,20 @@ public sealed class VoiceViewModel : ObservableObject
     private double _level;
     private int _watch;
     private string? _remoteHost;
+    private bool _autoSend = true;
+    private readonly Func<Task>? _send;
 
     /// <param name="api">Клиент сервиса.</param>
     /// <param name="insert">Добавить распознанный текст в поле ввода.</param>
     /// <param name="showError">Показать ошибку в строке состояния.</param>
     /// <param name="canUse">Можно ли сейчас начать запись (сервис подключён).</param>
     /// <param name="poll">Как часто спрашивать сервис во время записи.</param>
+    /// <param name="send">Отправить сообщение из поля ввода (для «Отправлять автоматически»).</param>
     public VoiceViewModel(
-        Func<IChatApi> api, Action<string> insert, Action<Exception> showError, Func<bool> canUse, TimeSpan? poll = null)
+        Func<IChatApi> api, Action<string> insert, Action<Exception> showError, Func<bool> canUse, TimeSpan? poll = null,
+        Func<Task>? send = null)
     {
+        _send = send;
         _api = api;
         _insert = insert;
         _showError = showError;
@@ -106,8 +111,18 @@ public sealed class VoiceViewModel : ObservableObject
         }
     }
 
-    private void ShowApi(VoiceStatus status) =>
+    private void ShowApi(VoiceStatus status)
+    {
         RemoteHost = status.Api is { Enabled: true } api ? (api.Host.Length > 0 ? api.Host : api.Url) : null;
+        AutoSend = status.AutoSend;
+    }
+
+    /// <summary>После распознавания сообщение уходит само (настройка «Отправлять автоматически»).</summary>
+    public bool AutoSend
+    {
+        get => _autoSend;
+        private set => Set(ref _autoSend, value);
+    }
 
     public string Tip => L[IsRecording ? "voice.stop_hint" : IsTranscribing ? "voice.transcribing" : "voice.start_hint"];
 
@@ -214,10 +229,12 @@ public sealed class VoiceViewModel : ObservableObject
 
         _watch++;
         SetState("transcribing");
+        var sent = false;
         try
         {
             var result = await _api().StopVoiceAsync().ConfigureAwait(true);
             _insert(result.Text);
+            sent = AutoSend && _send is not null;
         }
         catch (Exception error) when (error is ApiException or HttpRequestException)
         {
@@ -227,6 +244,11 @@ public sealed class VoiceViewModel : ObservableObject
         {
             SetProgress(0, 0);
             SetState("idle");
+        }
+
+        if (sent)
+        {
+            _ = _send!(); // текст — сразу в чат; кнопка голоса не ждёт ответа модели
         }
     }
 

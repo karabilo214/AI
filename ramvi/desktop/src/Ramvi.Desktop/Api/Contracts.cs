@@ -136,7 +136,8 @@ public sealed record OnboardingState(bool Done, string? DefaultModel);
 public sealed record AppSettings(
     string DataDir, string ModelsDir, string Language, int ApiPort, bool NetworkAccess, string Theme = "system",
     string VoiceDevice = "", string VoiceLanguage = "auto", string VoiceModel = "large-v3-turbo-q5_0",
-    string VoiceBackend = "local", string VoiceApiUrl = "", string VoiceApiModel = "whisper-1");
+    string VoiceBackend = "local", string VoiceApiUrl = "", string VoiceApiModel = "whisper-1",
+    bool VoiceAutoSend = true);
 
 public sealed record SettingsFolders(string DataDir, string ModelsDir);
 
@@ -152,7 +153,7 @@ public sealed record SettingsUpdate(
     string? DataDir = null, string? ModelsDir = null, string? Language = null, int? ApiPort = null,
     bool? NetworkAccess = null, string? Theme = null, string? VoiceDevice = null, string? VoiceLanguage = null,
     string? VoiceModel = null, string? VoiceBackend = null, string? VoiceApiUrl = null,
-    string? VoiceApiModel = null);
+    string? VoiceApiModel = null, bool? VoiceAutoSend = null);
 
 /// <summary>5.2: модель распознавания речи — скачана ли, размер, держится ли в памяти.</summary>
 public sealed record VoiceModelState(string Id, bool Installed, long Size, bool Loaded = false);
@@ -179,7 +180,8 @@ public sealed record VoiceStatus(
     string? Backend = null,
     VoiceLast? Last = null,
     VoiceAccel? Accel = null,
-    VoiceApi? Api = null);
+    VoiceApi? Api = null,
+    bool AutoSend = true);
 
 /// <summary>5.7: распознавание через сторонний API; ключ — только «задан/нет».</summary>
 public sealed record VoiceApi(bool Enabled, string Url, string Host, string Model, bool KeySet);

@@ -275,6 +275,7 @@ class VoiceService:
                 "language": self._language(),
                 "languages": list(LANGUAGES),
                 "device": settings.voice_device,
+                "auto_send": bool(getattr(settings, "voice_auto_send", True)),
                 "model": {
                     "id": model.id,
                     "installed": installed(model, self.models_dir()),
