@@ -606,5 +606,7 @@
   "system.driver_old": "NVIDIA driver {version} is too old: the bundled CUDA {cuda} needs {need} or newer. Update the driver from the NVIDIA site",
   "system.driver_missing": "An NVIDIA GPU is present but no driver was found. Install the NVIDIA driver ({need} or newer); the CUDA Toolkit is not needed",
   "settings.models_dir_network": "The models folder is on a network drive: it works, but loading a model takes noticeably longer, and a lost connection stops the load.",
-  "settings.models_dir_removable": "The models folder is on a removable drive (USB stick, external disk): it works, but loading may be slower; do not unplug the drive while a model is loaded."
+  "settings.models_dir_removable": "The models folder is on a removable drive (USB stick, external disk): it works, but loading may be slower; do not unplug the drive while a model is loaded.",
+  "system.backend_vcredist": "The backend did not load: Microsoft Visual C++ system libraries are missing. The RAMVI bundle is incomplete — download it again; installing the Visual C++ Redistributable x64 helps for now",
+  "system.driver_working": "The NVIDIA driver works: CUDA {cuda} is available"
 }

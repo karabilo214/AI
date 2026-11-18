@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import importlib.metadata as md
 import json
+import os
 import re
 import shutil
 import sys
@@ -161,6 +162,38 @@ def copy_dev_files(base: Path, target: Path) -> list[str]:
     return copied
 
 
+# 8.1 (PORT-02): библиотеки Microsoft Visual C++ 2015–2022 (x64) рядом с python.exe.
+# Без них на чистой Windows torch не загружает c10.dll (найдено в Windows Sandbox);
+# Microsoft разрешает распространять эти файлы вместе с приложением.
+VC_RUNTIME = (
+    "msvcp140.dll",
+    "msvcp140_1.dll",
+    "msvcp140_2.dll",
+    "msvcp140_atomic_wait.dll",
+    "msvcp140_codecvt_ids.dll",
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+    "vcruntime140_threads.dll",
+    "concrt140.dll",
+    "vcomp140.dll",
+)
+
+
+def copy_vc_runtime(system32: Path, target: Path) -> list[str]:
+    """Положить библиотеки Visual C++ рядом с python.exe; нет хотя бы одной — сборка
+    останавливается: неполный комплект не должен уйти пользователю."""
+    missing = [name for name in VC_RUNTIME if not (system32 / name).is_file()]
+    if missing:
+        raise SystemExit(
+            "нет библиотек Visual C++ для комплекта: "
+            + ", ".join(missing)
+            + " — установите Visual C++ Redistributable x64 на машине сборки"
+        )
+    for name in VC_RUNTIME:
+        shutil.copy2(system32 / name, target / name)
+    return list(VC_RUNTIME)
+
+
 def code_digest(folder: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(p for p in folder.rglob("*") if p.is_file()):
@@ -195,6 +228,9 @@ def build(
         if sys.platform == "win32"
         else []
     )
+    if sys.platform == "win32":
+        system32 = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+        copy_vc_runtime(system32, out / "runtime" / "python")
     packages: dict[str, str] = {}
     copied = size = 0
     for key, dist in closure(roots).items():

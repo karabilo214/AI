@@ -111,6 +111,9 @@ def _driver_check(nvidia: list[Any], backends: dict[str, Any], system: str) -> d
     cuda = backends.get("cuda_version")
     need = min_driver(cuda, system)
     if driver is None:
+        if backends.get("cuda"):
+            # nvidia-smi нет, но CUDA работает (например, Windows Sandbox с драйвером хоста).
+            return _check("driver", "ok", "system.driver_working", cuda=cuda or "?")
         return _check("driver", "fail", "system.driver_missing", need=need or "?")
     have = _version(driver)
     if need is None or have is None:
@@ -205,6 +208,11 @@ def checks(hw: HardwareProfile, backends: dict[str, Any]) -> list[dict[str, Any]
         # Совет про драйвер имеет смысл, только если карта NVIDIA есть.
         code = "system.backend_no_cuda" if nvidia else "system.backend_no_gpu"
         result.append(_check("backend", "fail", code, torch=backends["torch"]))
+    elif "c10.dll" in (backends.get("error") or "") or "WinError 126" in (
+        backends.get("error") or ""
+    ):
+        # 8.1: torch не загрузил свои DLL — нет библиотек Visual C++ (комплект неполный).
+        result.append(_check("backend", "fail", "system.backend_vcredist"))
     else:
         result.append(
             _check("backend", "fail", "system.backend_missing", detail=backends.get("error") or "")

@@ -292,6 +292,24 @@ def _vendor(name: str) -> str:
     return "unknown"
 
 
+def nvidia_driver_from_wmi(version: str | None) -> str | None:
+    """Версия драйвера NVIDIA из формата Windows: «32.0.15.6692» → «566.92».
+
+    У драйвера NVIDIA в WMI старшая часть ≥ 20, вторая — 0, третья — 1x; последние пять
+    цифр двух младших частей — версия NVIDIA. Иное (например, виртуальный драйвер
+    Microsoft «10.0.26100.1150» в Windows Sandbox) — не драйвер NVIDIA: None."""
+    if not version:
+        return None
+    parts = version.strip().split(".")
+    if len(parts) != 4 or not all(p.isdigit() for p in parts):
+        return None
+    major, minor, build, revision = (int(p) for p in parts)
+    if major < 20 or minor != 0 or not 10 <= build <= 19 or revision > 9999:
+        return None
+    digits = f"{build % 10}{revision:04d}"
+    return f"{int(digits[:3])}.{digits[3:]}"
+
+
 def parse_wmi_json(text: str) -> tuple[int | None, tuple[GPUInfo, ...]]:
     """VRAM из WMI не берём: AdapterRAM ограничен 4 ГБ, у встроенных память общая."""
     import json
@@ -302,7 +320,14 @@ def parse_wmi_json(text: str) -> tuple[int | None, tuple[GPUInfo, ...]]:
         return None, ()
     cores = sum(_int(c.get("NumberOfCores")) or 0 for c in data.get("cpu") or [])
     gpus = tuple(
-        GPUInfo(name=g["Name"].strip(), vendor=_vendor(g["Name"]), driver=g.get("DriverVersion"))
+        GPUInfo(
+            name=g["Name"].strip(),
+            vendor=_vendor(g["Name"]),
+            # 8.1: у NVIDIA — версия в привычном виде или None (не настоящий драйвер NVIDIA).
+            driver=nvidia_driver_from_wmi(g.get("DriverVersion"))
+            if _vendor(g["Name"]) == "NVIDIA"
+            else g.get("DriverVersion"),
+        )
         for g in data.get("gpu") or []
         if g.get("Name")
     )

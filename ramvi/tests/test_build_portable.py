@@ -166,3 +166,17 @@ def test_dev_files_for_triton_are_copied(tmp_path: Path) -> None:
         target / "libs" / "python312.lib"
     ).is_file()
     assert bp.copy_dev_files(tmp_path / "missing", target) == []
+
+
+def test_vc_runtime_is_copied_next_to_python(tmp_path: Path) -> None:
+    """8.1: без библиотек Visual C++ torch на чистой Windows не загружается."""
+    system32, target = tmp_path / "System32", tmp_path / "python"
+    system32.mkdir()
+    target.mkdir()
+    for name in bp.VC_RUNTIME:
+        (system32 / name).write_bytes(b"dll " + name.encode())
+    assert bp.copy_vc_runtime(system32, target) == list(bp.VC_RUNTIME)
+    assert (target / "msvcp140.dll").read_bytes() == b"dll msvcp140.dll"
+    (system32 / "msvcp140.dll").unlink()
+    with pytest.raises(SystemExit, match="msvcp140.dll"):
+        bp.copy_vc_runtime(system32, tmp_path / "other")

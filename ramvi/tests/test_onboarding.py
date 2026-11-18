@@ -86,12 +86,21 @@ def test_driver_check_names_the_needed_version() -> None:
         )
     )
     assert linux["driver"]["code"] == "system.driver_old"  # 525.60.12 < 525.60.13
-    missing = by_id(checks(profile(gpus=(GPUInfo("RTX", "NVIDIA", None, None, None),)), cuda13))
+    no_cuda = {**cuda13, "cuda": False}
+    missing = by_id(checks(profile(gpus=(GPUInfo("RTX", "NVIDIA", None, None, None),)), no_cuda))
     assert missing["driver"] == {
         "id": "driver",
         "status": "fail",
         "code": "system.driver_missing",
         "params": {"need": "580"},
+    }
+    # Windows Sandbox: nvidia-smi нет, но CUDA работает через драйвер хоста — не ошибка.
+    sandbox = by_id(checks(profile(gpus=(GPUInfo("RTX", "NVIDIA", None, None, None),)), cuda13))
+    assert sandbox["driver"] == {
+        "id": "driver",
+        "status": "ok",
+        "code": "system.driver_working",
+        "params": {"cuda": "13.2"},
     }
     unknown = by_id(checks(profile(), {"torch": "2.9.0", "cuda": False, "cuda_version": None}))
     assert unknown["driver"]["code"] == "system.driver_found"
@@ -447,3 +456,29 @@ def test_scan_route_any_extension_in_own_folder(tmp_path: Path) -> None:
     finally:
         server.close()
         engines.stop()
+
+
+def test_wmi_driver_versions_and_missing_vc_runtime() -> None:
+    """8.1: в WMI у NVIDIA своя запись версии; виртуальный драйвер Microsoft — не NVIDIA."""
+    from ramvi_service.hardware import nvidia_driver_from_wmi, parse_wmi_json
+
+    assert nvidia_driver_from_wmi("32.0.16.1692") == "616.92"  # ASUS: nvidia-smi 616.92
+    assert nvidia_driver_from_wmi("32.0.15.6692") == "566.92"
+    assert nvidia_driver_from_wmi("10.0.26100.1150") is None  # Windows Sandbox
+    assert nvidia_driver_from_wmi("junk") is None and nvidia_driver_from_wmi(None) is None
+    _, gpus = parse_wmi_json(
+        '{"gpu": [{"Name": "NVIDIA GeForce RTX 5060", "DriverVersion": "10.0.26100.1150"},'
+        ' {"Name": "AMD Radeon 780M", "DriverVersion": "32.0.32015.7029"}]}'
+    )
+    assert [(g.vendor, g.driver) for g in gpus] == [("NVIDIA", None), ("AMD", "32.0.32015.7029")]
+    vcredist = by_id(
+        checks(
+            profile(),
+            {
+                "torch": None,
+                "cuda": False,
+                "error": 'OSError: [WinError 126] Error loading "c10.dll"',
+            },
+        )
+    )
+    assert vcredist["backend"]["code"] == "system.backend_vcredist"
