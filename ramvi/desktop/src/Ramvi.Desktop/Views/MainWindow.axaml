@@ -317,6 +317,10 @@
                 </Panel>
               </Button>
             </StackPanel>
+            <!-- 5.7: пока выбрано распознавание через API — метка, куда уходит звук -->
+            <TextBlock x:Name="VoiceRemoteLabel" Grid.Column="1" Classes="warn" FontSize="12" VerticalAlignment="Center"
+                       Margin="6,0" TextTrimming="CharacterEllipsis" Text="{Binding Voice.RemoteText}"
+                       IsVisible="{Binding Voice.ShowRemote}" />
             <!-- 5.2: индикатор записи и распознавания -->
             <StackPanel x:Name="RecordingIndicator" Grid.Column="1" Orientation="Horizontal" Spacing="8"
                         VerticalAlignment="Center" Margin="6,0" IsVisible="{Binding Voice.IsRecording}">
@@ -520,6 +524,43 @@
                 </ComboBox.ItemTemplate>
               </ComboBox>
             </Grid>
+            <TextBlock VerticalAlignment="Center" Text="{l:T voice.backend}" />
+            <ComboBox x:Name="VoiceBackendBox" MinWidth="320" ItemsSource="{Binding Settings.Sound.Backends}"
+                      SelectedItem="{Binding Settings.Sound.Backend}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:VoiceOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <!-- 5.7: распознавание через сторонний API (OpenAI-совместимое /v1/audio/transcriptions) -->
+            <StackPanel x:Name="VoiceApiPanel" Spacing="8" IsVisible="{Binding Settings.Sound.IsApi}">
+              <TextBlock Classes="warn" FontSize="12" TextWrapping="Wrap" Text="{Binding Settings.Sound.ApiWarning}" />
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" VerticalAlignment="Center" Margin="0,0,12,0" Text="{l:T voice.api_url}" />
+                <TextBox x:Name="VoiceApiUrlBox" Grid.Row="0" Grid.Column="1" Text="{Binding Settings.Sound.ApiUrl}"
+                         PlaceholderText="{l:T voice.api_url_hint}" />
+                <TextBlock Grid.Row="1" VerticalAlignment="Center" Margin="0,0,12,0" Text="{l:T voice.api_model}" />
+                <TextBox x:Name="VoiceApiModelBox" Grid.Row="1" Grid.Column="1" Text="{Binding Settings.Sound.ApiModel}" />
+                <TextBlock Grid.Row="2" VerticalAlignment="Center" Margin="0,0,12,0" Text="{l:T voice.api_key}" />
+                <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,Auto,Auto">
+                  <TextBox x:Name="VoiceApiKeyBox" PasswordChar="•" Text="{Binding Settings.Sound.ApiKey}"
+                           PlaceholderText="{l:T voice.api_key_hint}" />
+                  <Button x:Name="VoiceApiKeySave" Grid.Column="1" Content="{l:T voice.api_key_save}"
+                          Command="{Binding Settings.Sound.SaveKeyCommand}" />
+                  <Button x:Name="VoiceApiKeyClear" Grid.Column="2" Classes="icon" ToolTip.Tip="{l:T voice.api_key_clear}"
+                          Command="{Binding Settings.Sound.ClearKeyCommand}">
+                    <PathIcon Data="{StaticResource icon-delete}" />
+                  </Button>
+                </Grid>
+              </Grid>
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock x:Name="VoiceApiKeyStatus" Classes="caption" VerticalAlignment="Center" Text="{Binding Settings.Sound.KeyStatus}" />
+                <Button x:Name="VoiceApiCheck" Content="{l:T voice.api_check}" Command="{Binding Settings.Sound.CheckCommand}" />
+              </StackPanel>
+              <TextBlock x:Name="VoiceApiCheckResult" TextWrapping="Wrap" Text="{Binding Settings.Sound.CheckResult}"
+                         IsVisible="{Binding Settings.Sound.HasCheckResult}" />
+            </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="10">
               <TextBlock x:Name="VoiceModelStatus" VerticalAlignment="Center" TextWrapping="Wrap"
                          Text="{Binding Settings.Sound.ModelStatus}" />

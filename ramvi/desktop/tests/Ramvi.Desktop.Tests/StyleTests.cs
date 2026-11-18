@@ -639,7 +639,17 @@ public sealed class StyleTests
         Pump();
         window.FindControl<Control>("VoiceModelStatus")!.BringIntoView();
         Shoot(window, "voice-settings");
+        var sound = model.Settings.Sound;
+        sound.Backend = sound.Backends.Single(b => b.Code == "api");
+        sound.ApiUrl = "https://api.groq.com/openai/v1";
+        sound.ApiModel = "whisper-large-v3";
+        await sound.CheckCommand.RunAsync();
+        Pump();
+        window.FindControl<Control>("VoiceApiCheckResult")!.BringIntoView();
+        Shoot(window, "voice-api-settings");
+        await model.Settings.SaveCommand.RunAsync();
         await model.Settings.CloseCommand.RunAsync();
+        Shoot(window, "voice-api-label");
         Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
         window.Close();
     }

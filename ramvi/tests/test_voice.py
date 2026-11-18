@@ -5,6 +5,7 @@
 """
 
 import array
+import json
 import sys
 import threading
 import time
@@ -93,6 +94,9 @@ class VS:
     voice_device: str = ""
     voice_language: str = "auto"
     voice_model: str = vm.DEFAULT_MODEL
+    voice_backend: str = "local"
+    voice_api_url: str = ""
+    voice_api_model: str = "whisper-1"
 
 
 class Env:
@@ -1056,3 +1060,262 @@ def test_local_voice_needs_no_character_tts_or_audio_libraries() -> None:
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "[]"
+
+
+# --- 5.7: распознавание через сторонний API ----------------------------------------------
+
+
+class ApiServer:
+    """OpenAI-совместимый /v1/audio/transcriptions на 127.0.0.1 для тестов."""
+
+    def __init__(self) -> None:
+        import http.server
+
+        self.requests: list[dict[str, Any]] = []
+        self.status, self.reply = 200, {"text": " Привет  мир \n"}
+        owner = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args: Any) -> None:
+                pass
+
+            def do_POST(self) -> None:  # noqa: N802
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                boundary = self.headers["Content-Type"].split("boundary=")[1].encode()
+                parts: dict[str, bytes] = {}
+                for part in body.split(b"--" + boundary)[1:-1]:
+                    head, _, data = part.partition(b"\r\n\r\n")
+                    name = head.split(b'name="')[1].split(b'"')[0].decode()
+                    parts[name] = data[:-2]
+                owner.requests.append(
+                    {"path": self.path, "auth": self.headers.get("Authorization"), **parts}
+                )
+                if owner.status in (301, 302):
+                    self.send_response(owner.status)
+                    self.send_header("Location", f"http://127.0.0.1:{owner.port}/stolen")
+                    self.end_headers()
+                    return
+                out = json.dumps(owner.reply).encode()
+                self.send_response(owner.status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(out)))
+                self.end_headers()
+                self.wfile.write(out)
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_address[1]
+        self.url = f"http://127.0.0.1:{self.port}/v1"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.fixture
+def api() -> Any:
+    server = ApiServer()
+    yield server
+    server.close()
+
+
+def test_remote_sends_wav_model_language_and_bearer_key(api: Any) -> None:
+    import io
+    import wave as wav_module
+
+    from ramvi_service.voice.remote import RemoteTranscriber
+
+    remote = RemoteTranscriber(api.url + "/", "whisper-1", lambda: "sk-secret")
+    assert remote.transcribe(tone(1.0, 48_000), 48_000, "uk") == {
+        "text": "Привет мир",
+        "language": "uk",
+    }
+    sent = api.requests[0]
+    assert sent["path"] == "/v1/audio/transcriptions" and sent["auth"] == "Bearer sk-secret"
+    assert sent["model"] == b"whisper-1" and sent["language"] == b"uk"
+    assert sent["response_format"] == b"json"
+    with wav_module.open(io.BytesIO(sent["file"])) as w:
+        assert (w.getframerate(), w.getnframes()) == (16_000, 16_000)
+    api.reply = {"text": "hi", "language": "english"}
+    assert remote.transcribe(tone(0.5), 16_000, "auto") == {"text": "hi", "language": "english"}
+    assert "language" not in api.requests[1]  # auto — язык определяет сервис
+    RemoteTranscriber(api.url, "m", lambda: None).transcribe(tone(0.5), 16_000, "ru")
+    assert api.requests[2]["auth"] is None  # без ключа — без заголовка (локальный сервер)
+
+
+def test_remote_errors_are_clear_and_never_contain_the_key(api: Any) -> None:
+    from ramvi_service.voice.remote import RemoteTranscriber
+
+    remote = RemoteTranscriber(api.url, "whisper-1", lambda: "sk-secret")
+    cases = []
+    for status, reply in ((401, {"error": "bad key"}), (500, {"error": "boom"}), (302, {})):
+        api.status, api.reply = status, reply
+        with pytest.raises(ChatError) as error:
+            remote.transcribe(tone(0.5), 16_000, "ru")
+        cases.append((error.value.code, error.value.params.get("status")))
+        assert "sk-secret" not in json.dumps(error.value.params)
+    assert cases == [
+        ("voice.api_key_rejected", None),
+        ("voice.api_error", 500),
+        ("voice.api_error", 302),
+    ]
+    assert [r["path"] for r in api.requests] == [
+        "/v1/audio/transcriptions"
+    ] * 3  # без переадресации
+    with pytest.raises(ChatError) as error:
+        RemoteTranscriber("https://127.0.0.1:1/v1", "m", lambda: "k").transcribe(
+            tone(0.5), 16_000, "ru"
+        )
+    assert error.value.code == "voice.api_unreachable" and error.value.params["host"] == "127.0.0.1"
+    with pytest.raises(ChatError) as error:
+        RemoteTranscriber("http://example.com/v1", "m", lambda: "k").transcribe(
+            tone(0.5), 16_000, "ru"
+        )
+    assert error.value.code == "voice.api_only_https"
+
+
+def test_service_uses_api_only_when_chosen_and_keeps_key_out_of_settings(
+    tmp_path: Path, api: Any
+) -> None:
+    from ramvi_service.scoped import MemorySecrets
+
+    secrets = MemorySecrets()
+    env = Env(tmp_path, secrets=secrets)  # локальная модель не скачана
+    assert code(env.voice.start) == "voice.model_missing"
+    env.settings = VS(voice_backend="api")
+    assert code(env.voice.start) == "voice.api_no_url"
+    env.settings = VS(
+        voice_backend="api", voice_api_url=api.url, voice_api_model="whisper-large-v3"
+    )
+    status = env.voice.status()["api"]
+    assert status == {
+        "enabled": True,
+        "url": api.url,
+        "host": "127.0.0.1",
+        "model": "whisper-large-v3",
+        "key_set": False,
+    }
+    assert env.voice.set_api_key("  sk-secret  ")["api"]["key_set"] is True
+    assert secrets.get("voice", "api_key") == "sk-secret"
+    result = record_and_stop(env)
+    assert (result["text"], result["backend"]) == ("Привет мир", "api")
+    assert api.requests[-1]["auth"] == "Bearer sk-secret"
+    assert api.requests[-1]["model"] == b"whisper-large-v3"
+    assert env.transcribers == [] and env.gpu == []  # локально ничего не запускалось
+    assert env.voice.check_api()["ok"] is True
+    assert (
+        code(lambda: env.voice.check_api("https://127.0.0.1:1/v1", "m")) == "voice.api_unreachable"
+    )
+    assert env.voice.check_api(api.url, "other")["host"] == "127.0.0.1"
+    assert api.requests[-1]["model"] == b"other"  # проверяется то, что в форме
+    api.status, api.reply = 503, {"error": "down"}
+    assert code(lambda: record_and_stop(env)) == "voice.api_error"
+    assert env.voice.status()["state"] == "idle"
+    assert env.voice.set_api_key("")["api"]["key_set"] is False
+    assert secrets.get("voice", "api_key") is None
+    env.settings = VS()  # снова локально — без модели: понятная ошибка, а не обращение к API
+    assert code(env.voice.start) == "voice.model_missing"
+
+
+def test_settings_validate_api_fields() -> None:
+    assert st.Settings(voice_backend="api", voice_api_url="https://api.openai.com/v1").validate()
+    assert st.Settings(voice_api_url="http://localhost:8000/v1").validate()
+    bad: list[dict[str, Any]] = [
+        {"voice_backend": "cloud"},
+        {"voice_api_url": "http://192.168.1.5:8000/v1"},
+        {"voice_api_url": "ftp://x"},
+        {"voice_api_model": ""},
+    ]
+    for fields in bad:
+        with pytest.raises(st.SettingsError):
+            st.Settings(**fields).validate()
+
+
+def test_mac_keychain_gets_secret_through_stdin_only() -> None:
+    import base64
+    import subprocess as sp
+
+    from ramvi_service.secrets_store import MacKeychain
+
+    calls: list[tuple[list[str], str | None]] = []
+    value = 'sk-se"cret ключ'
+    sealed = "b64:" + base64.b64encode(value.encode()).decode()
+
+    def run(args: list[str], stdin: str | None) -> sp.CompletedProcess[str]:
+        calls.append((args, stdin))
+        return sp.CompletedProcess(args, 0, stdout=sealed + "\n", stderr="")
+
+    keychain = MacKeychain(run)
+    keychain.set("voice", "api_key", value)
+    args, stdin = calls[0]
+    assert args == ["security", "-i"] and "sk-se" not in " ".join(args)
+    # не-ASCII `security -w` печатает шестнадцатеричной строкой — поэтому base64
+    assert stdin == f'add-generic-password -U -s "RAMVI" -a "voice/api_key" -w "{sealed}"\n'
+    assert keychain.get("voice", "api_key") == value
+    with pytest.raises(ValueError):
+        keychain.set("voice", "api_key", "a\nb")
+
+
+def test_windows_dpapi_file_has_no_plaintext(tmp_path: Path) -> None:
+    from ramvi_service.secrets_store import SecretsUnavailable, WindowsDpapi
+
+    def seal(data: bytes) -> bytes:
+        return bytes(b ^ 0x5A for b in data)
+
+    store = WindowsDpapi(tmp_path, protect=seal, unprotect=seal)
+    store.set("voice", "api_key", "sk-secret")
+    raw = (tmp_path / "secrets.dpapi").read_text()
+    assert "sk-secret" not in raw and "voice/api_key" in raw
+    assert store.get("voice", "api_key") == "sk-secret"
+
+    def foreign(data: bytes) -> bytes:
+        raise SecretsUnavailable("other user")
+
+    assert WindowsDpapi(tmp_path, protect=seal, unprotect=foreign).get("voice", "api_key") is None
+    store.delete("voice", "api_key")
+    assert store.get("voice", "api_key") is None
+
+
+def test_no_secret_store_gives_clear_error(tmp_path: Path) -> None:
+    from ramvi_service.secrets_store import os_secrets
+
+    env = Env(tmp_path, secrets=os_secrets(tmp_path, platform="plan9"))
+    assert code(lambda: env.voice.set_api_key("k")) == "voice.secrets_unavailable"
+    assert env.voice.status()["api"]["key_set"] is False
+
+
+def test_key_never_appears_in_settings_file_or_api_answers(tmp_path: Path, api: Any) -> None:
+    from ramvi_service.scoped import MemorySecrets
+
+    app, data = tmp_path / "app", tmp_path / "app" / "data"
+    secrets = MemorySecrets()
+    mic = FakeMicrophone()
+    server, engines = build(
+        data,
+        TOKEN,
+        engine_command=ENGINE,
+        app_dir=app,
+        voice_options={"microphone": mic, "secrets": secrets, "memory": lambda: (None, None)},
+    )
+    server.start()
+    try:
+        client = Client(server.port)
+        saved = client.ok("POST", "/settings", {"voice_backend": "api", "voice_api_url": api.url})
+        assert saved["settings"]["voice_backend"] == "api"
+        answer = client.ok("POST", "/voice/api/key", {"key": "sk-very-secret"})
+        assert answer["api"]["key_set"] is True
+        assert client.ok("POST", "/voice/start", {})["state"] == "recording"
+        mic.say(tone(0.5))
+        result = client.ok("POST", "/voice/stop", {})
+        assert (result["text"], result["backend"]) == ("Привет мир", "api")
+        assert api.requests[-1]["auth"] == "Bearer sk-very-secret"
+        answers = json.dumps(
+            [answer, result, client.ok("GET", "/voice"), client.ok("GET", "/settings")]
+        )
+        assert "sk-very-secret" not in answers
+        files = [p for p in tmp_path.rglob("*") if p.is_file()]
+        assert all(b"sk-very-secret" not in p.read_bytes() for p in files)
+        assert secrets.get("voice", "api_key") == "sk-very-secret"
+    finally:
+        server.close()
+        engines.stop()

@@ -39,6 +39,14 @@
 
 Настройки (`settings.json`): `voice_device` («» — системный), `voice_language` (`auto`/`ru`/`en`/`uk`), `voice_model`.
 
+## Распознавание через сторонний API (5.7)
+
+Способ «Через API» в разделе «Звук» (по умолчанию — «Локально»). `voice/remote.py`: `POST {адрес}/audio/transcriptions` (OpenAI, Groq и другие совместимые сервисы), multipart с WAV 16 кГц, `model`, `language` (если задан), `response_format=json`; ключ — заголовком `Authorization: Bearer`. Только HTTPS (HTTP — лишь localhost), переадресации не выполняются (иначе ключ ушёл бы на другой адрес). Ошибки: `voice.api_key_rejected` (401/403), `voice.api_error`, `voice.api_unreachable`, `voice.api_only_https`, `voice.api_no_url` — в каждом тексте подсказка выбрать «Локально».
+
+Ключ — только в хранилище ОС (`secrets_store.py`): Windows — DPAPI (файл `secrets.dpapi` в папке данных, на другом компьютере не расшифровывается), macOS — Связка ключей через `security -i` (команда в stdin, значение в base64: `security -w` печатает не-ASCII шестнадцатеричной строкой), Linux — `secret-tool` (stdin). Нет хранилища — `voice.secrets_unavailable`, в открытом виде ключ не пишется. В статусе — только `key_set`.
+
+Настройки: `voice_backend` (`local`/`api`), `voice_api_url`, `voice_api_model`. API: `POST /voice/api/key` `{key}` (пусто — удалить), `POST /voice/api/check` `{url?, model?}` — 1 с тишины сервису из формы. Пока выбран API, у микрофона метка «Звук отправляется в <адрес>». Google Cloud Speech-to-Text — бэклог B.9.
+
 ## Контракт для модулей (5.6)
 
 `service/ramvi_service/contracts/voice.py` — без аудиобиблиотек, whisper, TTS и Character:

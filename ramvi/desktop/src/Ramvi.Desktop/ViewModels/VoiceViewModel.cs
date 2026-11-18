@@ -21,6 +21,7 @@ public sealed class VoiceViewModel : ObservableObject
     private double _seconds;
     private double _level;
     private int _watch;
+    private string? _remoteHost;
 
     /// <param name="api">Клиент сервиса.</param>
     /// <param name="insert">Добавить распознанный текст в поле ввода.</param>
@@ -70,6 +71,44 @@ public sealed class VoiceViewModel : ObservableObject
         private set => Set(ref _level, value);
     }
 
+    /// <summary>5.7: распознавание через API — звук уходит на этот адрес; null — локально.</summary>
+    public string? RemoteHost
+    {
+        get => _remoteHost;
+        private set
+        {
+            if (Set(ref _remoteHost, value))
+            {
+                Raise(nameof(IsRemote));
+                Raise(nameof(ShowRemote));
+                Raise(nameof(RemoteText));
+            }
+        }
+    }
+
+    public bool IsRemote => _remoteHost is not null;
+
+    /// <summary>Метка видна в покое; во время записи её место занимает индикатор.</summary>
+    public bool ShowRemote => IsRemote && IsIdle;
+
+    public string RemoteText => L.Format("voice.api_sending", ("host", _remoteHost ?? ""));
+
+    /// <summary>Узнать у сервиса способ распознавания (при запуске окна и после настроек).</summary>
+    public async Task LoadAsync()
+    {
+        try
+        {
+            ShowApi(await _api().VoiceStatusAsync().ConfigureAwait(true));
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            RemoteHost = null; // метка не врёт: без ответа сервиса её нет, а запись покажет ошибку
+        }
+    }
+
+    private void ShowApi(VoiceStatus status) =>
+        RemoteHost = status.Api is { Enabled: true } api ? (api.Host.Length > 0 ? api.Host : api.Url) : null;
+
     public string Tip => L[IsRecording ? "voice.stop_hint" : IsTranscribing ? "voice.transcribing" : "voice.start_hint"];
 
     private void SetState(string state)
@@ -83,6 +122,7 @@ public sealed class VoiceViewModel : ObservableObject
         Raise(nameof(IsRecording));
         Raise(nameof(IsTranscribing));
         Raise(nameof(IsIdle));
+        Raise(nameof(ShowRemote));
         Raise(nameof(Tip));
         Refresh();
     }
@@ -112,6 +152,7 @@ public sealed class VoiceViewModel : ObservableObject
         try
         {
             var status = await _api().StartVoiceAsync().ConfigureAwait(true);
+            ShowApi(status);
             SetProgress(status.Seconds, status.Level);
             SetState("recording");
             _ = WatchAsync(++_watch); // кнопка свободна для второго нажатия

@@ -24,6 +24,7 @@ from ramvi_service.chat import ChatError
 from ramvi_service.contracts.modules import Owner
 from ramvi_service.contracts.voice import MICROPHONE, SpeechCapabilities
 from ramvi_service.downloads import Download, DownloadError
+from ramvi_service.secrets_store import SecretsUnavailable
 from ramvi_service.voice import accel
 from ramvi_service.voice.audio import Microphone, Recorder, SoundDeviceMicrophone
 from ramvi_service.voice.models import (
@@ -35,10 +36,12 @@ from ramvi_service.voice.models import (
     SttModel,
     installed,
 )
+from ramvi_service.voice.remote import RemoteTranscriber, host_of
 from ramvi_service.voice.server import WhisperServer
 from ramvi_service.voice.stt import Transcriber, WhisperProcess, default_threads
 
 MIN_SECONDS = 0.3
+SECRET_NS, SECRET_KEY = "voice", "api_key"
 FALLBACK_MODEL = "small-q5_1"
 # Оперативная память процесса распознавания на CPU (пик, замер Mac M1: turbo 907 МБ,
 # small 541 МБ) плюс запас, чтобы не теснить активную LLM.
@@ -58,6 +61,15 @@ def _gpu_transcriber(model: Path, folder: Path) -> Transcriber:
 class VoiceSettings(Protocol):
     @property
     def voice_device(self) -> str: ...
+
+    @property
+    def voice_backend(self) -> str: ...
+
+    @property
+    def voice_api_url(self) -> str: ...
+
+    @property
+    def voice_api_model(self) -> str: ...
 
     @property
     def voice_language(self) -> str: ...
@@ -80,6 +92,10 @@ class VoiceService:
         platform: str = sys.platform,
         resources: Any = None,
         owner: Owner | None = None,
+        secrets: Any = None,
+        make_remote: Callable[
+            [str, str, Callable[[], str | None]], Transcriber
+        ] = RemoteTranscriber,
         max_seconds: float = 120.0,
         idle_seconds: float = 300.0,
     ) -> None:
@@ -92,6 +108,9 @@ class VoiceService:
         self.platform = platform
         # 5.6: микрофоном владеет тот, у кого аренда MICROPHONE в общем ResourceBroker.
         self.resources, self.owner = resources, owner
+        # 5.7: ключ стороннего API — в хранилище секретов ОС; в статусе только «задан/нет».
+        self.secrets, self.make_remote = secrets, make_remote
+        self._key_set: bool | None = None
         self._lease: tuple[Owner, str] | None = None
         self._recording_owner: Owner | None = None
         self._cancelled = False
@@ -103,7 +122,7 @@ class VoiceService:
         self._recorder: Recorder | None = None
         self._limit = False
         self._transcriber: Transcriber | None = None
-        self._transcriber_key: tuple[str, Path] | None = None
+        self._transcriber_key: tuple[str, str] | None = None
         self._idle_timer: threading.Timer | None = None
         self._download: dict[str, Any] = {"state": "idle"}
         self._downloader: Any = None
@@ -129,9 +148,53 @@ class VoiceService:
     def accel_offered(self) -> bool:
         return accel.offered(self.platform, self.has_nvidia())
 
+    def _api_enabled(self) -> bool:
+        return getattr(self.settings(), "voice_backend", "local") == "api"
+
+    def _api_key(self) -> str | None:
+        return self.secrets.get(SECRET_NS, SECRET_KEY) if self.secrets is not None else None
+
+    def key_set(self) -> bool:
+        if self._key_set is None:
+            self._key_set = bool(self._api_key())
+        return self._key_set
+
+    def set_api_key(self, key: str) -> dict[str, Any]:
+        """Сохранить ключ API в хранилище ОС; пустая строка — удалить."""
+        if self.secrets is None:
+            raise ChatError("voice.secrets_unavailable", detail="no secret store")
+        if not isinstance(key, str) or len(key) > 4096 or "\n" in key:
+            raise ChatError("api.bad_request", field="key")
+        try:
+            if key.strip():
+                self.secrets.set(SECRET_NS, SECRET_KEY, key.strip())
+            else:
+                self.secrets.delete(SECRET_NS, SECRET_KEY)
+        except SecretsUnavailable as error:
+            raise ChatError("voice.secrets_unavailable", detail=str(error)) from None
+        self._key_set = bool(key.strip())
+        return self.status()
+
+    def check_api(self, url: str | None = None, model: str | None = None) -> dict[str, Any]:
+        """«Проверить»: 1 с тишины API из формы (или сохранённому); ошибка — понятный код."""
+        settings = self.settings()
+        url = settings.voice_api_url if url is None else url
+        model = settings.voice_api_model if model is None else model
+        if not url:
+            raise ChatError("voice.api_no_url")
+        remote = self.make_remote(url, model or "whisper-1", self._api_key)
+        started = time.monotonic()
+        remote.transcribe(bytes(32_000), 16_000, "en")
+        seconds = round(time.monotonic() - started, 2)
+        return {"ok": True, "host": host_of(url), "seconds": seconds}
+
     def _choose(self) -> tuple[str, SttModel]:
-        """Где распознавать эту запись: («gpu» | «cpu», модель)."""
+        """Где распознавать эту запись: («api» | «gpu» | «cpu», модель)."""
         model, models = self.model(), self.models_dir()
+        if self._api_enabled():
+            if not self.settings().voice_api_url:
+                raise ChatError("voice.api_no_url")
+            return "api", model  # локальная модель не нужна
         if not installed(model, models):
             raise ChatError("voice.model_missing", model=model.id)
         ram, vram = self.memory()
@@ -154,16 +217,27 @@ class VoiceService:
     def _get_transcriber(self, backend: str, model: SttModel) -> Transcriber:
         """Процесс распознавания для способа и модели; смена — новый процесс."""
         path = model.path(self.models_dir())
-        key = (backend, path)
+        settings = self.settings()
+        target = (
+            f"{settings.voice_api_url}|{settings.voice_api_model}"
+            if backend == "api"
+            else str(path)
+        )
+        key = (backend, target)
         if self._transcriber is not None and self._transcriber_key != key:
             self._transcriber.close()
             self._transcriber = None
         if self._transcriber is None:
-            self._transcriber = (
-                self.make_gpu_transcriber(path, accel.CUDA.path(self.models_dir()))
-                if backend == "gpu"
-                else self.make_transcriber(path)
-            )
+            if backend == "api":
+                self._transcriber = self.make_remote(
+                    settings.voice_api_url, settings.voice_api_model, self._api_key
+                )
+            elif backend == "gpu":
+                self._transcriber = self.make_gpu_transcriber(
+                    path, accel.CUDA.path(self.models_dir())
+                )
+            else:
+                self._transcriber = self.make_transcriber(path)
             self._transcriber_key = key
         return self._transcriber
 
@@ -215,6 +289,13 @@ class VoiceService:
                 "backend": self._active[0] if self._active else None,
                 "active_model": self._active[1].id if self._active else None,
                 "last": dict(self._last) if self._last else None,
+                "api": {
+                    "enabled": self._api_enabled(),
+                    "url": getattr(settings, "voice_api_url", ""),
+                    "host": host_of(getattr(settings, "voice_api_url", "")),
+                    "model": getattr(settings, "voice_api_model", ""),
+                    "key_set": self.key_set(),
+                },
                 "accel": {
                     "id": accel.CUDA.id,
                     "offered": self.accel_offered(),

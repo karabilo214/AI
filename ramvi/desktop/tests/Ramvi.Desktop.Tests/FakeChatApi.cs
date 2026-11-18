@@ -256,7 +256,9 @@ internal sealed class FakeChatApi : IChatApi
             update.DataDir ?? before.DataDir, update.ModelsDir ?? before.ModelsDir, update.Language ?? before.Language,
             update.ApiPort ?? before.ApiPort, update.NetworkAccess ?? before.NetworkAccess,
             update.Theme ?? before.Theme, update.VoiceDevice ?? before.VoiceDevice,
-            update.VoiceLanguage ?? before.VoiceLanguage, update.VoiceModel ?? before.VoiceModel);
+            update.VoiceLanguage ?? before.VoiceLanguage, update.VoiceModel ?? before.VoiceModel,
+            update.VoiceBackend ?? before.VoiceBackend, update.VoiceApiUrl ?? before.VoiceApiUrl,
+            update.VoiceApiModel ?? before.VoiceApiModel);
         var restart = new List<string>();
         if (AppSettings.DataDir != before.DataDir)
         {
@@ -375,12 +377,22 @@ internal sealed class FakeChatApi : IChatApi
 
     public VoiceLast? VoiceLastState { get; set; }
 
+    /// <summary>5.7: ключ API в «хранилище» (тест видит, что ушло в сервис).</summary>
+    public string? VoiceApiKey { get; set; }
+
+    public VoiceApi VoiceApiState => new(
+        AppSettings.VoiceBackend == "api", AppSettings.VoiceApiUrl,
+        Uri.TryCreate(AppSettings.VoiceApiUrl, UriKind.Absolute, out var uri) ? uri.Host : "",
+        AppSettings.VoiceApiModel, VoiceApiKey is not null);
+
+    public List<(string? Url, string? Model)> VoiceChecks { get; } = [];
+
     public VoiceStatus Voice() => new(
         VoiceState, VoiceSeconds, 0.5, VoiceLimit, 120, AppSettings.VoiceLanguage, ["auto", "ru", "en", "uk"],
         AppSettings.VoiceDevice,
         new VoiceModelState(AppSettings.VoiceModel, VoiceModels.First(m => m.Id == AppSettings.VoiceModel).Installed,
             1),
-        [.. VoiceModels], VoiceDownloadState, null, VoiceLastState, VoiceAccelState);
+        [.. VoiceModels], VoiceDownloadState, null, VoiceLastState, VoiceAccelState, VoiceApiState);
 
     private Task<T> VoiceCall<T>(string call, Func<T> result)
     {
@@ -443,6 +455,20 @@ internal sealed class FakeChatApi : IChatApi
         {
             VoiceDownloadState = new VoiceDownload("running", "cuda-12.4", 0, 684_913_404);
             return Voice();
+        });
+
+    public Task<VoiceStatus> SetVoiceApiKeyAsync(string key, CancellationToken cancel = default) =>
+        VoiceCall("key", () =>
+        {
+            VoiceApiKey = key.Length > 0 ? key : null;
+            return Voice();
+        });
+
+    public Task<VoiceCheck> CheckVoiceApiAsync(string? url, string? model, CancellationToken cancel = default) =>
+        VoiceCall("check", () =>
+        {
+            VoiceChecks.Add((url, model));
+            return new VoiceCheck(true, new Uri(url!).Host, 0.42);
         });
 
     public Task<VoiceStatus> CancelVoiceDownloadAsync(CancellationToken cancel = default) =>

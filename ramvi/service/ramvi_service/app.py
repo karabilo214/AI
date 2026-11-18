@@ -44,6 +44,7 @@ from ramvi_service.model_library import ModelLibrary
 from ramvi_service.modules.host import ModuleHost
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.resources import SharedLLM
+from ramvi_service.secrets_store import os_secrets
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
 from ramvi_service.supervisor import RestartPolicy
 from ramvi_service.task_profile import TaskProfile
@@ -187,7 +188,8 @@ def build(
         current_settings,
         resources=host.resources,
         owner=voice_owner,
-        **(voice_options or {}),
+        # 5.7: ключ стороннего API — в хранилище ОС (в проверках подставляется своё)
+        **{"secrets": os_secrets(data_dir), **(voice_options or {})},
     )
     host.voice = server.voice
     # Закрывается в обратном порядке: сначала загрузки, потом база

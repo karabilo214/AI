@@ -166,6 +166,19 @@ public sealed class RealServiceStartTests
                 var notRecording = await Assert.ThrowsAsync<Api.ApiException>(() => client.StopVoiceAsync(cancel));
                 Assert.Equal("voice.not_recording", notRecording.Code);
                 Assert.Equal("idle", (await client.CancelVoiceAsync(cancel)).State);
+                // 5.7: поля API и «Проверить» — те же, что у сервиса; ключ здесь не пишется (хранилище ОС).
+                var apiSaved = await client.SaveSettingsAsync(new Api.SettingsUpdate(
+                    VoiceBackend: "api", VoiceApiUrl: "https://127.0.0.1:1/v1", VoiceApiModel: "whisper-1"), cancel);
+                Assert.Equal(("api", "https://127.0.0.1:1/v1"), (apiSaved.Settings.VoiceBackend, apiSaved.Settings.VoiceApiUrl));
+                var apiStatus = (await client.VoiceStatusAsync(cancel)).Api!;
+                Assert.Equal((true, "127.0.0.1", "whisper-1"), (apiStatus.Enabled, apiStatus.Host, apiStatus.Model));
+                var unreachable = await Assert.ThrowsAsync<Api.ApiException>(
+                    () => client.CheckVoiceApiAsync("https://127.0.0.1:1/v1", "m", cancel));
+                Assert.Equal("voice.api_unreachable", unreachable.Code);
+                var httpOnly = await Assert.ThrowsAsync<Api.ApiException>(() => client.SaveSettingsAsync(
+                    new Api.SettingsUpdate(VoiceApiUrl: "http://example.com/v1"), cancel));
+                Assert.Equal("settings.invalid", httpOnly.Code);
+                await client.SaveSettingsAsync(new Api.SettingsUpdate(VoiceBackend: "local"), cancel);
                 var badModel = await Assert.ThrowsAsync<Api.ApiException>(
                     () => client.DownloadVoiceModelAsync("no-such", cancel));
                 Assert.Equal("voice.unknown_model", badModel.Code); // тело дошло: модель из запроса

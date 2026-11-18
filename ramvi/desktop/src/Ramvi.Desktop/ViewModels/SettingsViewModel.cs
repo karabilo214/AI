@@ -43,6 +43,7 @@ public sealed class SettingsViewModel : ObservableObject
     private readonly Func<Task>? _defaultChanged;
     private ModelInfo? _defaultModel;
     private string? _savedDefault;
+    private readonly Func<Task>? _soundChanged;
 
     public SettingsViewModel(
         Func<IChatApi> api,
@@ -54,8 +55,10 @@ public sealed class SettingsViewModel : ObservableObject
         Action<string>? applyLanguage = null,
         IReadOnlyCollection<ModelInfo>? models = null,
         Func<Task>? openModels = null,
-        Func<Task>? defaultChanged = null)
+        Func<Task>? defaultChanged = null,
+        Func<Task>? soundChanged = null)
     {
+        _soundChanged = soundChanged;
         _api = api;
         Sound = new SoundSettingsViewModel(api);
         _models = models ?? [];
@@ -337,7 +340,12 @@ public sealed class SettingsViewModel : ObservableObject
             NetworkAccess: NetworkAccess != saved.NetworkAccess ? NetworkAccess : null,
             Theme: Theme is { } theme && theme.Code != saved.Theme ? theme.Code : null);
         var sound = Sound.Changes(saved);
-        update = update with { VoiceDevice = sound.Device, VoiceLanguage = sound.Language, VoiceModel = sound.Model };
+        var api = Sound.ApiChanges(saved);
+        update = update with
+        {
+            VoiceDevice = sound.Device, VoiceLanguage = sound.Language, VoiceModel = sound.Model,
+            VoiceBackend = api.Backend, VoiceApiUrl = api.Url, VoiceApiModel = api.Model,
+        };
         var newDefault = DefaultModel?.Id is { } id && id != _savedDefault ? id : null;
         if (update == new SettingsUpdate() && newDefault is null)
         {
@@ -366,6 +374,10 @@ public sealed class SettingsViewModel : ObservableObject
             var info = await _api().SaveSettingsAsync(update).ConfigureAwait(true);
             Show(info);
             Sound.Show(info.Settings);
+            if (_soundChanged is not null)
+            {
+                await _soundChanged().ConfigureAwait(true); // 5.7: метка «звук отправляется в …»
+            }
             if (update.Theme is not null)
             {
                 _applyTheme?.Invoke(info.Settings.Theme);

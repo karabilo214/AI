@@ -13,12 +13,14 @@ from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
+from ramvi_service import web
 from ramvi_service.i18n import UserError
 from ramvi_service.task_profile import TaskProfile
 from ramvi_service.voice.models import LANGUAGES as VOICE_LANGUAGES
 from ramvi_service.voice.models import MODELS
 
 VOICE_MODELS = tuple(MODELS)
+VOICE_BACKENDS = ("local", "api")
 
 LANGUAGES = ("ru", "en", "uk")
 THEMES = ("system", "light", "dark")  # 3.16: тема окна оболочки
@@ -45,6 +47,11 @@ class Settings:
     voice_device: str = ""
     voice_language: str = "auto"
     voice_model: str = "large-v3-turbo-q5_0"
+    # 5.7: распознавание через сторонний API — по умолчанию выключено; ключ не здесь,
+    # а в хранилище секретов ОС (secrets_store.py)
+    voice_backend: str = "local"
+    voice_api_url: str = ""
+    voice_api_model: str = "whisper-1"
 
     @property
     def task(self) -> TaskProfile:
@@ -69,6 +76,18 @@ class Settings:
             raise SettingsError("settings.bad_voice_language", allowed=", ".join(VOICE_LANGUAGES))
         if self.voice_model not in VOICE_MODELS:
             raise SettingsError("settings.bad_voice_model", allowed=", ".join(VOICE_MODELS))
+        if self.voice_backend not in VOICE_BACKENDS:
+            raise SettingsError("settings.bad_voice_backend", allowed=", ".join(VOICE_BACKENDS))
+        if not isinstance(self.voice_api_url, str) or (
+            self.voice_api_url and not web.allowed(self.voice_api_url)
+        ):
+            raise SettingsError("settings.bad_voice_api_url")
+        if (
+            not isinstance(self.voice_api_model, str)
+            or not self.voice_api_model.strip()
+            or len(self.voice_api_model) > 100
+        ):
+            raise SettingsError("settings.bad_voice_api_model")
         problem = self.task.problem()
         if problem is not None:
             raise SettingsError(problem[0], **problem[1])

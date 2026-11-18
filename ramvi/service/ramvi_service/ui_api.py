@@ -258,6 +258,13 @@ class UIServer:
             return voice.cancel_download()
         if method == "POST" and path == "/voice/accel/download":
             return voice.download_accel()  # 5.4: ускоритель на видеокарте
+        if method == "POST" and path == "/voice/api/key":
+            key = body.get("key", "")  # 5.7: в хранилище ОС; в ответе — только «задан/нет»
+            if not isinstance(key, str):
+                raise ChatError("api.bad_request", field="key")
+            return voice.set_api_key(key)
+        if method == "POST" and path == "/voice/api/check":
+            return voice.check_api(_optional_str(body, "url"), _optional_str(body, "model"))
         raise ChatError("api.not_found")
 
     def _status(self) -> dict[str, Any]:

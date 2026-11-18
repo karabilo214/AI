@@ -227,6 +227,66 @@ public sealed class VoiceTests
         Assert.Empty(Ru.Missing);
     }
 
+    [Fact]
+    public async Task Api_backend_is_saved_key_goes_to_store_and_check_uses_the_form()
+    {
+        var api = new FakeChatApi();
+        var model = new MainViewModel(api);
+        await model.InitializeAsync();
+        Assert.False(model.Voice.IsRemote); // по умолчанию локально — метки нет
+        await model.OpenSettingsCommand.RunAsync();
+        var sound = model.Settings.Sound;
+        Assert.Equal(["local", "api"], sound.Backends.Select(b => b.Code));
+        Assert.Equal("local", sound.Backend?.Code);
+        Assert.False(sound.IsApi);
+
+        sound.Backend = sound.Backends.Single(b => b.Code == "api");
+        Assert.True(sound.IsApi);
+        Assert.False(sound.CheckCommand.CanExecute(null)); // без адреса проверять нечего
+        sound.ApiUrl = "https://api.groq.com/openai/v1";
+        sound.ApiModel = "whisper-large-v3";
+        Assert.Equal(Ru.Format("voice.api_warning", ("host", "api.groq.com")), sound.ApiWarning);
+        await sound.CheckCommand.RunAsync();
+        Assert.Equal([("https://api.groq.com/openai/v1", "whisper-large-v3")], api.VoiceChecks);
+        Assert.Equal(Ru.Format("voice.api_ok", ("host", "api.groq.com"), ("seconds", "0,4")), sound.CheckResult);
+
+        Assert.False(sound.SaveKeyCommand.CanExecute(null));
+        sound.ApiKey = "gsk-secret";
+        await sound.SaveKeyCommand.RunAsync();
+        Assert.Equal("gsk-secret", api.VoiceApiKey);
+        Assert.Equal("", sound.ApiKey); // ключ не остаётся в окне
+        Assert.Equal(Ru["voice.api_key_set"], sound.KeyStatus);
+
+        await model.Settings.SaveCommand.RunAsync();
+        Assert.Equal(new SettingsUpdate(VoiceBackend: "api", VoiceApiUrl: "https://api.groq.com/openai/v1",
+            VoiceApiModel: "whisper-large-v3"), api.SettingsUpdates.Single());
+        Assert.DoesNotContain("gsk-secret", api.SettingsUpdates.Single().ToString(), StringComparison.Ordinal);
+        Assert.True(model.Voice.IsRemote && model.Voice.ShowRemote); // метка у микрофона сразу
+        Assert.Equal(Ru.Format("voice.api_sending", ("host", "api.groq.com")), model.Voice.RemoteText);
+
+        await model.Voice.ToggleCommand.RunAsync();
+        Assert.False(model.Voice.ShowRemote); // во время записи — индикатор вместо метки
+        await model.Voice.ToggleCommand.RunAsync();
+        Assert.True(model.Voice.ShowRemote);
+
+        await sound.ClearKeyCommand.RunAsync();
+        Assert.Null(api.VoiceApiKey);
+        Assert.Equal(Ru["voice.api_key_missing"], sound.KeyStatus);
+        Assert.Empty(Ru.Missing);
+    }
+
+    [Fact]
+    public async Task Api_check_error_is_shown_in_the_form()
+    {
+        var api = new FakeChatApi();
+        var sound = new SoundSettingsViewModel(() => api, TimeSpan.FromMilliseconds(10));
+        await sound.LoadAsync(api.AppSettings);
+        sound.ApiUrl = "https://api.example.com/v1";
+        api.VoiceError = Error("voice.api_key_rejected", ("host", "api.example.com"));
+        await sound.CheckCommand.RunAsync();
+        Assert.Equal(Ru.Format("voice.api_key_rejected", ("host", "api.example.com")), sound.CheckResult);
+    }
+
     [AvaloniaFact]
     public async Task Ctrl_M_toggles_recording_while_typing_and_Esc_cancels()
     {
@@ -299,6 +359,12 @@ public sealed class VoiceTests
         Assert.True(window.FindControl<ComboBox>("VoiceDeviceBox")!.IsEffectivelyVisible);
         Assert.Equal(3, window.FindControl<ComboBox>("VoiceDeviceBox")!.ItemCount);
         Assert.Equal("auto", (window.FindControl<ComboBox>("VoiceLanguageBox")!.SelectedItem as VoiceOption)?.Code);
+        var apiPanel = window.FindControl<StackPanel>("VoiceApiPanel")!;
+        Assert.False(apiPanel.IsVisible); // локально — полей API не видно
+        model.Settings.Sound.Backend = model.Settings.Sound.Backends.Single(b => b.Code == "api");
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(apiPanel.IsVisible);
+        Assert.Equal('•', window.FindControl<TextBox>("VoiceApiKeyBox")!.PasswordChar);
         Assert.Empty(Localizer.Current.Missing);
         window.Close();
     }

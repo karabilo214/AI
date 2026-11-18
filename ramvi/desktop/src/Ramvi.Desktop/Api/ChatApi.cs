@@ -122,6 +122,12 @@ public interface IChatApi
 
     /// <summary>5.4: скачать ускоритель распознавания на видеокарте (Windows + NVIDIA).</summary>
     Task<VoiceStatus> DownloadVoiceAccelAsync(CancellationToken cancel = default);
+
+    /// <summary>5.7: сохранить ключ API в хранилище системы; пустая строка — удалить.</summary>
+    Task<VoiceStatus> SetVoiceApiKeyAsync(string key, CancellationToken cancel = default);
+
+    /// <summary>5.7: «Проверить» API из формы (адрес и модель ещё могут быть не сохранены).</summary>
+    Task<VoiceCheck> CheckVoiceApiAsync(string? url, string? model, CancellationToken cancel = default);
 }
 
 /// <summary>HTTP-клиент `ramvi_service.ui_api`: только loopback, ключ в заголовке.</summary>
@@ -296,6 +302,13 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     public Task<VoiceStatus> DownloadVoiceAccelAsync(CancellationToken cancel = default) =>
         PostAsync("voice/accel/download", new ModelRequest(null), ApiJson.Default.ModelRequest,
             ApiJson.Default.VoiceStatus, cancel);
+
+    public Task<VoiceStatus> SetVoiceApiKeyAsync(string key, CancellationToken cancel = default) =>
+        PostAsync("voice/api/key", new KeyRequest(key), ApiJson.Default.KeyRequest, ApiJson.Default.VoiceStatus, cancel);
+
+    public Task<VoiceCheck> CheckVoiceApiAsync(string? url, string? model, CancellationToken cancel = default) =>
+        PostAsync("voice/api/check", new ApiCheckRequest(url, model), ApiJson.Default.ApiCheckRequest,
+            ApiJson.Default.VoiceCheck, cancel);
 
     private async IAsyncEnumerable<ChatEvent> StreamAsync(
         string path, HttpContent? content, [EnumeratorCancellation] CancellationToken cancel)

@@ -88,7 +88,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             ApplyLanguage,
             Models,
             OpenModelsSectionAsync,
-            ReloadModelListAsync);
+            ReloadModelListAsync,
+            () => Voice!.LoadAsync());
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -347,6 +348,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             SetStatus(() => L["status.ready"]);
             UpdateState();
+            await Voice.LoadAsync().ConfigureAwait(true); // 5.7: метка, если звук уходит в API
             await LoadModelAsync(SelectedModel?.Id).ConfigureAwait(true); // 3.17: сразу при запуске
             if (!onboarding.Done)
             {

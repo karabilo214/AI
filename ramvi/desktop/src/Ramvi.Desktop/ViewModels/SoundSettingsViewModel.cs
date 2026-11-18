@@ -24,6 +24,11 @@ public sealed class SoundSettingsViewModel : ObservableObject
     private string? _error;
     private int _watch;
     private IReadOnlyList<VoiceDevice> _devices = [];
+    private VoiceOption? _backend;
+    private string _apiUrl = "";
+    private string _apiModel = "whisper-1";
+    private string _apiKey = "";
+    private string? _checkResult;
 
     public SoundSettingsViewModel(Func<IChatApi> api, TimeSpan? poll = null)
     {
@@ -34,6 +39,122 @@ public sealed class SoundSettingsViewModel : ObservableObject
         CancelDownloadCommand = new Command(CancelDownloadAsync, () => IsDownloading);
         DownloadAccelCommand = new Command(
             DownloadAccelAsync, () => _status?.Accel is { Offered: true, Installed: false } && !IsDownloading);
+        Backends = [.. BackendOptions()];
+        SaveKeyCommand = new Command(() => SaveKeyAsync(ApiKey), () => ApiKey.Trim().Length > 0);
+        ClearKeyCommand = new Command(() => SaveKeyAsync(""), () => _status?.Api is { KeySet: true });
+        CheckCommand = new Command(CheckAsync, () => ApiUrl.Trim().Length > 0);
+    }
+
+    public static IReadOnlyList<string> BackendCodes { get; } = ["local", "api"];
+
+    /// <summary>5.7: способ распознавания — локально или через API.</summary>
+    public List<VoiceOption> Backends { get; private set; }
+
+    public VoiceOption? Backend
+    {
+        get => _backend;
+        set
+        {
+            if (Set(ref _backend, value))
+            {
+                Raise(nameof(IsApi));
+                Raise(nameof(ApiWarning));
+            }
+        }
+    }
+
+    public bool IsApi => _backend?.Code == "api";
+
+    public string ApiUrl
+    {
+        get => _apiUrl;
+        set
+        {
+            if (Set(ref _apiUrl, value))
+            {
+                Raise(nameof(ApiWarning));
+                CheckCommand.Refresh();
+            }
+        }
+    }
+
+    public string ApiModel
+    {
+        get => _apiModel;
+        set => Set(ref _apiModel, value);
+    }
+
+    /// <summary>Поле для нового ключа; после сохранения очищается — ключ не показывается.</summary>
+    public string ApiKey
+    {
+        get => _apiKey;
+        set
+        {
+            if (Set(ref _apiKey, value))
+            {
+                SaveKeyCommand.Refresh();
+            }
+        }
+    }
+
+    public string KeyStatus => _status?.Api is { KeySet: true } ? L["voice.api_key_set"] : L["voice.api_key_missing"];
+
+    /// <summary>Предупреждение: звук уходит на сервер (адрес из поля).</summary>
+    public string ApiWarning => L.Format("voice.api_warning", ("host", Host(ApiUrl)));
+
+    public string? CheckResult
+    {
+        get => _checkResult;
+        private set
+        {
+            if (Set(ref _checkResult, value))
+            {
+                Raise(nameof(HasCheckResult));
+            }
+        }
+    }
+
+    public bool HasCheckResult => _checkResult is not null;
+
+    public Command SaveKeyCommand { get; }
+
+    public Command ClearKeyCommand { get; }
+
+    public Command CheckCommand { get; }
+
+    private static string Host(string url) =>
+        Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) ? uri.Host : url.Trim();
+
+    private static IEnumerable<VoiceOption> BackendOptions() =>
+        BackendCodes.Select(code => new VoiceOption(code, L[$"voice.backend.{code}"]));
+
+    private async Task SaveKeyAsync(string key)
+    {
+        Error = null;
+        try
+        {
+            SetStatus(await _api().SetVoiceApiKeyAsync(key).ConfigureAwait(true));
+            ApiKey = ""; // ключ не остаётся в окне
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            Error = Text(error);
+        }
+    }
+
+    private async Task CheckAsync()
+    {
+        CheckResult = null;
+        try
+        {
+            var result = await _api().CheckVoiceApiAsync(ApiUrl.Trim(), ApiModel.Trim()).ConfigureAwait(true);
+            CheckResult = L.Format("voice.api_ok", ("host", result.Host),
+                ("seconds", result.Seconds.ToString("0.0", L.Language == "en" ? CultureInfo.InvariantCulture : CultureInfo.GetCultureInfo(L.Language))));
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            CheckResult = Text(error);
+        }
     }
 
     private static Localizer L => Localizer.Current;
@@ -204,7 +325,16 @@ public sealed class SoundSettingsViewModel : ObservableObject
         Device = Devices.First(d => d.Code == saved.VoiceDevice || (saved.VoiceDevice.Length == 0 && d.Code.Length == 0));
         Language = Languages.FirstOrDefault(l => l.Code == saved.VoiceLanguage) ?? Languages[0];
         Model = Models.FirstOrDefault(m => m.Code == saved.VoiceModel) ?? Models.FirstOrDefault();
+        Backend = Backends.FirstOrDefault(b => b.Code == saved.VoiceBackend) ?? Backends[0];
+        ApiUrl = saved.VoiceApiUrl;
+        ApiModel = saved.VoiceApiModel;
     }
+
+    /// <summary>5.7: изменённые поля API (null — без изменений).</summary>
+    public (string? Backend, string? Url, string? Model) ApiChanges(AppSettings saved) => (
+        Backend is { } backend && backend.Code != saved.VoiceBackend ? backend.Code : null,
+        ApiUrl.Trim() != saved.VoiceApiUrl ? ApiUrl.Trim() : null,
+        ApiModel.Trim() != saved.VoiceApiModel ? ApiModel.Trim() : null);
 
     /// <summary>Изменённые поля для сохранения (null — без изменений).</summary>
     public (string? Device, string? Language, string? Model) Changes(AppSettings saved) => (
@@ -219,6 +349,8 @@ public sealed class SoundSettingsViewModel : ObservableObject
         var device = Device?.Code;
         var language = Language?.Code;
         var model = Model?.Code;
+        var backend = Backend?.Code;
+        Backends = [.. BackendOptions()];
         Languages = [.. LanguageOptions()];
         Models = [.. ModelOptions()];
         if (Devices.Count > 0)
@@ -230,6 +362,7 @@ public sealed class SoundSettingsViewModel : ObservableObject
         Device = Devices.FirstOrDefault(d => d.Code == device);
         Language = Languages.FirstOrDefault(l => l.Code == language);
         Model = Models.FirstOrDefault(m => m.Code == model);
+        Backend = Backends.FirstOrDefault(b => b.Code == backend);
     }
 
     private void SetStatus(VoiceStatus status)
@@ -256,6 +389,8 @@ public sealed class SoundSettingsViewModel : ObservableObject
         Raise(nameof(AccelStatus));
         Raise(nameof(LastText));
         Raise(nameof(HasLast));
+        Raise(nameof(KeyStatus));
+        ClearKeyCommand.Refresh();
         DownloadCommand.Refresh();
         CancelDownloadCommand.Refresh();
         DownloadAccelCommand.Refresh();
