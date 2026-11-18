@@ -338,7 +338,8 @@ def test_too_many_calls_in_one_step(tmp_path: Path, db: Database) -> None:
     env = Env(tmp_path, db, script, limits=RunLimits(max_calls_per_step=2))
     env.runtime.run("many")
     contents = [m["content"] for m in script.seen[1] if m["role"] == "tool"]
-    assert len(contents) == 4 and contents[2] == contents[3] == "ERROR agent.run.too_many_calls"
+    assert len(contents) == 4 and contents[2] == contents[3]
+    assert contents[2].startswith("ERROR agent.run.too_many_calls")
     assert len(env.runs.tool_calls(env.runs.recent()[0].id)) == 2
 
 

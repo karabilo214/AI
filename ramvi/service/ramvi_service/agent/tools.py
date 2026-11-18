@@ -48,6 +48,43 @@ class ToolError(Exception):
         self.code, self.params = code, params
 
 
+# AG-06: повтор имеет смысл только при исправимой ошибке. Остальные — запрет или
+# решение пользователя: повторять бесполезно, нужен другой путь или честный отказ.
+CORRECTABLE = frozenset(
+    {
+        "agent.tool.invalid_args",
+        "agent.tool.unknown",
+        "agent.tool.edit_not_found",
+        "agent.tool.edit_ambiguous",
+        "agent.tool.edit_empty",
+        "agent.tool.bad_pattern",
+        "agent.tool.pattern_too_long",
+        "agent.tool.shell_syntax",
+        "agent.tool.bad_command",
+        "agent.tool.command_not_found",
+        "agent.tool.not_text",
+        "agent.tool.not_directory",
+        "agent.tool.no_change",
+        "agent.tool.too_large",
+        "agent.tool.too_many_files",
+        "agent.access.not_found",
+        "agent.access.not_directory",
+        "agent.access.not_file",
+        "agent.access.parent",
+        "agent.access.absolute",
+        "agent.access.invalid",
+        "agent.change.conflict",
+        "agent.run.too_many_calls",
+    }
+)
+HINT_FIX = "(Fix the call and try again.)"
+HINT_STOP = (
+    "(Do not repeat this call: it is not allowed or was refused. Choose another way, "
+    "or call finish with success=false and explain why.)"
+)
+HINT_DENIED = "(The user refused this action. Follow the reason they gave.)"
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     """Описание инструмента; `parameters` — JSON Schema объекта аргументов."""
@@ -112,7 +149,13 @@ class ToolResult:
     @classmethod
     def failure(cls, code: str, **params: Any) -> "ToolResult":
         detail = f" {json.dumps(params, ensure_ascii=False, default=str)}" if params else ""
-        return cls(False, f"ERROR {code}{detail}", {"params": params}, error=code)
+        if code == "agent.approval.denied":
+            hint = HINT_DENIED
+        elif code in CORRECTABLE:
+            hint = HINT_FIX
+        else:
+            hint = HINT_STOP
+        return cls(False, f"ERROR {code}{detail}\n{hint}", {"params": params}, error=code)
 
     def for_model(self) -> str:
         if len(self.content) <= MAX_RESULT_CHARS:

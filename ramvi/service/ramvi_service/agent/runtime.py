@@ -30,6 +30,12 @@ observation → validation → next step / final.
 `agent.tool_result`, `agent.tool_approval_required`, `agent.limit_reached`,
 `agent.done`).
 
+До первого запроса (6.6) проверяется готовность модели (`readiness.py`): вызовы
+инструментов, контекст, размер. Ошибки — запуск не начинается (`model_not_ready`),
+предупреждения (маленькая модель может плохо планировать) — событие
+`agent.readiness`. Неверные вызовы подряд (`max_invalid_calls`) — контрольная точка
+`invalid_calls`: модель не справляется с форматом вызовов.
+
 Решение (`Strategy`) отделено от исполнения и безопасности (6.8): стратегию можно
 заменить, не трогая инструменты, права и подтверждения.
 """
@@ -42,6 +48,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Literal, Protocol
 
 from ramvi_service.agent.progress import ProgressMonitor
+from ramvi_service.agent.readiness import ModelFacts, ReadinessCheck
 from ramvi_service.agent.tools import StopRequested, StorageJournal, ToolResult, ToolRunner
 
 EVENT_VERSION = 1
@@ -78,6 +85,7 @@ class RunLimits:
     max_completion_tokens: int = 4096  # на один ответ модели
     max_calls_per_step: int = 20  # лишние вызовы получают ошибку, модель повторит их
     max_nudges: int = 2  # напоминаний подряд, если модель отвечает текстом без действия
+    max_invalid_calls: int | None = 3  # неверных вызовов подряд (схема, неизвестный инструмент)
 
 
 FINISH_TOOL = {
@@ -314,8 +322,11 @@ class AgentRuntime:
         workspace: str = "",
         model_id: str | None = None,
         cancel: threading.Event | None = None,
+        facts: ModelFacts | None = None,
     ) -> RunResult:
-        """Выполнить задачу до итога, лимита, ошибки или остановки пользователем."""
+        """Выполнить задачу до итога, лимита, ошибки или остановки пользователем.
+
+        `facts` — что известно о модели (6.6); без них проверка готовности пропускается."""
         cancel = cancel if cancel is not None else threading.Event()
         run_id = (
             self.runs.create(goal, workspace, model_id).id
@@ -323,6 +334,17 @@ class AgentRuntime:
             else f"run-{time.monotonic_ns()}"
         )
         journal: Any = MemoryJournal() if self.runs is None else StorageJournal(self.runs, run_id)
+        if facts is not None:
+            readiness = ReadinessCheck().check(
+                facts, SYSTEM_PROMPT, [*self.tools.openai_tools(), FINISH_TOOL]
+            )
+            self.emit(run_id, "agent.readiness", **readiness.json())
+            if not readiness.ok:
+                code = str(readiness.errors[0]["code"])
+                if self.runs is not None:
+                    self.runs.update(run_id, status="failed", stop_reason="model_not_ready")
+                self.emit(run_id, "agent.done", status="failed", stop_reason="model_not_ready")
+                return RunResult(run_id, "failed", "model_not_ready", "", 0, {}, code)
         self._status(run_id, "running")
         self._started = time.monotonic()
         self._budget = {
@@ -414,7 +436,7 @@ class AgentRuntime:
         usage: dict[str, int],
     ) -> str:
         monitor = ProgressMonitor(self.limits.max_no_progress, self.limits.max_same_lines)
-        nudges = 0
+        nudges = invalid = 0
         while True:
             self._check(run_id, usage, cancel)
             self._steps += 1
@@ -474,6 +496,18 @@ class AgentRuntime:
                     result = ToolResult.failure("agent.run.too_many_calls")
                 else:
                     result = self._execute(run_id, steps, call, journal)
+                    if result.error in ("agent.tool.invalid_args", "agent.tool.unknown"):
+                        invalid += 1
+                    else:
+                        invalid = 0
+                    limit = self.limits.max_invalid_calls
+                    if limit is not None and invalid >= limit:
+                        messages.append(
+                            {"role": "tool", "tool_call_id": call.id, "content": result.for_model()}
+                        )
+                        self._ask_continue(run_id, "invalid_calls", usage, call.name)
+                        invalid = 0
+                        continue
                     loop = monitor.observe(call.name, call.arguments, result)
                     if loop is not None:
                         kind, where = loop
