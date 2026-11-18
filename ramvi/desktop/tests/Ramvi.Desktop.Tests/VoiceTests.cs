@@ -196,6 +196,37 @@ public sealed class VoiceTests
         Assert.Equal(Ru["download.hash_mismatch"], sound.ModelStatus);
     }
 
+    [Fact]
+    public async Task Accel_row_only_on_windows_nvidia_with_download_and_last_backend()
+    {
+        var api = new FakeChatApi();
+        var sound = new SoundSettingsViewModel(() => api, TimeSpan.FromMilliseconds(10));
+        await sound.LoadAsync(api.AppSettings);
+        Assert.False(sound.AccelOffered); // Mac или без NVIDIA — строки нет
+        Assert.False(sound.DownloadAccelCommand.CanExecute(null));
+        Assert.False(sound.HasLast);
+
+        api.VoiceAccelState = new VoiceAccel("cuda-12.4", true, false, 684_913_404);
+        api.VoiceLastState = new VoiceLast("cpu", "large-v3-turbo-q5_0", 7.24);
+        await sound.LoadAsync(api.AppSettings);
+        Assert.True(sound.AccelOffered && sound.AccelMissing);
+        Assert.Equal(Ru.Format("voice.accel_not_installed", ("size", "684")), sound.AccelStatus);
+        Assert.Equal(Ru.Format("voice.last_cpu", ("seconds", "7,2")), sound.LastText);
+
+        await sound.DownloadAccelCommand.RunAsync();
+        Assert.Equal(["accel"], api.VoiceCalls);
+        Assert.Equal(Ru.Format("voice.model_downloading", ("percent", 0)), sound.AccelStatus);
+        Assert.False(sound.DownloadCommand.CanExecute(null)); // одна загрузка за раз
+        api.VoiceDownloadState = new VoiceDownload("done", "cuda-12.4");
+        api.VoiceAccelState = new VoiceAccel("cuda-12.4", true, true, 684_913_404);
+        api.VoiceLastState = new VoiceLast("gpu", "large-v3-turbo-q5_0", 0.71);
+        await Until(() => !sound.IsDownloading, "скачивание закончено");
+        Assert.False(sound.AccelMissing);
+        Assert.Equal(Ru["voice.accel_installed"], sound.AccelStatus);
+        Assert.Equal(Ru.Format("voice.last_gpu", ("seconds", "0,7")), sound.LastText);
+        Assert.Empty(Ru.Missing);
+    }
+
     [AvaloniaFact]
     public async Task Ctrl_M_toggles_recording_while_typing_and_Esc_cancels()
     {

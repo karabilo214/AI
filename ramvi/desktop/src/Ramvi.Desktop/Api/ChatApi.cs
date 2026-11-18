@@ -119,6 +119,9 @@ public interface IChatApi
 
     /// <summary>5.2: прервать скачивание модели распознавания.</summary>
     Task<VoiceStatus> CancelVoiceDownloadAsync(CancellationToken cancel = default);
+
+    /// <summary>5.4: скачать ускоритель распознавания на видеокарте (Windows + NVIDIA).</summary>
+    Task<VoiceStatus> DownloadVoiceAccelAsync(CancellationToken cancel = default);
 }
 
 /// <summary>HTTP-клиент `ramvi_service.ui_api`: только loopback, ключ в заголовке.</summary>
@@ -288,6 +291,10 @@ public sealed class ChatApiClient : IChatApi, IDisposable
 
     public Task<VoiceStatus> CancelVoiceDownloadAsync(CancellationToken cancel = default) =>
         PostAsync("voice/model/cancel", new ModelRequest(null), ApiJson.Default.ModelRequest,
+            ApiJson.Default.VoiceStatus, cancel);
+
+    public Task<VoiceStatus> DownloadVoiceAccelAsync(CancellationToken cancel = default) =>
+        PostAsync("voice/accel/download", new ModelRequest(null), ApiJson.Default.ModelRequest,
             ApiJson.Default.VoiceStatus, cancel);
 
     private async IAsyncEnumerable<ChatEvent> StreamAsync(

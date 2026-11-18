@@ -10,10 +10,13 @@
 import argparse
 import contextlib
 import json
+import os
 import sys
 import time
 from multiprocessing import shared_memory
 from typing import Any
+
+from ramvi_service.voice.models import join_segments
 
 MAX_LINE = 65536
 RATE = 16_000
@@ -65,7 +68,7 @@ class Whisper:
         segments = self.model.transcribe(audio, language=language, **self._vad)
         lang_id = self._pw.whisper_full_lang_id(self.model._ctx)
         return {
-            "text": " ".join(s.text.strip() for s in segments).strip(),
+            "text": join_segments([s.text for s in segments]),
             "language": self._pw.whisper_lang_str(lang_id) if language == "auto" else language,
             "audio_s": round(audio.size / RATE, 2),
             "proc_s": round(time.perf_counter() - started, 2),
@@ -86,7 +89,22 @@ def read_shared(name: str, size: int) -> bytes:
         block.close()
 
 
+def lower_priority() -> None:
+    """5.4 VOI-03: распознавание на CPU уступает интерфейсу и LLM (ниже обычного)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined,unused-ignore]
+            kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), 0x4000)  # BELOW_NORMAL
+        else:
+            os.nice(5)
+    except (OSError, AttributeError):
+        pass  # без прав — обычный приоритет
+
+
 def run(model: str, threads: int, vad: str | None = None) -> None:
+    lower_priority()
     with contextlib.redirect_stdout(sys.stderr):  # stdout — только ответы RPC
         whisper = Whisper(model, threads, vad)
     while True:

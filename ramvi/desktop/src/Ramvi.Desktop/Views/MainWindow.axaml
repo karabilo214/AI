@@ -532,6 +532,19 @@
                 <PathIcon Data="{StaticResource icon-close}" />
               </Button>
             </StackPanel>
+            <!-- 5.4: ускоритель на видеокарте (Windows + NVIDIA) и где прошло последнее распознавание -->
+            <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding Settings.Sound.AccelOffered}">
+              <TextBlock VerticalAlignment="Center" Text="{l:T voice.accel}" />
+              <Button x:Name="VoiceAccelButton" Classes="icon" ToolTip.Tip="{l:T voice.accel_download}"
+                      Command="{Binding Settings.Sound.DownloadAccelCommand}"
+                      IsVisible="{Binding Settings.Sound.AccelMissing}">
+                <PathIcon Data="{StaticResource icon-download}" />
+              </Button>
+            </StackPanel>
+            <TextBlock x:Name="VoiceAccelStatus" Classes="caption" TextWrapping="Wrap" Text="{Binding Settings.Sound.AccelStatus}"
+                       IsVisible="{Binding Settings.Sound.AccelOffered}" />
+            <TextBlock x:Name="VoiceLast" Classes="caption" TextWrapping="Wrap" Text="{Binding Settings.Sound.LastText}"
+                       IsVisible="{Binding Settings.Sound.HasLast}" />
             <TextBlock x:Name="VoiceError" Classes="error" TextWrapping="Wrap" Text="{Binding Settings.Sound.Error}"
                        IsVisible="{Binding Settings.Sound.HasError}" />
             <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T voice.note}" />

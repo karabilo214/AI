@@ -32,6 +32,8 @@ public sealed class SoundSettingsViewModel : ObservableObject
         Languages = [.. LanguageOptions()];
         DownloadCommand = new Command(DownloadAsync, () => SelectedModel is { Installed: false } && !IsDownloading);
         CancelDownloadCommand = new Command(CancelDownloadAsync, () => IsDownloading);
+        DownloadAccelCommand = new Command(
+            DownloadAccelAsync, () => _status?.Accel is { Offered: true, Installed: false } && !IsDownloading);
     }
 
     private static Localizer L => Localizer.Current;
@@ -39,6 +41,44 @@ public sealed class SoundSettingsViewModel : ObservableObject
     public Command DownloadCommand { get; }
 
     public Command CancelDownloadCommand { get; }
+
+    /// <summary>5.4: скачать ускоритель распознавания на видеокарте.</summary>
+    public Command DownloadAccelCommand { get; }
+
+    /// <summary>5.4: строка ускорителя видна только на Windows с NVIDIA.</summary>
+    public bool AccelOffered => _status?.Accel is { Offered: true };
+
+    /// <summary>5.4: ускоритель предлагается, но не скачан — видна кнопка скачивания.</summary>
+    public bool AccelMissing => _status?.Accel is { Offered: true, Installed: false };
+
+    /// <summary>5.4: «Готово…», «Не скачано (685 МБ)…», «Скачивается: 35 %» или ошибка.</summary>
+    public string AccelStatus
+    {
+        get
+        {
+            if (_status?.Accel is not { } accel)
+            {
+                return "";
+            }
+
+            if (Progress(_status.Download, accel.Id) is { } progress)
+            {
+                return progress;
+            }
+
+            return accel.Installed
+                ? L["voice.accel_installed"]
+                : L.Format("voice.accel_not_installed", ("size", Megabytes(accel.Size)));
+        }
+    }
+
+    /// <summary>5.4: где прошло последнее распознавание и за сколько.</summary>
+    public string LastText => _status?.Last is { } last
+        ? L.Format(last.Backend == "gpu" ? "voice.last_gpu" : "voice.last_cpu",
+            ("seconds", last.ProcS.ToString("0.0", L.Language == "en" ? CultureInfo.InvariantCulture : CultureInfo.GetCultureInfo(L.Language))))
+        : "";
+
+    public bool HasLast => _status?.Last is not null;
 
     /// <summary>Микрофоны; первый вариант (код «») — системный по умолчанию.</summary>
     public List<VoiceOption> Devices { get; private set; } = [];
@@ -86,22 +126,32 @@ public sealed class SoundSettingsViewModel : ObservableObject
                 return "";
             }
 
-            var download = status.Download;
-            if (download.Model == model.Id && download.State == "running")
+            if (Progress(status.Download, model.Id) is { } progress)
             {
-                var percent = download.Total is > 0 ? (int)(100 * (download.Done ?? 0) / download.Total.Value) : 0;
-                return L.Format("voice.model_downloading", ("percent", percent));
-            }
-
-            if (download.Model == model.Id && download.State == "failed" && download.Error is { } error)
-            {
-                return L.Format(error.Code, Params(error.Params));
+                return progress;
             }
 
             return model.Installed
                 ? L["voice.model_installed"]
                 : L.Format("voice.model_not_installed", ("size", Megabytes(model.Size)));
         }
+    }
+
+    /// <summary>Ход или ошибка скачивания для `what` (модель или ускоритель); null — не оно.</summary>
+    private static string? Progress(VoiceDownload download, string what)
+    {
+        if (download.Model != what)
+        {
+            return null;
+        }
+
+        if (download.State == "running")
+        {
+            var percent = download.Total is > 0 ? (int)(100 * (download.Done ?? 0) / download.Total.Value) : 0;
+            return L.Format("voice.model_downloading", ("percent", percent));
+        }
+
+        return download.State == "failed" && download.Error is { } error ? L.Format(error.Code, Params(error.Params)) : null;
     }
 
     public string? Error
@@ -201,8 +251,14 @@ public sealed class SoundSettingsViewModel : ObservableObject
     private void RaiseModel()
     {
         Raise(nameof(ModelStatus));
+        Raise(nameof(AccelOffered));
+        Raise(nameof(AccelMissing));
+        Raise(nameof(AccelStatus));
+        Raise(nameof(LastText));
+        Raise(nameof(HasLast));
         DownloadCommand.Refresh();
         CancelDownloadCommand.Refresh();
+        DownloadAccelCommand.Refresh();
     }
 
     private static IEnumerable<VoiceOption> LanguageOptions() =>
@@ -218,6 +274,20 @@ public sealed class SoundSettingsViewModel : ObservableObject
         try
         {
             SetStatus(await _api().DownloadVoiceModelAsync(_model?.Code).ConfigureAwait(true));
+            _ = WatchDownloadAsync(++_watch);
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            Error = Text(error);
+        }
+    }
+
+    private async Task DownloadAccelAsync()
+    {
+        Error = null;
+        try
+        {
+            SetStatus(await _api().DownloadVoiceAccelAsync().ConfigureAwait(true));
             _ = WatchDownloadAsync(++_watch);
         }
         catch (Exception error) when (error is ApiException or HttpRequestException)

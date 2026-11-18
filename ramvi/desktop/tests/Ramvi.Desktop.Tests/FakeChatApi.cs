@@ -370,12 +370,17 @@ internal sealed class FakeChatApi : IChatApi
 
     public VoiceDownload VoiceDownloadState { get; set; } = new("idle");
 
+    /// <summary>5.4: ускоритель на видеокарте; null — сервис его не прислал.</summary>
+    public VoiceAccel? VoiceAccelState { get; set; } = new("cuda-12.4", false, false, 684_913_404);
+
+    public VoiceLast? VoiceLastState { get; set; }
+
     public VoiceStatus Voice() => new(
         VoiceState, VoiceSeconds, 0.5, VoiceLimit, 120, AppSettings.VoiceLanguage, ["auto", "ru", "en", "uk"],
         AppSettings.VoiceDevice,
         new VoiceModelState(AppSettings.VoiceModel, VoiceModels.First(m => m.Id == AppSettings.VoiceModel).Installed,
             1),
-        [.. VoiceModels], VoiceDownloadState);
+        [.. VoiceModels], VoiceDownloadState, null, VoiceLastState, VoiceAccelState);
 
     private Task<T> VoiceCall<T>(string call, Func<T> result)
     {
@@ -430,6 +435,13 @@ internal sealed class FakeChatApi : IChatApi
         VoiceCall($"download {model}", () =>
         {
             VoiceDownloadState = new VoiceDownload("running", model, 0, 100);
+            return Voice();
+        });
+
+    public Task<VoiceStatus> DownloadVoiceAccelAsync(CancellationToken cancel = default) =>
+        VoiceCall("accel", () =>
+        {
+            VoiceDownloadState = new VoiceDownload("running", "cuda-12.4", 0, 684_913_404);
             return Voice();
         });
 

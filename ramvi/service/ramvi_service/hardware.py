@@ -100,6 +100,30 @@ def _nvidia_gpus() -> tuple[GPUInfo, ...]:
     return parse_nvidia_smi(out) if out else ()
 
 
+def nvidia_free_mb() -> int | None:
+    """5.4: свободная видеопамять самой свободной NVIDIA сейчас (МиБ); None — NVIDIA нет."""
+    free = [g.vram_free_mb for g in _nvidia_gpus() if g.vram_free_mb is not None]
+    return max(free) if free else None
+
+
+def ram_available_mb() -> int | None:
+    """5.4: доступная оперативная память сейчас (МиБ), без медленных опросов (WMI и т.п.)."""
+    info: dict[str, Any] = {"ram_available_mb": None}
+    try:
+        if sys.platform.startswith("linux"):
+            info["ram_total_mb"], info["ram_available_mb"] = parse_meminfo(
+                Path("/proc/meminfo").read_text()
+            )
+        elif sys.platform == "win32":
+            _windows_memory(info)
+        elif sys.platform == "darwin":
+            _macos_memory(info)
+    except Exception:  # замер не должен ронять запись
+        return None
+    value = info["ram_available_mb"]
+    return int(value) if value is not None else None
+
+
 # --- Linux -----------------------------------------------------------------
 
 
@@ -166,6 +190,18 @@ def _sysctl(name: str) -> str | None:
     return out.strip() if out else None
 
 
+def _macos_memory(info: dict[str, Any]) -> None:
+    vm = _run(["vm_stat"])
+    if vm:
+        page = _int(_sysctl("hw.pagesize")) or 4096
+        pages = {}
+        for line in vm.splitlines():
+            key, _, value = line.partition(":")
+            pages[key.strip()] = _int(value.strip().rstrip("."))
+        free = sum(pages.get(k) or 0 for k in ("Pages free", "Pages inactive", "Pages speculative"))
+        info["ram_available_mb"] = free * page // MIB
+
+
 def _macos(info: dict[str, Any]) -> None:
     info["cpu_name"] = _sysctl("machdep.cpu.brand_string")
     info["cores_physical"] = _int(_sysctl("hw.physicalcpu"))
@@ -177,15 +213,7 @@ def _macos(info: dict[str, Any]) -> None:
     if platform.machine() == "arm64":
         flags.add("neon")
     info["isa"] = _isa_from_flags(flags)
-    vm = _run(["vm_stat"])
-    if vm:
-        page = _int(_sysctl("hw.pagesize")) or 4096
-        pages = {}
-        for line in vm.splitlines():
-            key, _, value = line.partition(":")
-            pages[key.strip()] = _int(value.strip().rstrip("."))
-        free = sum(pages.get(k) or 0 for k in ("Pages free", "Pages inactive", "Pages speculative"))
-        info["ram_available_mb"] = free * page // MIB
+    _macos_memory(info)
     info["other_gpus"] = parse_system_profiler(
         _run(["system_profiler", "-json", "SPDisplaysDataType"], timeout=15) or ""
     )
@@ -194,7 +222,7 @@ def _macos(info: dict[str, Any]) -> None:
 # --- Windows ---------------------------------------------------------------
 
 
-def _windows(info: dict[str, Any]) -> None:
+def _windows_memory(info: dict[str, Any]) -> None:
     class MemoryStatus(ctypes.Structure):
         _fields_ = [
             ("dwLength", ctypes.c_ulong),
@@ -214,6 +242,11 @@ def _windows(info: dict[str, Any]) -> None:
     if kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
         info["ram_total_mb"] = status.ullTotalPhys // MIB
         info["ram_available_mb"] = status.ullAvailPhys // MIB
+
+
+def _windows(info: dict[str, Any]) -> None:
+    _windows_memory(info)
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined,unused-ignore]
     # IsProcessorFeaturePresent: 10=SSE2(база x64), 39=AVX, 40=AVX2, 41=AVX512F.
     flags = {"sse4_2"} if platform.machine().lower() in ("amd64", "x86_64") else set()
     for code, name in ((39, "avx"), (40, "avx2"), (41, "avx512f")):

@@ -329,5 +329,13 @@
   "voice.model_downloading": "Downloading: {percent} %",
   "voice.download": "Download the recognition model",
   "voice.download_cancel": "Cancel download",
-  "voice.note": "Speech is recognized on this computer, without internet; audio is not saved. A language set explicitly is recognized about twice as fast as “Detect automatically”."
+  "voice.note": "Speech is recognized on this computer, without internet; audio is not saved. A language set explicitly is recognized about twice as fast as “Detect automatically”.",
+  "voice.no_memory": "Not enough RAM for speech recognition: {need_mb} MB needed, {free_mb} MB free. Close other programs, download the “Fast” model or unload the chat model",
+  "voice.accel_unsupported": "GPU acceleration is available only on Windows with an NVIDIA graphics card",
+  "voice.accel": "GPU acceleration",
+  "voice.accel_installed": "Ready: speech is recognized on the GPU when more than 1.3 GB of video memory is free, otherwise on the CPU",
+  "voice.accel_not_installed": "Not downloaded ({size} MB). Recognition on the GPU is about 10 times faster",
+  "voice.accel_download": "Download the GPU recognition accelerator",
+  "voice.last_gpu": "Last recognition: GPU, {seconds} s",
+  "voice.last_cpu": "Last recognition: CPU, {seconds} s"
 }

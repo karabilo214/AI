@@ -173,14 +173,24 @@ public sealed record VoiceStatus(
     string Device,
     VoiceModelState Model,
     IReadOnlyList<VoiceModelOption> Models,
-    VoiceDownload Download);
+    VoiceDownload Download,
+    string? Backend = null,
+    VoiceLast? Last = null,
+    VoiceAccel? Accel = null);
+
+/// <summary>5.4: где прошло последнее распознавание: gpu или cpu.</summary>
+public sealed record VoiceLast(string Backend, string Model, double ProcS);
+
+/// <summary>5.4: ускоритель на видеокарте — предлагается ли (Windows + NVIDIA) и скачан ли.</summary>
+public sealed record VoiceAccel(string Id, bool Offered, bool Installed, long Size);
 
 public sealed record VoiceDevice(string Name, bool Default);
 
 internal sealed record VoiceDevicesResponse(IReadOnlyList<VoiceDevice> Devices);
 
 /// <summary>5.2: распознанный текст — в поле ввода, не в чат.</summary>
-public sealed record VoiceResult(string Text, string? Language, double AudioS, double ProcS);
+public sealed record VoiceResult(
+    string Text, string? Language, double AudioS, double ProcS, string? Backend = null, string? Model = null);
 
 internal sealed record DeviceRequest(string? Device);
 

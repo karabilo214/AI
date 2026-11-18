@@ -17,6 +17,7 @@
 | Модели | `service/ramvi_service/voice/models.py` | Файл, адрес, размер, SHA-256; папка `models/stt/`; детектор речи Silero скачивается вместе с моделью, без него модель не считается установленной |
 | Запись | `voice/audio.py` | PortAudio (`sounddevice`): на Windows — WASAPI (полные имена, 16 кГц через `auto_convert`), иначе интерфейс системного устройства; запись 16 бит моно в память, предел длины. Если 16 кГц не открылась — частота устройства, пересчёт делает процесс распознавания |
 | Процесс распознавания | `voice/worker.py`, `voice/stt.py` | Отдельный процесс с whisper.cpp (`pywhispercpp`), только CPU, детектор речи с запасом 1000 мс (иначе на тишине whisper выдумывает «Продолжение следует...»); RPC общего `ProcessSupervisor`. Звук передаётся через общую память, не через диск. Без дела 5 минут — процесс останавливается и освобождает память; смена модели — новый процесс |
+| Выбор способа (5.4) | `voice/service.py`, `voice/accel.py`, `voice/server.py`, `hardware.ram_available_mb/nvidia_free_mb` | При каждой записи: видеокарта (`whisper-server` из ускорителя, одна запись — один процесс), если ускоритель скачан и хватает видеопамяти и RAM; иначе CPU; не хватает RAM — small; не хватает и ей — `voice.no_memory` до открытия микрофона |
 | Сервис | `voice/service.py` | Состояния idle → recording → transcribing; ошибки `voice.*`; скачивание модели через `downloads.Download` (HTTPS, SHA-256 до активации) |
 | Оболочка | `VoiceViewModel.cs`, `SoundSettingsViewModel.cs` | Кнопка, индикатор, раздел «Звук» в настройках |
 
@@ -32,12 +33,15 @@
 | `POST /voice/stop` | `text`, `language`, `audio_s`, `proc_s` |
 | `POST /voice/cancel` | как `GET /voice` |
 | `POST /voice/model/download` `{model?}`, `POST /voice/model/cancel` | как `GET /voice` |
+| `POST /voice/accel/download` | как `GET /voice`; ускоритель на видеокарте (только Windows + NVIDIA) |
+
+В `GET /voice` также `backend` (где идёт текущая запись), `last` (`backend`, `model`, `proc_s` прошлого распознавания), `accel` (`offered`, `installed`, `size`); в ответе `stop` — `backend` и `model`.
 
 Настройки (`settings.json`): `voice_device` («» — системный), `voice_language` (`auto`/`ru`/`en`/`uk`), `voice_model`.
 
 ## Ошибки
 
-`voice.model_missing` (до открытия микрофона), `voice.no_device`, `voice.device_missing`, `voice.device_error`, `voice.unavailable` (нет пакетов), `voice.too_short` (< 0,3 с), `voice.no_signal` (одни нули — так macOS отдаёт звук без разрешения на микрофон), `voice.no_speech`, `voice.stt_failed`, `voice.busy`. После любой ошибки состояние — idle, чат работает.
+`voice.model_missing` и `voice.no_memory` (до открытия микрофона), `voice.accel_unsupported`, `voice.no_device`, `voice.device_missing`, `voice.device_error`, `voice.unavailable` (нет пакетов), `voice.too_short` (< 0,3 с), `voice.no_signal` (одни нули — так macOS отдаёт звук без разрешения на микрофон), `voice.no_speech`, `voice.stt_failed`, `voice.busy`. После любой ошибки состояние — idle, чат работает.
 
 ## Проверено
 
@@ -45,3 +49,4 @@
 - Mac M1 Pro, настоящий whisper.cpp large-v3-turbo q5_0, звук из файлов вместо микрофона (FLEURS RU/UK/EN и синтетика): язык верно 12/12; фраза 2–14 с — 3,0 с с заданным языком, 5,8–6,9 с с «auto» (5 потоков). После закрытия сервиса процессов распознавания не остаётся.
 - Найдено и исправлено проверкой с настоящим whisper: PortAudio может прислать звук до того, как запись узнала частоту устройства.
 - Windows (ноутбук, Ryzen 7 260), комплект `runtime\python` + колёса голоса: настоящий микрофон через WASAPI (полные имена, уровень звука идёт), 3 с тишины → «речь не распознана» (без детектора было «Продолжение следует...»); речь из файлов — тексты как на Mac, 7,5–7,9 с на фразу с заданным языком, 14,6–15,6 с с «auto»; после закрытия процессов не остаётся. Скорость на Windows CPU — задача 5.4 ([ADR-0004](../adr/ADR-0004-stt-backend.md)).
+- 5.4 на ASUS: ускоритель скачан сервисом с GitHub с проверкой SHA-256 и распакован (66 с); распознавание на видеокарте 0,30–0,55 с после остановки записи; рядом с 14B — без нехватки памяти, генерация медленнее на 1,5 %; CPU при 14B отказал по памяти с понятной ошибкой ([ADR-0004](../adr/ADR-0004-stt-backend.md)).

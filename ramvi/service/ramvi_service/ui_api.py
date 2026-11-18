@@ -256,6 +256,8 @@ class UIServer:
             return voice.download_model(_optional_str(body, "model"))
         if method == "POST" and path == "/voice/model/cancel":
             return voice.cancel_download()
+        if method == "POST" and path == "/voice/accel/download":
+            return voice.download_accel()  # 5.4: ускоритель на видеокарте
         raise ChatError("api.not_found")
 
     def _status(self) -> dict[str, Any]:

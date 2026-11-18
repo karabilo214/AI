@@ -18,9 +18,10 @@ from ramvi_service import settings as st
 from ramvi_service.app import build
 from ramvi_service.chat import ChatError
 from ramvi_service.downloads import DownloadError
+from ramvi_service.voice import accel as vm_accel
 from ramvi_service.voice import models as vm
 from ramvi_service.voice.audio import Device, Recorder, peak
-from ramvi_service.voice.service import VoiceService
+from ramvi_service.voice.service import RAM_NEED_MB, VoiceService
 from ramvi_service.voice.stt import WhisperProcess
 from test_chat import ENGINE, TOKEN, Client
 
@@ -106,13 +107,37 @@ class Env:
             self.transcribers.append(t)
             return t
 
+        self.ram: int | None = None  # свободно RAM, МиБ (None — неизвестно)
+        self.vram: int | None = None  # свободно видеопамяти NVIDIA, МиБ (None — NVIDIA нет)
+        self.gpu: list[FakeTranscriber] = []
+
+        def make_gpu(path: Path, folder: Path) -> FakeTranscriber:
+            t = FakeTranscriber(path, "на видеокарте")
+            t.single_use = True  # type: ignore[attr-defined]
+            t.folder = folder  # type: ignore[attr-defined]
+            self.gpu.append(t)
+            return t
+
+        defaults: dict[str, Any] = {
+            "make_gpu_transcriber": make_gpu,
+            "memory": lambda: (self.ram, self.vram),
+            "has_nvidia": lambda: self.vram is not None,
+            "platform": "darwin",
+        }
         self.voice = VoiceService(
             lambda: self.models,
             lambda: self.settings,
             microphone=self.mic,
             make_transcriber=make,
-            **options,
+            **{**defaults, **options},
         )
+
+    def install_accel(self) -> Path:
+        folder = vm_accel.CUDA.path(self.models)
+        folder.mkdir(parents=True, exist_ok=True)
+        for name in vm_accel.CUDA.files:
+            (folder / name).write_bytes(b"x")
+        return folder
 
     def install(self, model_id: str = vm.DEFAULT_MODEL, vad: bool = True) -> Path:
         path = vm.MODELS[model_id].path(self.models)
@@ -512,7 +537,12 @@ def test_voice_http_routes(tmp_path: Path) -> None:
         TOKEN,
         engine_command=ENGINE,
         app_dir=app,
-        voice_options={"microphone": mic, "make_transcriber": make},
+        voice_options={
+            "microphone": mic,
+            "make_transcriber": make,
+            "memory": lambda: (None, None),
+            "has_nvidia": lambda: False,
+        },
     )
     server.start()
     try:
@@ -533,6 +563,8 @@ def test_voice_http_routes(tmp_path: Path) -> None:
             "language": "en",
             "audio_s": 0.5,
             "proc_s": pytest.approx(0, abs=0.5),
+            "backend": "cpu",
+            "model": "large-v3-turbo-q5_0",
         }
         assert mic.opened == ["Mic B"]
         assert client.ok("GET", "/voice/devices")["devices"][1]["name"] == "Mic B"
@@ -617,3 +649,250 @@ def test_worker_gets_vad_next_to_model(tmp_path: Path) -> None:
     vm.VAD.path(tmp_path).write_bytes(b"v")
     command = WhisperProcess(model, threads=1).process.command
     assert command[command.index("--vad") + 1] == str(vm.VAD.path(tmp_path))
+
+
+# --- 5.4: где распознавать -------------------------------------------------------------
+
+
+def record_and_stop(env: Env) -> dict[str, Any]:
+    env.voice.start()
+    env.mic.say(tone(0.5))
+    return env.voice.stop()
+
+
+def test_gpu_used_when_accel_installed_and_vram_free(tmp_path: Path) -> None:
+    env = Env(tmp_path, platform="win32")
+    env.install()
+    folder = env.install_accel()
+    env.vram = vm_accel.VRAM_NEED_MB["large-v3-turbo-q5_0"]
+    env.voice.start()
+    assert env.voice.status()["backend"] == "gpu"
+    env.mic.say(tone(0.5))
+    result = env.voice.stop()
+    assert (result["text"], result["backend"]) == ("на видеокарте", "gpu")
+    assert env.gpu[0].folder == folder and env.gpu[0].prepared == 1  # type: ignore[attr-defined]
+    assert env.gpu[0].closed == 1  # видеопамять освобождена сразу после распознавания
+    assert env.transcribers == []
+    status = env.voice.status()
+    assert status["last"]["backend"] == "gpu" and status["backend"] is None
+    assert status["accel"]["offered"] and status["accel"]["installed"]
+
+
+def test_cpu_when_vram_short_or_no_accel_or_not_windows(tmp_path: Path) -> None:
+    env = Env(tmp_path, platform="win32")
+    env.install()
+    env.vram = 8000
+    assert record_and_stop(env)["backend"] == "cpu"  # ускоритель не скачан
+    env.install_accel()
+    env.vram = vm_accel.VRAM_NEED_MB["large-v3-turbo-q5_0"] - 1  # занято LLM
+    assert record_and_stop(env)["backend"] == "cpu"
+    assert env.gpu == [] and len(env.transcribers) == 1  # процесс CPU переиспользуется
+    mac = Env(tmp_path / "mac", platform="darwin")
+    mac.install()
+    mac.install_accel()
+    mac.vram = 8000
+    assert record_and_stop(mac)["backend"] == "cpu"
+    assert mac.voice.status()["accel"]["offered"] is False
+
+
+def test_low_ram_falls_back_to_small_or_refuses_before_recording(tmp_path: Path) -> None:
+    env = Env(tmp_path)
+    env.install()
+    env.ram = RAM_NEED_MB["large-v3-turbo-q5_0"] - 1
+    assert code(env.voice.start) == "voice.no_memory"
+    assert env.mic.opened == []  # микрофон не открывался
+    env.install("small-q5_1")
+    result = record_and_stop(env)
+    assert result["model"] == "small-q5_1" and result["backend"] == "cpu"
+    env.ram = RAM_NEED_MB["small-q5_1"] - 1
+    with pytest.raises(ChatError) as error:
+        env.voice.start()
+    assert error.value.code == "voice.no_memory"
+    assert error.value.params == {"need_mb": RAM_NEED_MB["large-v3-turbo-q5_0"], "free_mb": env.ram}
+    env.ram = None  # замер не удался — не мешать записи
+    assert record_and_stop(env)["model"] == "large-v3-turbo-q5_0"
+
+
+def test_accel_download_checks_hash_then_extracts_only_needed_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import zipfile
+
+    seen: list[dict[str, Any]] = []
+
+    class FakeDownload:
+        def __init__(self, url: str, models_dir: Path, name: str, sha256: str, **kw: Any) -> None:
+            seen.append({"url": url, "name": name, "sha256": sha256, "size": kw.get("size")})
+            self.target = Path(models_dir) / name
+
+        def run(self) -> Path:
+            self.target.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(self.target, "w") as zf:
+                for name in (*vm_accel.CUDA.files, "wchess.exe", "nvblas64_12.dll"):
+                    if name != drop:
+                        zf.writestr(f"Release/{name}", name)
+            return self.target
+
+        def cancel(self) -> None:
+            pass
+
+        def discard(self) -> None:
+            pass
+
+    monkeypatch.setattr("ramvi_service.voice.service.Download", FakeDownload)
+    assert code(Env(tmp_path / "mac").voice.download_accel) == "voice.accel_unsupported"
+    env = Env(tmp_path, platform="win32")
+    env.vram = 8000
+    drop = "ggml-cuda.dll"  # испорченный архив: нет нужного файла
+    env.voice.download_accel()
+    wait(lambda: env.voice.status()["download"]["state"] != "running")
+    status = env.voice.status()
+    assert status["download"]["state"] == "failed" and not status["accel"]["installed"]
+    assert not vm_accel.CUDA.path(env.models).exists()
+    drop = ""
+    env.voice.download_accel()
+    wait(lambda: env.voice.status()["download"]["state"] == "done")
+    folder = vm_accel.CUDA.path(env.models)
+    assert sorted(p.name for p in folder.iterdir()) == sorted(vm_accel.CUDA.files)
+    assert (folder / "ggml-cuda.dll").read_text() == "ggml-cuda.dll"
+    assert not (env.models / vm_accel.CUDA.archive(env.models)).exists()  # архив удалён
+    assert env.voice.status()["accel"]["installed"] is True
+    assert seen[-1] == {
+        "url": vm_accel.CUDA.url,
+        "name": vm_accel.CUDA.archive(env.models),
+        "sha256": vm_accel.CUDA.sha256,
+        "size": vm_accel.CUDA.size,
+    }
+    assert vm_accel.CUDA.url.startswith("https://github.com/ggml-org/whisper.cpp/releases/")
+
+
+def test_pure_python_resample_and_wav() -> None:
+    import wave as wav_module
+
+    from ramvi_service.voice.server import language_code, to_16k_pcm, wav_bytes
+
+    assert len(to_16k_pcm(tone(1.0, 48_000), 48_000)) == 32_000
+    assert len(to_16k_pcm(tone(1.0, 44_100), 44_100)) == 32_000
+    same = tone(0.5)
+    assert to_16k_pcm(same, 16_000) is same
+    block = array.array("h", [3000] * 48).tobytes()
+    assert set(array.array("h", to_16k_pcm(block, 48_000))) == {3000}
+    import io
+
+    with wav_module.open(io.BytesIO(wav_bytes(same))) as w:
+        assert (w.getframerate(), w.getnchannels(), w.getsampwidth()) == (16_000, 1, 2)
+        assert w.readframes(w.getnframes()) == same
+    assert language_code({"language_probabilities": {"ru": 0.9, "uk": 0.1}}, "auto") == "ru"
+    assert language_code({"detected_language": "ukrainian"}, "auto") == "uk"
+    assert language_code({"detected_language": "ukrainian"}, "en") == "en"
+
+
+FAKE_SERVER = r"""
+import json, sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+args = sys.argv[1:]
+port = int(args[args.index("--port") + 1])
+vad = "--vad" in args and args[args.index("-vp") + 1]
+
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(b"ok")
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        boundary = self.headers["Content-Type"].split("boundary=")[1].encode()
+        parts = {}
+        for part in body.split(b"--" + boundary)[1:-1]:
+            head, _, data = part.partition(b"\r\n\r\n")
+            name = head.split(b'name="')[1].split(b'"')[0].decode()
+            parts[name] = data[:-2]
+        wav = parts["file"]
+        lang = parts["language"].decode()
+        reply = {"text": f" {len(wav)} {lang} vad={vad}\n", "detected_language": "ukrainian",
+                 "language_probabilities": {"uk": 0.97, "ru": 0.03}}
+        if lang == "ru":  # как у настоящего сервера: граница фрагмента посреди слова
+            reply["text"] = " ночного вид\nения и\n"
+            reply["segments"] = [{"text": " ночного вид"}, {"text": "ения и"}]
+        out = json.dumps(reply).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(out))); self.end_headers(); self.wfile.write(out)
+
+HTTPServer(("127.0.0.1", port), H).serve_forever()
+"""
+
+
+def test_whisper_server_process_gets_wav_over_localhost(tmp_path: Path) -> None:
+    from ramvi_service.voice.server import WhisperServer
+
+    model = tmp_path / "stt" / "m.bin"
+    model.parent.mkdir()
+    vm.VAD.path(tmp_path).write_bytes(b"v")
+    server = WhisperServer(
+        model, tmp_path, threads=2, command=[sys.executable, "-c", FAKE_SERVER], start_timeout=30
+    )
+    try:
+        command = server.process.command
+        assert command[command.index("--host") + 1] == "127.0.0.1"
+        assert command[command.index("-vp") + 1] == "1000"
+        server.prepare()
+        assert server.running
+        result = server.transcribe(tone(1.0, 48_000), 48_000, "auto")
+        assert result == {"text": "32044 auto vad=1000", "language": "uk"}  # WAV: 44 + 32000
+        assert server.transcribe(tone(0.5), 16_000, "ru") == {
+            "text": "ночного видения и",
+            "language": "ru",
+        }
+    finally:
+        server.close()
+    assert not server.running
+
+
+def test_whisper_server_that_never_starts_is_reported(tmp_path: Path) -> None:
+    from ramvi_service.voice.server import WhisperServer
+
+    server = WhisperServer(
+        tmp_path / "m.bin", tmp_path, command=[sys.executable, "-c", "raise SystemExit(3)"]
+    )
+    assert code(server.prepare) == "voice.stt_failed"
+    assert not server.running
+
+
+def test_cpu_worker_lowers_its_priority() -> None:
+    script = (
+        "import os, sys; from ramvi_service.voice.worker import lower_priority; "
+        "before = os.nice(0) if sys.platform != 'win32' else 0; lower_priority(); "
+        "print(os.nice(0) - before if sys.platform != 'win32' else 'win')"
+    )
+    import os
+    import subprocess
+
+    service = Path(__file__).resolve().parents[1] / "service"
+    out = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={**os.environ, "PYTHONPATH": str(service)},
+    ).stdout.strip()
+    assert out in ("5", "win")
+
+
+def test_segments_join_without_breaking_words() -> None:
+    assert vm.join_segments([" Они умеют видеть при помощи ночного вид", "ения и почти"]) == (
+        "Они умеют видеть при помощи ночного видения и почти"
+    )
+    assert vm.join_segments([" Привет,", " как дела?\n", " Хорошо."]) == "Привет, как дела? Хорошо."
+    assert vm.join_segments(["", "  "]) == ""
+
+
+def test_gpu_also_needs_some_ram(tmp_path: Path) -> None:
+    from ramvi_service.voice.service import GPU_RAM_NEED_MB
+
+    env = Env(tmp_path, platform="win32")
+    env.install()
+    env.install_accel()
+    env.vram = 8000
+    env.ram = GPU_RAM_NEED_MB
+    assert record_and_stop(env)["backend"] == "gpu"
+    env.ram = GPU_RAM_NEED_MB - 1  # 14B занял почти всю RAM: ни видеокарта, ни CPU
+    assert code(env.voice.start) == "voice.no_memory"

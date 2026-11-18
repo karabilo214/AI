@@ -3,16 +3,26 @@
 Состояния: `idle` → `recording` (после `start`) → `transcribing` (после `stop`) → `idle`.
 `stop` возвращает текст; в чат он не отправляется — человек правит его в поле ввода.
 Звук живёт только в памяти до конца распознавания (VOI-02).
+
+5.4 VOI-03: при каждой записи выбирается, где распознавать. Видеокарта — если скачан
+ускоритель (`accel.py`) и свободной видеопамяти хватает с запасом; процесс на ней живёт
+одну запись и сразу освобождает видеопамять. Иначе процессор — если хватает оперативной
+памяти; не хватает — запасная модель small, не хватает и ей — понятная ошибка: голос
+не отнимает память у активной LLM.
 """
 
+import shutil
+import sys
 import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
+from ramvi_service import hardware
 from ramvi_service.chat import ChatError
 from ramvi_service.downloads import Download, DownloadError
+from ramvi_service.voice import accel
 from ramvi_service.voice.audio import Microphone, Recorder, SoundDeviceMicrophone
 from ramvi_service.voice.models import (
     DEFAULT_MODEL,
@@ -23,9 +33,24 @@ from ramvi_service.voice.models import (
     SttModel,
     installed,
 )
-from ramvi_service.voice.stt import Transcriber, WhisperProcess
+from ramvi_service.voice.server import WhisperServer
+from ramvi_service.voice.stt import Transcriber, WhisperProcess, default_threads
 
 MIN_SECONDS = 0.3
+FALLBACK_MODEL = "small-q5_1"
+# Оперативная память процесса распознавания на CPU (пик, замер Mac M1: turbo 907 МБ,
+# small 541 МБ) плюс запас, чтобы не теснить активную LLM.
+RAM_NEED_MB = {"large-v3-turbo-q5_0": 907 + 512, "small-q5_1": 541 + 512}
+# whisper-server на видеокарте тоже держит оперативную память (пик 427 МБ, ASUS, turbo).
+GPU_RAM_NEED_MB = 427 + 256
+
+
+def _memory_now() -> tuple[int | None, int | None]:
+    return hardware.ram_available_mb(), hardware.nvidia_free_mb()
+
+
+def _gpu_transcriber(model: Path, folder: Path) -> Transcriber:
+    return WhisperServer(model, folder, threads=default_threads())
 
 
 class VoiceSettings(Protocol):
@@ -47,22 +72,32 @@ class VoiceService:
         *,
         microphone: Microphone | None = None,
         make_transcriber: Callable[[Path], Transcriber] = WhisperProcess,
+        make_gpu_transcriber: Callable[[Path, Path], Transcriber] = _gpu_transcriber,
+        memory: Callable[[], tuple[int | None, int | None]] = _memory_now,
+        has_nvidia: Callable[[], bool] = lambda: shutil.which("nvidia-smi") is not None,
+        platform: str = sys.platform,
         max_seconds: float = 120.0,
         idle_seconds: float = 300.0,
     ) -> None:
         self.models_dir, self.settings = models_dir, settings
         self.microphone = microphone or SoundDeviceMicrophone()
         self.make_transcriber = make_transcriber
+        self.make_gpu_transcriber, self.memory = make_gpu_transcriber, memory
+        self._has_nvidia_probe = has_nvidia
+        self._has_nvidia: bool | None = None
+        self.platform = platform
+        self._active: tuple[str, SttModel] | None = None  # где распознаётся текущая запись
+        self._last: dict[str, Any] | None = None
         self.max_seconds, self.idle_seconds = max_seconds, idle_seconds
         self._lock = threading.Lock()
         self._state = "idle"
         self._recorder: Recorder | None = None
         self._limit = False
         self._transcriber: Transcriber | None = None
-        self._transcriber_path: Path | None = None
+        self._transcriber_key: tuple[str, Path] | None = None
         self._idle_timer: threading.Timer | None = None
         self._download: dict[str, Any] = {"state": "idle"}
-        self._downloader: Download | None = None
+        self._downloader: Any = None
         self._download_cancelled = False
 
     # --- модель ------------------------------------------------------------------
@@ -77,14 +112,50 @@ class VoiceService:
     def _model_path(self) -> Path:
         return self.model().path(self.models_dir())
 
-    def _get_transcriber(self) -> Transcriber:
-        """Процесс распознавания для текущей модели; смена модели — новый процесс."""
-        path = self._model_path()
-        if self._transcriber is not None and self._transcriber_path != path:
+    def has_nvidia(self) -> bool:
+        if self._has_nvidia is None:
+            self._has_nvidia = bool(self._has_nvidia_probe())
+        return self._has_nvidia
+
+    def accel_offered(self) -> bool:
+        return accel.offered(self.platform, self.has_nvidia())
+
+    def _choose(self) -> tuple[str, SttModel]:
+        """Где распознавать эту запись: («gpu» | «cpu», модель)."""
+        model, models = self.model(), self.models_dir()
+        if not installed(model, models):
+            raise ChatError("voice.model_missing", model=model.id)
+        ram, vram = self.memory()
+        if (
+            self.accel_offered()
+            and accel.CUDA.installed(models)
+            and vram is not None
+            and vram >= accel.VRAM_NEED_MB[model.id]
+            and (ram is None or ram >= GPU_RAM_NEED_MB)
+        ):
+            return "gpu", model
+        need = RAM_NEED_MB[model.id]
+        if ram is None or ram >= need:
+            return "cpu", model
+        small = MODELS[FALLBACK_MODEL]
+        if model.id != small.id and installed(small, models) and ram >= RAM_NEED_MB[small.id]:
+            return "cpu", small  # турбо не помещается — запасная модель
+        raise ChatError("voice.no_memory", need_mb=need, free_mb=ram)
+
+    def _get_transcriber(self, backend: str, model: SttModel) -> Transcriber:
+        """Процесс распознавания для способа и модели; смена — новый процесс."""
+        path = model.path(self.models_dir())
+        key = (backend, path)
+        if self._transcriber is not None and self._transcriber_key != key:
             self._transcriber.close()
             self._transcriber = None
         if self._transcriber is None:
-            self._transcriber, self._transcriber_path = self.make_transcriber(path), path
+            self._transcriber = (
+                self.make_gpu_transcriber(path, accel.CUDA.path(self.models_dir()))
+                if backend == "gpu"
+                else self.make_transcriber(path)
+            )
+            self._transcriber_key = key
         return self._transcriber
 
     def _cancel_idle(self) -> None:
@@ -132,6 +203,15 @@ class VoiceService:
                     for m in MODELS.values()
                 ],
                 "download": dict(self._download),
+                "backend": self._active[0] if self._active else None,
+                "active_model": self._active[1].id if self._active else None,
+                "last": dict(self._last) if self._last else None,
+                "accel": {
+                    "id": accel.CUDA.id,
+                    "offered": self.accel_offered(),
+                    "installed": accel.CUDA.installed(self.models_dir()),
+                    "size": accel.CUDA.size,
+                },
             }
         return status
 
@@ -144,16 +224,16 @@ class VoiceService:
         with self._lock:
             if self._state != "idle":
                 raise ChatError("voice.busy", state=self._state)
-            if not installed(self.model(), self.models_dir()):
-                raise ChatError("voice.model_missing", model=self.model().id)
+            backend, model = self._choose()
             name = device if device is not None else self.settings().voice_device
             self._limit = False
             self._recorder = Recorder(
                 self.microphone, name or None, self.max_seconds, on_limit=self._on_limit
             )
             self._state = "recording"
+            self._active = (backend, model)
             self._cancel_idle()
-            transcriber = self._get_transcriber()
+            transcriber = self._get_transcriber(backend, model)
         threading.Thread(target=self._prepare, args=(transcriber,), daemon=True).start()
         return self.status()
 
@@ -187,33 +267,48 @@ class VoiceService:
                 # Тишина из нулей: так macOS отдаёт звук без разрешения на микрофон.
                 raise ChatError("voice.no_signal")
             with self._lock:
-                transcriber = self._get_transcriber()
+                backend, model = self._active or ("cpu", self.model())
+                transcriber = self._get_transcriber(backend, model)
             started = time.monotonic()
-            result = transcriber.transcribe(pcm, rate, self._language())
+            try:
+                result = transcriber.transcribe(pcm, rate, self._language())
+            finally:
+                proc = round(time.monotonic() - started, 2)
+                with self._lock:
+                    self._last = {"backend": backend, "model": model.id, "proc_s": proc}
             if not str(result.get("text", "")).strip():
                 raise ChatError("voice.no_speech")
             return {
                 "text": str(result["text"]).strip(),
                 "language": result.get("language"),
                 "audio_s": round(seconds, 2),
-                "proc_s": round(time.monotonic() - started, 2),
+                "proc_s": proc,
+                "backend": backend,
+                "model": model.id,
             }
         finally:
             del pcm
-            with self._lock:
-                self._state = "idle"
-                self._limit = False
-                self._schedule_idle()
+            self._after_use()
+
+    def _after_use(self) -> None:
+        with self._lock:
+            self._state = "idle"
+            self._limit = False
+            self._active = None
+            if self._transcriber is not None and getattr(self._transcriber, "single_use", False):
+                self._transcriber.close()  # видеопамять — только на время записи
+                self._transcriber = None
+            self._schedule_idle()
 
     def cancel(self) -> dict[str, Any]:
         """Прекратить запись без распознавания; звук забывается."""
         with self._lock:
             recorder, self._recorder = self._recorder, None
-            if self._state == "recording":
-                self._state = "idle"
-                self._limit = False
+            cancelled = self._state == "recording"
         if recorder is not None:
             recorder.finish()
+        if cancelled:
+            self._after_use()
         return self.status()
 
     # --- скачивание модели -------------------------------------------------------
@@ -222,42 +317,65 @@ class VoiceService:
         model = MODELS.get(model_id or self.model().id)
         if model is None:
             raise ChatError("voice.unknown_model", model=str(model_id))
+        jobs = [
+            Download(
+                m.url,
+                self.models_dir(),
+                f"{FOLDER}/{m.file}",
+                m.sha256,
+                size=m.size,
+                on_progress=progress,
+            )
+            for m, progress in (
+                (VAD, None),  # детектор речи — первым, он маленький
+                (model, self._progress),
+            )
+        ]
+        return self._start_jobs(model.id, model.size, jobs)
+
+    def download_accel(self) -> dict[str, Any]:
+        """5.4: скачать и распаковать ускоритель распознавания на видеокарте."""
+        if not self.accel_offered():
+            raise ChatError("voice.accel_unsupported")
+        pack, models = accel.CUDA, self.models_dir()
+        download = Download(
+            pack.url,
+            models,
+            pack.archive(models),
+            pack.sha256,
+            size=pack.size,
+            on_progress=self._progress,
+        )
+        return self._start_jobs(
+            pack.id, pack.size, [download, _Extract(pack, download.target, models)]
+        )
+
+    def _progress(self, progress: Any) -> None:
+        self._download.update(done=progress.done, total=progress.total)
+
+    def _start_jobs(self, what: str, size: int, jobs: list[Any]) -> dict[str, Any]:
         with self._lock:
             if self._download.get("state") == "running":
                 raise ChatError("voice.download_running")
-            downloads = [
-                Download(
-                    m.url,
-                    self.models_dir(),
-                    f"{FOLDER}/{m.file}",
-                    m.sha256,
-                    size=m.size,
-                    on_progress=progress,
-                )
-                for m, progress in (
-                    (VAD, None),  # детектор речи — первым, он маленький
-                    (model, lambda p: self._download.update(done=p.done, total=p.total)),
-                )
-            ]
-            self._download = {"state": "running", "model": model.id, "done": 0, "total": model.size}
+            self._download = {"state": "running", "model": what, "done": 0, "total": size}
             self._download_cancelled = False
-        threading.Thread(target=self._run_download, args=(downloads,), daemon=True).start()
+        threading.Thread(target=self._run_download, args=(jobs,), daemon=True).start()
         return self.status()
 
-    def _run_download(self, downloads: list[Download]) -> None:
+    def _run_download(self, jobs: list[Any]) -> None:
         update: dict[str, Any] = {"state": "done"}
-        for download in downloads:
+        for job in jobs:
             with self._lock:
-                self._downloader = download
+                self._downloader = job
                 if self._download_cancelled:
-                    update = {"state": "idle"}  # отменено между файлами
+                    update = {"state": "idle"}  # отменено между шагами
                     break
             try:
-                download.run()
+                job.run()
             except DownloadError as error:
                 update = {"state": "failed", "error": {"code": error.code, "params": error.params}}
                 if error.code == "download.cancelled":
-                    download.discard()
+                    job.discard()
                     update = {"state": "idle"}
                 break
             except OSError as error:
@@ -285,3 +403,19 @@ class VoiceService:
             if self._transcriber is not None:
                 self._transcriber.close()
                 self._transcriber = None
+
+
+class _Extract:
+    """Шаг очереди скачивания: распаковать ускоритель после проверки хеша архива."""
+
+    def __init__(self, pack: accel.AccelPack, archive: Path, models_dir: Path) -> None:
+        self.pack, self.archive, self.models_dir = pack, archive, models_dir
+
+    def run(self) -> None:
+        accel.extract(self.pack, self.archive, self.models_dir)
+
+    def cancel(self) -> None:
+        pass  # распаковка короткая: дожидаемся её
+
+    def discard(self) -> None:
+        pass

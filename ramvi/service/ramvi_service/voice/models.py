@@ -61,3 +61,9 @@ VAD = SttModel(
 def installed(model: SttModel, models_dir: Path) -> bool:
     """Модель готова: на месте и её файл, и детектор речи."""
     return model.path(models_dir).is_file() and VAD.path(models_dir).is_file()
+
+
+def join_segments(texts: list[str]) -> str:
+    """Склеить фрагменты whisper как есть: слова внутри фрагмента уже начинаются с пробела,
+    а граница фрагмента может прийти посреди слова (склейка через пробел или «\\n» рвёт его)."""
+    return " ".join("".join(texts).split())
