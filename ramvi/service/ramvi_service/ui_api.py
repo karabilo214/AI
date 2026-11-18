@@ -21,6 +21,7 @@ from ramvi_service.agent.desktop import AgentDesktop
 from ramvi_service.app_config import AppConfig
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatError, ChatService, Generation
+from ramvi_service.client_keys import ClientKeyError
 from ramvi_service.control_run import ControlRun
 from ramvi_service.download_manager import DownloadManager
 from ramvi_service.engines import resolve_model
@@ -140,6 +141,8 @@ class UIServer:
             return self._downloads_route(method, path, body)
         if path == "/voice" or path.startswith("/voice/"):
             return self._voice_route(method, path, body)
+        if path == "/connections" or path.startswith("/connections/"):
+            return self._connections_route(method, path, body)
         if method == "GET" and path == "/recommendations":
             return self._recommendations()
         if path in ("/catalog", "/catalog/refresh"):
@@ -241,6 +244,44 @@ class UIServer:
             raise ChatError("api.not_found")
         action = {"pause": downloads.pause, "resume": downloads.resume, "cancel": downloads.cancel}
         return {"download": action[match.group(2)](match.group(1))}
+
+    def _connections_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
+        """7.2: клиенты внешнего API — список со счётчиками, новый ключ, отзыв."""
+        api = self.api
+        if api is None:
+            raise ChatError("api.not_found")
+        if method == "GET" and path == "/connections":
+            running = api._server is not None
+            return {
+                "api": {
+                    "url": api.url if running else None,
+                    "port": api.options.port,
+                    "running": running,
+                },
+                "clients": api.clients(),
+            }
+        if method == "POST" and path == "/connections/keys":
+            permissions = body.get("permissions")
+            if not isinstance(permissions, list) or not all(
+                isinstance(p, str) for p in permissions
+            ):
+                raise ChatError("api.bad_request", field="permissions")
+            try:
+                record, key = api.keys.create(_required_str(body, "name"), set(permissions))
+            except ClientKeyError as error:
+                raise ChatError(error.code, **error.params) from None
+            # Ключ целиком — только в этом ответе; дальше в списке только подсказка.
+            return {"client": {**record.json(), "running": 0}, "key": key}
+        match = re.fullmatch(r"/connections/keys/([0-9a-f]{12})/revoke", path)
+        if method == "POST" and match is not None:
+            try:
+                stopped = api.revoke(
+                    match.group(1), cancel_running=body.get("cancel_running", True) is not False
+                )
+            except KeyError:
+                raise ChatError("api.not_found") from None
+            return {"revoked": match.group(1), "stopped": stopped}
+        raise ChatError("api.not_found")
 
     def _voice_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
         """5.2: голосовой ввод — запись, распознавание, устройства, модель."""

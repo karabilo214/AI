@@ -56,6 +56,59 @@ class ApiError(Exception):
         self.status, self.code, self.message, self.params = status, code, message, params
 
 
+def _numbers(value: Any, found: dict[str, int]) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in _USAGE_KEYS and isinstance(item, int) and not isinstance(item, bool):
+                found[key] = item
+            else:
+                _numbers(item, found)
+    elif isinstance(value, list):
+        for item in value:
+            _numbers(item, found)
+
+
+_PROMPT = ("prompt_tokens", "input_tokens", "prompt_eval_count")
+_COMPLETION = ("completion_tokens", "output_tokens", "eval_count")
+_USAGE_KEYS = frozenset(_PROMPT + _COMPLETION)
+
+
+def parse_usage(head: bytes, tail: bytes) -> tuple[int, int]:
+    """Токены запроса и ответа из ответа движка: JSON, поток SSE или NDJSON.
+
+    OpenAI — `usage.prompt_tokens/completion_tokens`, Anthropic — `input_tokens`
+    (в начале потока) и `output_tokens`, Ollama — `prompt_eval_count/eval_count`.
+    Берётся последнее значение каждого поля: в потоке итог приходит в конце."""
+    found: dict[str, int] = {}
+    text = (head + b"\n" + tail).decode("utf-8", errors="replace")
+    for line in text.splitlines():
+        line = line.strip().removeprefix("data:").strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            _numbers(json.loads(line), found)
+        except ValueError:
+            continue
+    for whole in (head, tail):  # ответ одним JSON на несколько строк
+        try:
+            _numbers(json.loads(whole.decode("utf-8", errors="replace").strip()), found)
+        except ValueError:
+            continue
+    prompt = max((found.get(k, 0) for k in _PROMPT), default=0)
+    completion = max((found.get(k, 0) for k in _COMPLETION), default=0)
+    return prompt, completion
+
+
+@dataclass
+class _Active:
+    """Идущий запрос клиента: отзыв ключа может его остановить."""
+
+    client_id: str
+    cancel: threading.Event
+    provider: Any = None
+    request_id: str | None = None
+
+
 class ApiServer:
     """HTTP-сервер внешнего API поверх общего доступа к модели."""
 
@@ -73,6 +126,8 @@ class ApiServer:
         self.keys, self.llm, self.engines = keys, llm, engines
         self.run_dir, self.options = Path(run_dir), options or ApiOptions()
         self.on_usage = on_usage
+        self._active: list[_Active] = []
+        self._lock = threading.Lock()
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -144,6 +199,41 @@ class ApiServer:
         if client is None:
             raise ApiError(401, "api.unauthorized", "missing, wrong, revoked or limited key")
         return client
+
+    # --- клиенты (7.2) ------------------------------------------------------------------
+
+    def track(self, client_id: str) -> _Active:
+        active = _Active(client_id, threading.Event())
+        with self._lock:
+            self._active.append(active)
+        return active
+
+    def untrack(self, active: _Active) -> None:
+        with self._lock:
+            if active in self._active:
+                self._active.remove(active)
+
+    def running(self, client_id: str) -> int:
+        with self._lock:
+            return sum(1 for a in self._active if a.client_id == client_id)
+
+    def revoke(self, key_id: str, *, cancel_running: bool = True) -> int:
+        """Отозвать ключ: новые запросы сразу отклоняются; `cancel_running` —
+        остановить и идущие (в очереди и в генерации). Другие клиенты не затронуты."""
+        self.keys.revoke(key_id)
+        if not cancel_running:
+            return 0
+        with self._lock:
+            mine = [a for a in self._active if a.client_id == key_id]
+        for active in mine:
+            active.cancel.set()
+            if active.provider is not None and active.request_id is not None:
+                cancel_engine(active.provider, active.request_id)
+        return len(mine)
+
+    def clients(self) -> list[dict[str, Any]]:
+        """Список для экрана «Подключения»: без ключей, со счётчиками и идущими запросами."""
+        return [{**k.json(), "running": self.running(k.id)} for k in self.keys.list()]
 
     def loaded(self) -> tuple[str, Any]:
         model_id = self.engines.model_id
@@ -255,25 +345,38 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
         def _generate(self, client: Any, path: str, body: dict[str, Any]) -> None:
             model_id, provider = api.loaded()
             api.check_model(body, model_id, provider.model)
-            cancel = threading.Event()
-            with (
-                api.request_owner(client.id) as owner,
-                api.llm.exclusive(owner, timeout=api.options.queue_timeout, cancel=cancel),
-            ):
-                model_id, provider = api.loaded()  # пока ждали, модель могли сменить
-                api.check_model(body, model_id, provider.model)
-                self._proxy(client, path, body, provider)
+            active = api.track(client.id)
+            try:
+                with (
+                    api.request_owner(client.id) as owner,
+                    api.llm.exclusive(
+                        owner, timeout=api.options.queue_timeout, cancel=active.cancel
+                    ),
+                ):
+                    if active.cancel.is_set():
+                        raise InterruptedError("revoked")
+                    model_id, provider = api.loaded()  # пока ждали, модель могли сменить
+                    api.check_model(body, model_id, provider.model)
+                    self._proxy(client, path, body, provider, active)
+            except InterruptedError:
+                raise ApiError(401, "api.unauthorized", "the key was revoked") from None
+            finally:
+                api.untrack(active)
 
-        def _proxy(self, client: Any, path: str, body: dict[str, Any], provider: Any) -> None:
+        def _proxy(
+            self, client: Any, path: str, body: dict[str, Any], provider: Any, active: _Active
+        ) -> None:
             target = urlsplit(provider.base_url)
             request_id = uuid.uuid4().hex
+            active.provider, active.request_id = provider, request_id
             data = json.dumps(body).encode()
             connection = http.client.HTTPConnection(
                 target.hostname or "127.0.0.1", target.port, timeout=api.options.read_timeout
             )
             started = time.monotonic()
-            tail = b""
+            head = tail = b""
             sent = False
+            failed = False
             try:
                 connection.request(
                     "POST",
@@ -287,48 +390,64 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                 )
                 upstream = connection.getresponse()
                 sent = True
+                failed = upstream.status >= 400
                 self.send_response(upstream.status)
                 self.send_header(
                     "Content-Type", upstream.getheader("Content-Type") or "application/json"
                 )
                 self.end_headers()
                 while chunk := upstream.read1(65536):
+                    if len(head) < 16384:
+                        head += chunk[: 16384 - len(head)]
                     tail = (tail + chunk)[-65536:]
+                    if active.cancel.is_set():  # ключ отозван — оборвать ответ
+                        cancel_engine(provider, request_id)
+                        return
                     try:
                         self.wfile.write(chunk)
                         self.wfile.flush()
                     except (TimeoutError, BrokenPipeError, ConnectionResetError):
-                        self._cancel(provider, request_id)  # клиент ушёл — остановить генерацию
+                        cancel_engine(provider, request_id)  # клиент ушёл — остановить генерацию
                         return
             except (OSError, http.client.HTTPException):
-                self._cancel(provider, request_id)
+                failed = True
+                cancel_engine(provider, request_id)
                 if not sent:  # ответ клиенту ещё не начат — понятная ошибка
                     raise ApiError(502, "api.engine_error", "the engine did not answer") from None
             finally:
                 connection.close()
+                seconds = time.monotonic() - started
+                prompt, completion = parse_usage(head, tail)
+                api.keys.add_usage(client.id, prompt, completion, seconds, error=failed)
                 if api.on_usage is not None:
                     api.on_usage(
                         client.id,
-                        {"path": path, "seconds": time.monotonic() - started, "tail": tail},
+                        {
+                            "path": path,
+                            "seconds": seconds,
+                            "prompt_tokens": prompt,
+                            "completion_tokens": completion,
+                            "error": failed,
+                        },
                     )
 
-        @staticmethod
-        def _cancel(provider: Any, request_id: str) -> None:
-            try:
-                target = urlsplit(provider.base_url)
-                connection = http.client.HTTPConnection(target.hostname, target.port, timeout=5)
-                connection.request(
-                    "POST",
-                    "/engine/cancel",
-                    json.dumps({"request_id": request_id}).encode(),
-                    {
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {provider.api_key}",
-                    },
-                )
-                connection.getresponse().read()
-                connection.close()
-            except (OSError, http.client.HTTPException):
-                pass
-
     return Handler
+
+
+def cancel_engine(provider: Any, request_id: str) -> None:
+    """Остановить запрос в движке (по X-Request-ID)."""
+    try:
+        target = urlsplit(provider.base_url)
+        connection = http.client.HTTPConnection(
+            target.hostname or "127.0.0.1", target.port, timeout=5
+        )
+        connection.request(
+            "POST",
+            "/engine/cancel",
+            json.dumps({"request_id": request_id}).encode(),
+            {"Content-Type": "application/json", "Authorization": f"Bearer {provider.api_key}"},
+        )
+        connection.getresponse().read()
+        connection.close()
+    except (OSError, http.client.HTTPException):
+        pass

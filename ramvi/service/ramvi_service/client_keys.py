@@ -13,6 +13,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ramvi_storage import CORE_MIGRATIONS, CORE_OWNER, Database, migrate
 
@@ -35,13 +36,43 @@ class ClientKey:
     last_seen: float | None
     requests: int
     revoked: float | None
+    key_hint: str = ""  # «ramvi-…a1b2»: узнать ключ в списке; целиком не показывается
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    busy_seconds: float = 0.0  # сколько модель работала на этого клиента
+    errors: int = 0
+
+    @property
+    def state(self) -> str:
+        return "revoked" if self.revoked is not None else "active"
+
+    def json(self) -> dict[str, Any]:
+        """Для экрана «Подключения»: без ключа и хеша."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "permissions": sorted(self.permissions),
+            "created": self.created,
+            "last_seen": self.last_seen,
+            "state": self.state,
+            "revoked": self.revoked,
+            "key_hint": self.key_hint,
+            "requests": self.requests,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "busy_seconds": round(self.busy_seconds, 3),
+            "errors": self.errors,
+        }
 
 
 def _hash(key: str) -> str:
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
-_COLUMNS = "id, client_name, permissions, created_at, last_seen, requests, revoked_at"
+_COLUMNS = (
+    "id, client_name, permissions, created_at, last_seen, requests, revoked_at,"
+    " key_hint, prompt_tokens, completion_tokens, busy_seconds, errors"
+)
 
 
 class KeyStore:
@@ -74,9 +105,17 @@ class KeyStore:
         key_id = secrets.token_hex(6)
         with self._lock, self._db.transaction():
             self._db.execute(
-                "INSERT INTO client_keys (id, client_name, secret_hash, permissions, created_at)"
-                " VALUES (?,?,?,?,?)",
-                (key_id, name, _hash(key), ",".join(sorted(permissions)), time.time()),
+                "INSERT INTO client_keys"
+                " (id, client_name, secret_hash, permissions, created_at, key_hint)"
+                " VALUES (?,?,?,?,?,?)",
+                (
+                    key_id,
+                    name,
+                    _hash(key),
+                    ",".join(sorted(permissions)),
+                    time.time(),
+                    f"{PREFIX}…{key[-4:]}",
+                ),
             )
         return self.get(key_id), key
 
@@ -85,8 +124,31 @@ class KeyStore:
         if row is None:
             raise KeyError(key_id)
         return ClientKey(
-            row[0], row[1], frozenset(row[2].split(",")), row[3], row[4], row[5], row[6]
+            row[0],
+            row[1],
+            frozenset(row[2].split(",")),
+            row[3],
+            row[4],
+            row[5],
+            row[6],
+            row[7],
+            row[8],
+            row[9],
+            row[10],
+            row[11],
         )
+
+    def add_usage(
+        self, key_id: str, prompt: int, completion: int, seconds: float, *, error: bool = False
+    ) -> None:
+        """Учесть запрос клиента: токены, время работы модели, ошибку (API-02)."""
+        with self._lock, self._db.transaction():
+            self._db.execute(
+                "UPDATE client_keys SET prompt_tokens=prompt_tokens+?,"
+                " completion_tokens=completion_tokens+?, busy_seconds=busy_seconds+?,"
+                " errors=errors+? WHERE id=?",
+                (max(0, prompt), max(0, completion), max(0.0, seconds), int(error), key_id),
+            )
 
     def list(self) -> list[ClientKey]:
         ids = [r[0] for r in self._db.all("SELECT id FROM client_keys ORDER BY created_at, id")]

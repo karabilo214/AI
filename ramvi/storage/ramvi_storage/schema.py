@@ -152,11 +152,22 @@ CREATE INDEX agent_events_by_run ON agent_events (agent_run_id, seq);
 CREATE INDEX agent_runs_by_end ON agent_runs (ended_at);
 """
 
+# v5 (7.2, клиенты API): подсказка ключа для списка (сам ключ не хранится) и
+# счётчики на клиента — токены запроса и ответа, время работы модели, ошибки.
+_V5 = """
+ALTER TABLE client_keys ADD COLUMN key_hint TEXT NOT NULL DEFAULT '';
+ALTER TABLE client_keys ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE client_keys ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE client_keys ADD COLUMN busy_seconds REAL NOT NULL DEFAULT 0;
+ALTER TABLE client_keys ADD COLUMN errors INTEGER NOT NULL DEFAULT 0;
+"""
+
 CORE_MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "core entities (TZ section 10)", _V1),
     Migration(2, "chat: reasoning, finish, attachments", _V2),
     Migration(3, "agent: run result and stop reason", _V3),
     Migration(4, "agent: run timeline events", _V4),
+    Migration(5, "api clients: key hint and usage counters", _V5),
 )
 
 

@@ -48,7 +48,7 @@
 | `agent_runs` | id, objective, workspace, model_id, status, steps, token_usage, started_at, ended_at, result, stop_reason (v3) | статусы planned/running/waiting_approval/done/failed/cancelled |
 | `agent_events` | seq, agent_run_id, kind, step, created_at, payload (v4) | хронология запуска агента (6.7); удаляется вместе с запуском |
 | `tool_calls` | id, agent_run_id, tool_name, args_redacted, permission, result, duration | `seq`; permission auto/approved/denied |
-| `client_keys` | id, client_name, permissions, secret_hash, created_at, last_seen, revoked_at | `requests` — счётчик запросов (7.2) |
+| `client_keys` | id, client_name, permissions, secret_hash, created_at, last_seen, revoked_at | `requests` — счётчик запросов (7.2); v5: key_hint, prompt_tokens, completion_tokens, busy_seconds, errors |
 | `downloads` | id, model_id, source, temp_path, bytes_done, total_bytes, state, checksum | model_id — id каталога, без внешнего ключа: записи модели до конца загрузки нет |
 
 ## Репозитории
