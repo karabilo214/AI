@@ -425,7 +425,8 @@ def register_file_tools(
         (
             ToolSpec(
                 "find_files",
-                "Find files by glob pattern (e.g. '*.py' or 'src/*/test_*.py').",
+                "Find files by their NAME (glob, e.g. '*.py' or 'src/*/test_*.py'). "
+                "It does not look inside files: to find text in files use grep.",
                 _schema(
                     {"pattern": {"type": "string", "minLength": 1, "maxLength": 500}, "path": _DIR},
                     ["pattern"],
@@ -437,7 +438,8 @@ def register_file_tools(
         (
             ToolSpec(
                 "grep",
-                "Search text files for a regular expression; returns file:line: text.",
+                "Find TEXT inside files (regular expression); returns file:line: text. "
+                "Use it to find where a function or word is used.",
                 _schema(
                     {
                         "pattern": {"type": "string", "minLength": 1},

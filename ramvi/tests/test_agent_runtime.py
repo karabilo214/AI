@@ -31,6 +31,13 @@ def call(name: str, **args: Any) -> ToolCall:
     return ToolCall(f"call-{name}-{len(json.dumps(args))}", name, json.dumps(args))
 
 
+def done(summary: str, success: bool = True) -> ModelReply:
+    args: dict[str, Any] = {"summary": summary}
+    if not success:
+        args["success"] = False
+    return reply("", ToolCall("call-finish", "finish", json.dumps(args)))
+
+
 def reply(content: str = "", *calls: ToolCall, tokens: int = 10, finish: str = "") -> ModelReply:
     return ModelReply(
         content,
@@ -108,7 +115,7 @@ def test_multi_step_task_completes(tmp_path: Path, db: Database) -> None:
         reply("", call("read_file", path="src/calc.py")),
         reply("", FIX),
         reply("", call("read_file", path="src/calc.py")),
-        reply("Fixed add(): it now returns a + b."),
+        done("Fixed add(): it now returns a + b."),
     )
     env = Env(tmp_path, db, script, [Decision("approve")])
     result = env.runtime.run("Fix add() in calc.py", workspace=str(env.root), model_id=None)
@@ -142,7 +149,7 @@ def test_multi_step_task_completes(tmp_path: Path, db: Database) -> None:
 
 
 def test_simple_answer_without_tools(tmp_path: Path, db: Database) -> None:
-    env = Env(tmp_path, db, Script(reply("Hello!")))
+    env = Env(tmp_path, db, Script(done("Hello!")))
     result = env.runtime.run("Say hello")
     assert (result.status, result.steps, result.result) == ("done", 1, "Hello!")
 
@@ -211,7 +218,7 @@ def test_user_continues_past_a_checkpoint(tmp_path: Path, db: Database) -> None:
 def test_limits_can_be_switched_off(tmp_path: Path, db: Database) -> None:
     paths = iter(["src", "."] * 20)
     replies: list[Any] = [lambda c: reply("", call("list_dir", path=next(paths)))] * 30
-    script = Script(*replies, reply("finished"))
+    script = Script(*replies, done("finished"))
     off = RunLimits(max_steps=None, max_tokens=None, max_duration=None, max_no_progress=None)
     env = Env(tmp_path, db, script, limits=off)
     result = env.runtime.run("very long work")
@@ -219,7 +226,7 @@ def test_limits_can_be_switched_off(tmp_path: Path, db: Database) -> None:
 
 
 def test_stuck_asks_and_can_continue(tmp_path: Path, db: Database) -> None:
-    script = Script(*[reply("", call("list_dir"))] * 3, reply("done"))
+    script = Script(*[reply("", call("list_dir"))] * 3, done("done"))
     env = Env(tmp_path, db, script)
     env.runtime.on_limit = lambda request: request.reason == "stuck"
     result = env.runtime.run("same call")
@@ -249,7 +256,7 @@ def test_stop_in_approval_cancels_and_changes_nothing(tmp_path: Path, db: Databa
 
 
 def test_denied_action_reason_goes_back_and_run_continues(tmp_path: Path, db: Database) -> None:
-    script = Script(reply("", FIX), reply("OK, I will not change the file."))
+    script = Script(reply("", FIX), done("OK, I will not change the file."))
     env = Env(tmp_path, db, script, [Decision("deny", reason="do not touch calc.py")])
     result = env.runtime.run("fix")
     assert result.status == "done" and result.steps == 2
@@ -281,7 +288,7 @@ def test_rereading_after_own_edit_is_not_a_loop(tmp_path: Path, db: Database) ->
         reply("", read),
         reply("", edit("return", "return  ")),
         reply("", read),
-        reply("done"),
+        done("done"),
     )
     env = Env(tmp_path, db, script, [Decision("approve", series=5)])
     assert env.runtime.run("fix").status == "done"
@@ -314,7 +321,7 @@ def test_editing_the_same_line_again_and_again_is_a_loop(tmp_path: Path, db: Dat
 def test_invalid_tool_call_is_reported_not_executed(tmp_path: Path, db: Database) -> None:
     broken = ToolCall("c1", "read_file", "{not json")
     unknown = ToolCall("c2", "delete_everything", "{}")
-    script = Script(reply("", broken, unknown), reply("I could not read the file."))
+    script = Script(reply("", broken, unknown), done("I could not read the file."))
     env = Env(tmp_path, db, script)
     result = env.runtime.run("read")
     assert result.status == "done"
@@ -327,7 +334,7 @@ def test_invalid_tool_call_is_reported_not_executed(tmp_path: Path, db: Database
 
 def test_too_many_calls_in_one_step(tmp_path: Path, db: Database) -> None:
     many = [call("list_dir", path=p) for p in ("src", ".", "src/", "./src")]
-    script = Script(reply("", *many), reply("done"))
+    script = Script(reply("", *many), done("done"))
     env = Env(tmp_path, db, script, limits=RunLimits(max_calls_per_step=2))
     env.runtime.run("many")
     contents = [m["content"] for m in script.seen[1] if m["role"] == "tool"]
@@ -337,7 +344,7 @@ def test_too_many_calls_in_one_step(tmp_path: Path, db: Database) -> None:
 
 @pytest.mark.parametrize(
     ("final", "reason"),
-    [(reply("cut", finish="length"), "length"), (reply("   "), "empty_answer")],
+    [(reply("cut", finish="length"), "length"), (reply("   "), "no_finish")],
 )
 def test_bad_final_answers_fail(
     tmp_path: Path, db: Database, final: ModelReply, reason: str
@@ -372,7 +379,7 @@ def test_runs_without_storage(tmp_path: Path) -> None:
     root = tmp_path / "p"
     root.mkdir()
     runtime = AgentRuntime(
-        Script(reply("", call("list_dir")), reply("empty")), build_tools(Workspace(root))
+        Script(reply("", call("list_dir")), done("empty")), build_tools(Workspace(root))
     )
     result = runtime.run("look")
     assert result.status == "done" and result.run_id.startswith("run-")
@@ -415,3 +422,42 @@ def test_llm_strategy_builds_request_and_parses_tool_calls() -> None:
     assert result.usage == {"prompt_tokens": 12, "completion_tokens": 3}
     strategy.decide([], [], threading.Event(), 5)
     assert "tools" not in sent[1]
+
+
+def test_describing_instead_of_acting_is_not_success(tmp_path: Path, db: Database) -> None:
+    """Как qwen3:8b на ASUS: «сейчас запущу тест» без вызова — не итог."""
+    intent = reply("Now I will change calc.py and run the test.")
+    script = Script(intent, reply("", FIX), done("Fixed add()."))
+    env = Env(tmp_path, db, script, [Decision("approve")])
+    result = env.runtime.run("fix")
+    assert (result.status, result.result, result.steps) == ("done", "Fixed add().", 3)
+    assert script.seen[1][-1]["role"] == "user" and "finish" in script.seen[1][-1]["content"]
+    assert b"a + b" in (env.root / "src" / "calc.py").read_bytes()
+
+
+def test_only_describing_ends_as_failure(tmp_path: Path, db: Database) -> None:
+    env = Env(tmp_path, db, Script(reply("I will run the test now.")))
+    result = env.runtime.run("fix")
+    assert (result.status, result.stop_reason, result.steps) == ("failed", "no_finish", 3)
+    assert result.result == "I will run the test now."
+
+
+def test_finish_can_report_impossible_task(tmp_path: Path, db: Database) -> None:
+    script = Script(done("Writing is not allowed in this folder.", success=False))
+    env = Env(tmp_path, db, script)
+    result = env.runtime.run("fix")
+    assert (result.status, result.stop_reason) == ("failed", "not_possible")
+    assert env.runs.get(result.run_id).result == "Writing is not allowed in this folder."
+
+
+def test_finish_is_always_offered_and_checked(tmp_path: Path, db: Database) -> None:
+    bad = ToolCall("f1", "finish", "{oops")
+    script = Script(reply("", bad), done("ok"))
+    env = Env(tmp_path, db, script)
+    env.ws.permissions = Permissions()
+    result = env.runtime.run("x")
+    assert result.status == "done" and "finish" in script.tools[0]
+    tool_message = script.seen[1][-1]
+    assert tool_message["role"] == "tool" and tool_message["content"].startswith(
+        "ERROR agent.tool.invalid_args"
+    )
