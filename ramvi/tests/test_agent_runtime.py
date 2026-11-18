@@ -140,7 +140,7 @@ def test_multi_step_task_completes(tmp_path: Path, db: Database) -> None:
     assert [c.permission for c in calls] == ["auto", "auto", "approved", "auto"]
     assert env.statuses == ["waiting_approval"]
     kinds = env.kinds()
-    assert kinds[:3] == ["agent.step", "agent.plan", "agent.tool_call"]
+    assert kinds[:4] == ["agent.step", "agent.usage", "agent.plan", "agent.tool_call"]
     assert "agent.tool_approval_required" in kinds and kinds[-1] == "agent.done"
     approval = next(e for e in env.events if e["type"] == "agent.tool_approval_required")
     assert "+    return a + b" in approval["request"]["diff"]

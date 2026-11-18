@@ -623,6 +623,95 @@ class AgentRuns:
         assert row is not None
         return _call(row)
 
+    # --- хронология и очистка (6.7) --------------------------------------------------
+
+    def add_event(
+        self,
+        run_id: str,
+        kind: str,
+        payload: dict[str, Any],
+        *,
+        step: int | None = None,
+        now: float | None = None,
+    ) -> int:
+        with self.db.transaction():
+            cursor = self.db.execute(
+                "INSERT INTO agent_events (agent_run_id, kind, step, created_at, payload)"
+                " VALUES (?,?,?,?,?)",
+                (run_id, kind, step, _now(now), _json(payload)),
+            )
+        return int(cursor.lastrowid or 0)
+
+    def events(self, run_id: str, kinds: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM agent_events WHERE agent_run_id = ?"
+        params: list[Any] = [run_id]
+        if kinds:
+            sql += f" AND kind IN ({','.join('?' * len(kinds))})"
+            params += kinds
+        rows = self.db.all(sql + " ORDER BY seq", tuple(params))
+        return [
+            {
+                "seq": r["seq"],
+                "kind": r["kind"],
+                "step": r["step"],
+                "created_at": r["created_at"],
+                "payload": _load(r["payload"]),
+            }
+            for r in rows
+        ]
+
+    def find_events(self, kind: str, contains: str) -> list[dict[str, Any]]:
+        """События вида `kind`, в данных которых встречается строка (поиск по журналу)."""
+        rows = self.db.all(
+            "SELECT * FROM agent_events WHERE kind = ? AND instr(payload, ?) > 0 ORDER BY seq",
+            (kind, contains),
+        )
+        return [
+            {
+                "seq": r["seq"],
+                "run_id": r["agent_run_id"],
+                "step": r["step"],
+                "created_at": r["created_at"],
+                "payload": _load(r["payload"]),
+            }
+            for r in rows
+        ]
+
+    def finished(self, before: float | None = None) -> list[AgentRun]:
+        """Завершённые запуски от старых к новым; `before` — закончились раньше."""
+        sql = "SELECT * FROM agent_runs WHERE ended_at IS NOT NULL"
+        params: tuple[Any, ...] = ()
+        if before is not None:
+            sql += " AND ended_at < ?"
+            params = (before,)
+        return [_run(r) for r in self.db.all(sql + " ORDER BY ended_at, id", params)]
+
+    def run_bytes(self, run_id: str) -> int:
+        """Сколько данных запуска в базе (журнал и хронология), байт текста."""
+        row = self.db.one(
+            "SELECT"
+            " (SELECT coalesce(sum(length(objective) + length(coalesce(result, ''))), 0)"
+            "  FROM agent_runs WHERE id = ?)"
+            " + (SELECT coalesce(sum(length(args_redacted) + length(coalesce(result, ''))), 0)"
+            "  FROM tool_calls WHERE agent_run_id = ?)"
+            " + (SELECT coalesce(sum(length(payload)), 0)"
+            "  FROM agent_events WHERE agent_run_id = ?)",
+            (run_id, run_id, run_id),
+        )
+        return int(row[0]) if row is not None else 0
+
+    def delete(self, run_ids: list[str]) -> int:
+        """Удалить завершённые запуски вместе с вызовами и хронологией."""
+        if not run_ids:
+            return 0
+        marks = ",".join("?" * len(run_ids))
+        with self.db.transaction():
+            cursor = self.db.execute(
+                f"DELETE FROM agent_runs WHERE id IN ({marks}) AND ended_at IS NOT NULL",
+                tuple(run_ids),
+            )
+        return int(cursor.rowcount)
+
     def tool_calls(self, run_id: str) -> list[ToolCall]:
         self.get(run_id)
         rows = self.db.all(

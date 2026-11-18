@@ -117,6 +117,14 @@ class Database:
                 copy.close()
         return destination
 
+    def compact(self) -> None:
+        """Вернуть место на диске после удаления (VACUUM и усечение WAL)."""
+        with self._lock:
+            if self._depth:
+                raise StorageError("compact inside a transaction")
+            self._conn.execute("VACUUM")
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
     def integrity_ok(self) -> bool:
         row = self.one("PRAGMA integrity_check")
         return row is not None and row[0] == "ok"

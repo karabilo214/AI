@@ -49,7 +49,27 @@ from typing import Any, Literal, Protocol
 
 from ramvi_service.agent.progress import ProgressMonitor
 from ramvi_service.agent.readiness import ModelFacts, ReadinessCheck
-from ramvi_service.agent.tools import StopRequested, StorageJournal, ToolResult, ToolRunner
+from ramvi_service.agent.tools import (
+    StopRequested,
+    StorageJournal,
+    ToolResult,
+    ToolRunner,
+    redact,
+)
+
+MAX_EVENT_TEXT = 32_000  # строка в сохранённом событии (diff, план); дальше — обрезано
+
+
+def _bounded(value: Any) -> Any:
+    """Данные события для журнала: длинные строки обрезаны, чтобы журнал не разрастался."""
+    if isinstance(value, str) and len(value) > MAX_EVENT_TEXT:
+        return value[:MAX_EVENT_TEXT] + f"\n[... {len(value) - MAX_EVENT_TEXT} chars cut]"
+    if isinstance(value, dict):
+        return {k: _bounded(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_bounded(v) for v in value]
+    return value
+
 
 EVENT_VERSION = 1
 Status = Literal["done", "failed", "cancelled"]
@@ -278,6 +298,14 @@ class AgentRuntime:
             "version": EVENT_VERSION,
             **payload,
         }
+        if self.runs is not None:  # 6.7: хронология запуска сохраняется
+            step = payload.get("step")
+            self.runs.add_event(
+                run_id,
+                kind,
+                _bounded({k: v for k, v in payload.items() if k != "step"}),
+                step=step if isinstance(step, int) else None,
+            )
         if self._emit is not None:
             self._emit(event)
 
@@ -301,10 +329,24 @@ class AgentRuntime:
                 else request
             )
             self.emit(run_id, "agent.tool_approval_required", request=shown)
+            decision: Any = None
             try:
-                return ask(request)
+                decision = ask(request)
+                return decision
             finally:
                 self._status(run_id, "running")
+                shown_decision = (
+                    asdict(decision)
+                    if is_dataclass(decision) and not isinstance(decision, type)
+                    else {"action": "none"}
+                )
+                self.emit(
+                    run_id,
+                    "agent.tool_approval_decided",
+                    step=self._steps,
+                    request_id=getattr(request, "id", None),
+                    decision=shown_decision,
+                )
 
         gate.ask = watched
 
@@ -397,10 +439,12 @@ class AgentRuntime:
         if self.on_limit is None:
             raise _Stop("failed", reason)
         self._status(run_id, "waiting_approval")
+        go_on = False
         try:
             go_on = self.on_limit(request)
         finally:
             self._status(run_id, "running")
+            self.emit(run_id, "agent.limit_decided", reason=reason, go_on=bool(go_on))
         if not go_on:
             raise _Stop("cancelled", reason)
 
@@ -457,6 +501,15 @@ class AgentRuntime:
                 raise _Stop("failed", "model_error", type(error).__name__) from None
             for key in usage:
                 usage[key] += reply.usage.get(key, 0)
+            self.emit(
+                run_id,
+                "agent.usage",
+                step=steps,
+                context=reply.usage.get("prompt_tokens", 0),  # сколько контекста занято
+                completion=reply.usage.get("completion_tokens", 0),
+                total=dict(usage),
+                elapsed=round(time.monotonic() - self._started, 3),
+            )
             if not reply.tool_calls:
                 messages.append({"role": "assistant", "content": reply.content})
                 if reply.finish_reason == "length":
@@ -542,7 +595,8 @@ class AgentRuntime:
             args: Any = json.loads(call.arguments) if call.arguments.strip() else {}
         except json.JSONDecodeError:
             args = call.arguments  # не объект — runner отклонит и запишет в журнал
-        self.emit(run_id, "agent.tool_call", step=step, tool=call.name, call_id=call.id)
+        shown = redact(args) if isinstance(args, dict) else {"raw": str(args)[:200]}
+        self.emit(run_id, "agent.tool_call", step=step, tool=call.name, call_id=call.id, args=shown)
         try:
             result = self.tools.execute(call.name, args, journal)
         except StopRequested:
@@ -557,5 +611,6 @@ class AgentRuntime:
             error=result.error,
             content=result.content[:2000],
             change_id=result.data.get("change_id"),
+            applied=[f["path"] for f in result.data.get("applied") or []],
         )
         return result

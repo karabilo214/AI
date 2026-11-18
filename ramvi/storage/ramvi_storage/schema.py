@@ -137,10 +137,26 @@ ALTER TABLE agent_runs ADD COLUMN result TEXT;
 ALTER TABLE agent_runs ADD COLUMN stop_reason TEXT;
 """
 
+# v4 (6.7, журнал агента): хронология запуска — план, шаги и токены, вызовы,
+# запросы подтверждения с diff и решения пользователя, контрольные точки, итог.
+_V4 = """
+CREATE TABLE agent_events (
+    seq INTEGER PRIMARY KEY,
+    agent_run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    step INTEGER,
+    created_at REAL NOT NULL,
+    payload TEXT NOT NULL CHECK (json_valid(payload))
+) STRICT;
+CREATE INDEX agent_events_by_run ON agent_events (agent_run_id, seq);
+CREATE INDEX agent_runs_by_end ON agent_runs (ended_at);
+"""
+
 CORE_MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "core entities (TZ section 10)", _V1),
     Migration(2, "chat: reasoning, finish, attachments", _V2),
     Migration(3, "agent: run result and stop reason", _V3),
+    Migration(4, "agent: run timeline events", _V4),
 )
 
 
