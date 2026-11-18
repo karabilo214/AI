@@ -24,7 +24,7 @@ from ramvi_engine.processes import _windows_bootstrap_command, _WindowsJob
 class ProcessLimits:
     """Лимиты одного запуска."""
 
-    timeout: float = 120.0
+    timeout: float | None = 120.0  # None — без ограничения (остановит только отмена)
     max_output_bytes: int = 256 * 1024  # на каждый поток
 
 
@@ -122,7 +122,7 @@ def run_process(
             _Capture(process.stdout, limits.max_output_bytes),
             _Capture(process.stderr, limits.max_output_bytes),
         ]
-        deadline = started + limits.timeout
+        deadline = None if limits.timeout is None else started + limits.timeout
         while True:
             try:
                 process.wait(timeout=0.05)
@@ -132,7 +132,7 @@ def run_process(
             if cancel is not None and cancel.is_set():
                 cancelled = True
                 break
-            if time.monotonic() >= deadline:
+            if deadline is not None and time.monotonic() >= deadline:
                 timed_out = True
                 break
     finally:

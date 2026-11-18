@@ -37,7 +37,6 @@ from ramvi_service.agent.tools import (
 from ramvi_service.agent.workspace import Workspace
 
 MAX_COMMAND_CHARS = 4000
-MAX_TIMEOUT = 600
 SHELL_OPERATORS = frozenset({"&&", "||", "|", ";", ">", ">>", "<", "&", "2>", "2>&1", "|&"})
 CMD_METACHARS = set("&|<>^%!")
 
@@ -111,7 +110,7 @@ class CommandProposal:
     argv: tuple[str, ...]
     cwd: Path
     display_cwd: str
-    timeout: float
+    timeout: float | None  # None — без ограничения
     destructive: str | None  # причина, если команда разрушительная
     network: bool
 
@@ -205,6 +204,13 @@ class CommandTools:
             return ["cmd.exe", "/d", "/s", "/c", resolved, *argv[1:]]
         return [resolved, *argv[1:]]
 
+    def _timeout(self, asked: int | None) -> float | None:
+        """Модель может попросить меньше предела пользователя, но не больше."""
+        limit = self.access.command_timeout
+        if asked is None:
+            return limit
+        return float(asked) if limit is None else min(float(asked), limit)
+
     def run_command(self, args: dict[str, Any]) -> ToolResult:
         command = args["command"]
         argv = _split(command)
@@ -226,7 +232,7 @@ class CommandTools:
             argv=tuple(launch),
             cwd=cwd,
             display_cwd=self.ws.relative(cwd),
-            timeout=float(args.get("timeout", 120)),
+            timeout=self._timeout(args.get("timeout")),
             destructive=destructive,
             network=network,
         )
@@ -251,7 +257,7 @@ def execute_command(
     except OSError as error:
         return ToolResult.failure("agent.tool.command_failed", error=type(error).__name__)
     status = (
-        f"timed out after {proposal.timeout:g} s"
+        f"timed out after {proposal.timeout or 0:g} s"
         if result.timed_out
         else "cancelled"
         if result.cancelled
@@ -292,7 +298,11 @@ def register_command_tools(
                 "&&, |, > and redirects are not supported.",
             },
             "cwd": {"type": "string", "maxLength": 4096, "description": "Folder to run in"},
-            "timeout": {"type": "integer", "minimum": 1, "maximum": MAX_TIMEOUT},
+            "timeout": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Seconds; capped by the user's setting",
+            },
         },
         "required": ["command"],
         "additionalProperties": False,

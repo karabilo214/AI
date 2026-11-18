@@ -26,6 +26,7 @@ from typing import Literal
 from ramvi_service.agent.changes import ChangeStore
 from ramvi_service.agent.commands import CommandProposal, execute_command
 from ramvi_service.agent.files import PatchProposal, WriteProposal
+from ramvi_service.agent.progress import changed_lines
 from ramvi_service.agent.tools import ToolAccess, ToolError, ToolResult, ToolSpec
 from ramvi_service.agent.workspace import AccessDenied
 
@@ -150,4 +151,14 @@ class ApprovalGate:
             return ToolResult.failure(error.code, **error.params), permission
         names = ", ".join(f.display for f in record.files)
         content = f"Applied change to {names} (change {record.id})."
-        return ToolResult(True, content, {"change_id": record.id}), permission
+        lines = changed_lines(proposal.diff)
+        files = [
+            {
+                "path": f.display,
+                "before_sha256": f.before_sha256,
+                "after_sha256": f.after_sha256,
+                "lines": lines.get(f.display, []),
+            }
+            for f in record.files
+        ]
+        return ToolResult(True, content, {"change_id": record.id, "applied": files}), permission

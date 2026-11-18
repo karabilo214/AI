@@ -165,29 +165,65 @@ def test_stops_at_token_limit(tmp_path: Path, db: Database) -> None:
     assert (result.status, result.stop_reason, result.steps) == ("failed", "max_tokens", 2)
 
 
-def test_stops_at_time_limit_even_mid_generation(tmp_path: Path, db: Database) -> None:
+def test_time_limit_does_not_interrupt_a_generation(tmp_path: Path, db: Database) -> None:
     def slow(cancel: threading.Event) -> ModelReply:
-        if not cancel.wait(30):
-            raise AssertionError("generation was not interrupted")
-        raise InterruptedError
+        time.sleep(0.8)
+        assert not cancel.is_set()  # время не прерывает идущий ответ модели
+        return reply("", call("list_dir"))
 
     env = Env(tmp_path, db, Script(slow), limits=RunLimits(max_duration=0.5))
-    started = time.monotonic()
     result = env.runtime.run("slow")
-    assert (result.status, result.stop_reason) == ("failed", "max_duration")
-    assert time.monotonic() - started < 10
+    assert (result.status, result.stop_reason, result.steps) == ("failed", "max_duration", 1)
+    assert len(env.runs.tool_calls(result.run_id)) == 1  # шаг доделан
 
 
-def test_time_limit_kills_a_running_command(tmp_path: Path, db: Database) -> None:
+def test_time_limit_lets_a_running_command_finish(tmp_path: Path, db: Database) -> None:
     (tmp_path / "project").mkdir()
-    (tmp_path / "project" / "slow.py").write_bytes(b"import time\ntime.sleep(30)\n")
+    (tmp_path / "project" / "slow.py").write_bytes(b"import time\ntime.sleep(1.5)\nprint('ok')\n")
     command = call("run_command", command=f'"{sys.executable}" slow.py')
     env = Env(
-        tmp_path, db, Script(reply("", command)), [Decision("approve")], RunLimits(max_duration=1.5)
+        tmp_path, db, Script(reply("", command)), [Decision("approve")], RunLimits(max_duration=0.5)
     )
-    started = time.monotonic()
     result = env.runtime.run("run slow")
-    assert result.stop_reason == "max_duration" and time.monotonic() - started < 15
+    assert result.stop_reason == "max_duration"
+    (finished,) = env.runs.tool_calls(result.run_id)
+    assert json.loads(finished.result or "")["content"].startswith("exit code 0")
+
+
+def test_user_continues_past_a_checkpoint(tmp_path: Path, db: Database) -> None:
+    paths = iter(["src", "."] * 10)
+    script = Script(lambda cancel: reply("", call("list_dir", path=next(paths))))
+    answers = [True, False]
+    asked: list[tuple[str, int, str]] = []
+
+    def on_limit(request: Any) -> bool:
+        asked.append((request.reason, request.steps, env.runs.recent()[0].status))
+        return answers.pop(0)
+
+    env = Env(tmp_path, db, script, limits=RunLimits(max_steps=2, max_no_progress=None))
+    env.runtime.on_limit = on_limit
+    result = env.runtime.run("long work")
+    assert asked == [("max_steps", 2, "waiting_approval"), ("max_steps", 4, "waiting_approval")]
+    assert (result.status, result.stop_reason, result.steps) == ("cancelled", "max_steps", 4)
+    assert env.kinds().count("agent.limit_reached") == 2
+
+
+def test_limits_can_be_switched_off(tmp_path: Path, db: Database) -> None:
+    paths = iter(["src", "."] * 20)
+    replies: list[Any] = [lambda c: reply("", call("list_dir", path=next(paths)))] * 30
+    script = Script(*replies, reply("finished"))
+    off = RunLimits(max_steps=None, max_tokens=None, max_duration=None, max_no_progress=None)
+    env = Env(tmp_path, db, script, limits=off)
+    result = env.runtime.run("very long work")
+    assert (result.status, result.steps) == ("done", 31)
+
+
+def test_stuck_asks_and_can_continue(tmp_path: Path, db: Database) -> None:
+    script = Script(*[reply("", call("list_dir"))] * 3, reply("done"))
+    env = Env(tmp_path, db, script)
+    env.runtime.on_limit = lambda request: request.reason == "stuck"
+    result = env.runtime.run("same call")
+    assert result.status == "done" and len(env.runs.tool_calls(result.run_id)) == 3
 
 
 def test_user_stop_cancels_the_run(tmp_path: Path, db: Database) -> None:
@@ -220,11 +256,59 @@ def test_denied_action_reason_goes_back_and_run_continues(tmp_path: Path, db: Da
     assert "do not touch calc.py" in script.seen[1][-1]["content"]
 
 
-def test_repeated_identical_calls_are_stopped(tmp_path: Path, db: Database) -> None:
+def test_repeated_call_without_new_information_is_a_loop(tmp_path: Path, db: Database) -> None:
     env = Env(tmp_path, db, Script(reply("", call("list_dir"))))
     result = env.runtime.run("loop")
     assert (result.status, result.stop_reason) == ("failed", "stuck")
-    assert len(env.runs.tool_calls(result.run_id)) == 2
+    assert len(env.runs.tool_calls(result.run_id)) == 3
+    limit = next(e for e in env.events if e["type"] == "agent.limit_reached")
+    assert limit["request"]["detail"] == "no_progress: list_dir"
+
+
+def edit(old: str, new: str) -> ToolCall:
+    return ToolCall(
+        f"e-{old}-{new}",
+        "edit_file",
+        json.dumps({"path": "src/calc.py", "old_text": old, "new_text": new}),
+    )
+
+
+def test_rereading_after_own_edit_is_not_a_loop(tmp_path: Path, db: Database) -> None:
+    read = call("read_file", path="src/calc.py")
+    script = Script(
+        reply("", read),
+        reply("", edit("a - b", "a + b")),
+        reply("", read),
+        reply("", edit("return", "return  ")),
+        reply("", read),
+        reply("done"),
+    )
+    env = Env(tmp_path, db, script, [Decision("approve", series=5)])
+    assert env.runtime.run("fix").status == "done"
+
+
+def test_undoing_own_change_is_a_loop(tmp_path: Path, db: Database) -> None:
+    script = Script(reply("", edit("a - b", "a + b")), reply("", edit("a + b", "a - b")))
+    env = Env(tmp_path, db, script, [Decision("approve", series=5)])
+    result = env.runtime.run("flip")
+    assert result.stop_reason == "stuck"
+    limit = next(e for e in env.events if e["type"] == "agent.limit_reached")
+    assert limit["request"]["detail"] == "oscillation: src/calc.py"
+
+
+def test_editing_the_same_line_again_and_again_is_a_loop(tmp_path: Path, db: Database) -> None:
+    script = Script(
+        reply("", edit("a - b", "a * b")),
+        reply("", edit("a * b", "a / b")),
+        reply("", edit("a / b", "a ** b")),
+        reply("never reached"),
+    )
+    env = Env(tmp_path, db, script, [Decision("approve", series=5)])
+    result = env.runtime.run("same line")
+    assert result.stop_reason == "stuck"
+    limit = next(e for e in env.events if e["type"] == "agent.limit_reached")
+    assert limit["request"]["detail"] == "same_lines: src/calc.py:2"
+    assert len(env.runs.tool_calls(result.run_id)) == 3
 
 
 def test_invalid_tool_call_is_reported_not_executed(tmp_path: Path, db: Database) -> None:

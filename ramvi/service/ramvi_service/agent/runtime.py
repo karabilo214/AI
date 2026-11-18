@@ -13,11 +13,18 @@ observation → validation → next step / final.
 5. **validation** — шаг проверяет лимиты, отмену и зацикливание (одинаковый вызов
    подряд); ответ без вызовов инструментов — итог, пустой или обрезанный — ошибка.
 
-Лимиты: шаги, токены (prompt + completion за весь запуск), время (по истечении
-прерывается и идущий запрос, и команда), вызовов за шаг. Остановка пользователем —
-`cancel`. Состояние запуска, итог и причина остановки пишутся в `agent_runs`;
+Лимиты шагов, токенов и времени — **контрольные точки, а не обрыв**: они ловят
+зациклившегося агента, но не должны обрывать долгую правильную работу. Зацикливание
+распознаётся по журналу запуска (`progress.py`): правка тех же строк, возврат файла
+к прежнему виду, повтор без новой информации. Достигнут лимит или замечена петля —
+агент доделывает текущий шаг (идущую команду и
+ответ модели время не прерывает) и спрашивает пользователя (`on_limit`):
+«продолжить» даёт ещё столько же, «нет» — остановка. Без `on_limit` (некого
+спросить) запуск останавливается. Каждый лимит — настройка пользователя, `None` —
+без ограничения. Немедленная остановка — только `cancel` (Stop пользователя). Состояние запуска, итог и причина остановки пишутся в `agent_runs`;
 события — через `emit` (`agent.step`, `agent.plan`, `agent.tool_call`,
-`agent.tool_result`, `agent.tool_approval_required`, `agent.done`).
+`agent.tool_result`, `agent.tool_approval_required`, `agent.limit_reached`,
+`agent.done`).
 
 Решение (`Strategy`) отделено от исполнения и безопасности (6.8): стратегию можно
 заменить, не трогая инструменты, права и подтверждения.
@@ -30,6 +37,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Literal, Protocol
 
+from ramvi_service.agent.progress import ProgressMonitor
 from ramvi_service.agent.tools import StopRequested, StorageJournal, ToolResult, ToolRunner
 
 EVENT_VERSION = 1
@@ -55,14 +63,30 @@ follow the reason they give.
 
 @dataclass(frozen=True)
 class RunLimits:
-    """Лимиты одного запуска (AG-01)."""
+    """Контрольные точки запуска (AG-01); `None` — без ограничения. Меняет пользователь."""
 
-    max_steps: int = 25
-    max_tokens: int = 200_000  # prompt + completion суммарно за запуск
-    max_duration: float = 1800.0  # секунды
-    max_completion_tokens: int = 2048  # на один ответ модели
-    max_calls_per_step: int = 8
-    max_repeats: int = 3  # одинаковый вызов подряд — зацикливание
+    max_steps: int | None = 50
+    max_tokens: int | None = 1_000_000  # prompt + completion суммарно за запуск
+    max_duration: float | None = 3600.0  # секунды
+    max_no_progress: int | None = 3  # одинаковый результат без изменений между вызовами
+    max_same_lines: int | None = 3  # правок одних и тех же строк файла
+    max_completion_tokens: int = 4096  # на один ответ модели
+    max_calls_per_step: int = 20  # лишние вызовы получают ошибку, модель повторит их
+
+
+@dataclass(frozen=True)
+class LimitRequest:
+    """Вопрос пользователю «продолжить?» при достижении контрольной точки."""
+
+    run_id: str
+    reason: str  # max_steps | max_tokens | max_duration | stuck
+    steps: int
+    tokens: int
+    elapsed: float
+    detail: str = ""  # для stuck: same_lines / oscillation / no_progress и где
+
+
+OnLimit = Callable[[LimitRequest], bool]
 
 
 @dataclass(frozen=True)
@@ -189,10 +213,15 @@ class AgentRuntime:
         *,
         limits: RunLimits | None = None,
         emit: Callable[[dict[str, Any]], None] | None = None,
+        on_limit: OnLimit | None = None,
     ) -> None:
-        """`runs` — `AgentRuns` хранилища (или None — без сохранения)."""
+        """`runs` — `AgentRuns` хранилища (или None — без сохранения); `on_limit` —
+        вопрос пользователю на контрольной точке (True — продолжить)."""
         self.strategy, self.tools, self.runs = strategy, tools, runs
         self.limits = limits or RunLimits()
+        self.on_limit = on_limit
+        self._budget: dict[str, float] = {}
+        self._started = 0.0
         self._emit = emit
         self._seq = 0
         self._steps = 0
@@ -263,15 +292,16 @@ class AgentRuntime:
         )
         journal: Any = MemoryJournal() if self.runs is None else StorageJournal(self.runs, run_id)
         self._status(run_id, "running")
-        deadline_hit = threading.Event()
-
-        def on_deadline() -> None:
-            deadline_hit.set()
-            cancel.set()  # прервать идущий запрос к модели и команду
-
-        timer = threading.Timer(self.limits.max_duration, on_deadline)
-        timer.daemon = True
-        timer.start()
+        self._started = time.monotonic()
+        self._budget = {
+            name: float(value)
+            for name, value in (
+                ("max_steps", self.limits.max_steps),
+                ("max_tokens", self.limits.max_tokens),
+                ("max_duration", self.limits.max_duration),
+            )
+            if value is not None
+        }
         restore = self._watch_approvals(run_id, cancel)
         usage = {"prompt_tokens": 0, "completion_tokens": 0}
         messages: list[dict[str, Any]] = [
@@ -286,10 +316,7 @@ class AgentRuntime:
         except _Stop as stop:
             status, reason, error = stop.status, stop.reason, stop.error
         finally:
-            timer.cancel()
             restore()
-        if deadline_hit.is_set() and status == "cancelled":
-            status, reason = "failed", "max_duration"
         steps = self._steps
         if self.runs is not None:
             self.runs.update(
@@ -303,13 +330,47 @@ class AgentRuntime:
         self.emit(run_id, "agent.done", status=status, stop_reason=reason, result=result_text)
         return RunResult(run_id, status, reason, result_text, steps, dict(usage), error)
 
-    def _check(self, steps: int, usage: dict[str, int], cancel: threading.Event) -> None:
+    def _ask_continue(
+        self, run_id: str, reason: str, usage: dict[str, int], detail: str = ""
+    ) -> None:
+        """Контрольная точка: спросить пользователя; «нет» или некого спросить — стоп."""
+        tokens = usage["prompt_tokens"] + usage["completion_tokens"]
+        request = LimitRequest(
+            run_id, reason, self._steps, tokens, time.monotonic() - self._started, detail
+        )
+        self.emit(run_id, "agent.limit_reached", request=asdict(request))
+        if self.on_limit is None:
+            raise _Stop("failed", reason)
+        self._status(run_id, "waiting_approval")
+        try:
+            go_on = self.on_limit(request)
+        finally:
+            self._status(run_id, "running")
+        if not go_on:
+            raise _Stop("cancelled", reason)
+
+    def _check(self, run_id: str, usage: dict[str, int], cancel: threading.Event) -> None:
         if cancel.is_set():
             raise _Stop("cancelled", "cancelled")
-        if steps >= self.limits.max_steps:
-            raise _Stop("failed", "max_steps")
-        if usage["prompt_tokens"] + usage["completion_tokens"] >= self.limits.max_tokens:
-            raise _Stop("failed", "max_tokens")
+        used = {
+            "max_steps": float(self._steps),
+            "max_tokens": float(usage["prompt_tokens"] + usage["completion_tokens"]),
+            "max_duration": time.monotonic() - self._started,
+        }
+        limits = {
+            "max_steps": self.limits.max_steps,
+            "max_tokens": self.limits.max_tokens,
+            "max_duration": self.limits.max_duration,
+        }
+        for name, budget in list(self._budget.items()):
+            if used[name] >= budget:
+                self._ask_continue(run_id, name, usage)
+                if cancel.is_set():
+                    raise _Stop("cancelled", "cancelled")
+                step = limits[name]
+                assert step is not None
+                while self._budget[name] <= used[name]:  # «продолжить» — ещё столько же
+                    self._budget[name] += float(step)
 
     def _loop(
         self,
@@ -319,22 +380,17 @@ class AgentRuntime:
         cancel: threading.Event,
         usage: dict[str, int],
     ) -> str:
-        last_call: tuple[str, str] | None = None
-        repeats = 0
+        monitor = ProgressMonitor(self.limits.max_no_progress, self.limits.max_same_lines)
         while True:
-            self._check(self._steps, usage, cancel)
+            self._check(run_id, usage, cancel)
             self._steps += 1
             steps = self._steps
             if self.runs is not None:
                 self.runs.update(run_id, steps=steps, token_usage=usage)
             self.emit(run_id, "agent.step", step=steps)
-            left = self.limits.max_tokens - usage["prompt_tokens"] - usage["completion_tokens"]
             try:
                 reply = self.strategy.decide(
-                    messages,
-                    self.tools.openai_tools(),
-                    cancel,
-                    max(1, min(self.limits.max_completion_tokens, left)),
+                    messages, self.tools.openai_tools(), cancel, self.limits.max_completion_tokens
                 )
             except InterruptedError:
                 raise _Stop("cancelled", "cancelled") from None
@@ -371,12 +427,16 @@ class AgentRuntime:
                 if index >= self.limits.max_calls_per_step:
                     result = ToolResult.failure("agent.run.too_many_calls")
                 else:
-                    signature = (call.name, call.arguments)
-                    repeats = repeats + 1 if signature == last_call else 1
-                    last_call = signature
-                    if repeats >= self.limits.max_repeats:
-                        raise _Stop("failed", "stuck")
                     result = self._execute(run_id, steps, call, journal)
+                    loop = monitor.observe(call.name, call.arguments, result)
+                    if loop is not None:
+                        kind, where = loop
+                        messages.append(
+                            {"role": "tool", "tool_call_id": call.id, "content": result.for_model()}
+                        )
+                        self._ask_continue(run_id, "stuck", usage, f"{kind}: {where}")
+                        monitor.forgive(kind, where)
+                        continue
                 messages.append(
                     {"role": "tool", "tool_call_id": call.id, "content": result.for_model()}
                 )

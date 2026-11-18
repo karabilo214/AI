@@ -163,3 +163,17 @@ def test_secret_environment_is_not_passed(tmp_path: Path, monkeypatch: pytest.Mo
     result = execute_command(_proposal(tmp_path, code))
     assert "['PLAIN_VALUE']" in result.content
     assert os.environ["MY_API_KEY"] == "sk-secret"  # в самом сервисе не тронуто
+
+
+def test_command_timeout_is_a_user_setting(tmp_path: Path) -> None:
+    default = _run(tmp_path, "git status")
+    assert default.data["proposal"].timeout == 600
+    asked = _run(tmp_path, "git status", timeout=30)
+    assert asked.data["proposal"].timeout == 30
+    capped = _run(tmp_path, "git status", access=ToolAccess(command_timeout=10), timeout=99)
+    assert capped.data["proposal"].timeout == 10
+    unlimited = _run(tmp_path, "git status", access=ToolAccess(command_timeout=None))
+    assert unlimited.data["proposal"].timeout is None
+    proposal = _proposal(tmp_path, "print('no limit')")
+    no_limit = CommandProposal(proposal.command, proposal.argv, tmp_path, ".", None, None, False)
+    assert execute_command(no_limit).data["exit_code"] == 0
