@@ -282,7 +282,7 @@ def test_v1_database_upgrades_to_v2_keeping_messages(tmp_path: Path) -> None:
             " VALUES ('m', 'c', 'user', 'до обновления', 1)"
         )
     with open_core(tmp_path) as db:
-        assert applied_version(db, "core") == 2
+        assert applied_version(db, "core") == len(CORE_MIGRATIONS)
         (message,) = Chats(db).messages("c")
         assert (message.content, message.reasoning, message.finish) == ("до обновления", "", None)
     assert len(list((tmp_path / "backups").glob("*.core.v1.*.bak"))) == 1
@@ -353,8 +353,11 @@ def test_agent_runs_and_tool_calls(db: Database) -> None:
     assert [c.tool_name for c in runs.tool_calls(run.id)] == ["read_file", "shell"]
     with pytest.raises(ValueError):
         runs.add_tool_call(run.id, "x", {}, "maybe")
-    finished = runs.update(run.id, status="done", token_usage={"in": 5}, now=9.0)
+    finished = runs.update(
+        run.id, status="done", token_usage={"in": 5}, result="готово", stop_reason="done", now=9.0
+    )
     assert finished.ended_at == 9.0 and finished.token_usage == {"in": 5}
+    assert (finished.result, finished.stop_reason) == ("готово", "done")
     with pytest.raises(ValueError, match="already finished"):
         runs.update(run.id, status="running")
     assert runs.recent()[0].id == run.id

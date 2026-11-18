@@ -45,7 +45,7 @@
 | `model_profiles` | model_id, hardware_hash_local, context, plan, ttft, tokps, peak_ram, peak_vram, tested_at | удаляются вместе с моделью |
 | `chats` | id, title, model_id, created_at, updated_at | при удалении модели model_id = NULL |
 | `messages` | id, chat_id, role, content, token_usage, created_at | `seq` — порядок добавления (часы могут идти назад); удаляются вместе с чатом |
-| `agent_runs` | id, objective, workspace, model_id, status, steps, token_usage, started_at, ended_at | статусы planned/running/waiting_approval/done/failed/cancelled |
+| `agent_runs` | id, objective, workspace, model_id, status, steps, token_usage, started_at, ended_at, result, stop_reason (v3) | статусы planned/running/waiting_approval/done/failed/cancelled |
 | `tool_calls` | id, agent_run_id, tool_name, args_redacted, permission, result, duration | `seq`; permission auto/approved/denied |
 | `client_keys` | id, client_name, permissions, secret_hash, created_at, last_seen, revoked_at | `requests` — счётчик запросов (7.2) |
 | `downloads` | id, model_id, source, temp_path, bytes_done, total_bytes, state, checksum | model_id — id каталога, без внешнего ключа: записи модели до конца загрузки нет |

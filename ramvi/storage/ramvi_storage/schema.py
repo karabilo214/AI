@@ -130,9 +130,17 @@ ALTER TABLE messages ADD COLUMN attachments TEXT
     CHECK (attachments IS NULL OR json_valid(attachments));
 """
 
+# v3 (6.1, агент): итог запуска (последний ответ модели) и причина остановки —
+# done, лимит шагов/токенов/времени, остановка пользователем, ошибка.
+_V3 = """
+ALTER TABLE agent_runs ADD COLUMN result TEXT;
+ALTER TABLE agent_runs ADD COLUMN stop_reason TEXT;
+"""
+
 CORE_MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "core entities (TZ section 10)", _V1),
     Migration(2, "chat: reasoning, finish, attachments", _V2),
+    Migration(3, "agent: run result and stop reason", _V3),
 )
 
 

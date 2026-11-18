@@ -458,6 +458,8 @@ class AgentRun:
     started_at: float
     ended_at: float | None = None
     token_usage: dict[str, Any] | None = None
+    result: str | None = None
+    stop_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -482,6 +484,8 @@ def _run(row: sqlite3.Row) -> AgentRun:
         started_at=row["started_at"],
         ended_at=row["ended_at"],
         token_usage=_load(row["token_usage"]),
+        result=row["result"],
+        stop_reason=row["stop_reason"],
     )
 
 
@@ -540,9 +544,13 @@ class AgentRuns:
         status: str | None = None,
         steps: int | None = None,
         token_usage: dict[str, Any] | None = None,
+        result: str | None = None,
+        stop_reason: str | None = None,
         now: float | None = None,
     ) -> AgentRun:
-        """Конечный статус (done/failed/cancelled) ставит ended_at; после него статус не меняется."""
+        """Конечный статус (done/failed/cancelled) ставит ended_at; после него статус не меняется.
+
+        `result` — итоговый ответ, `stop_reason` — причина остановки (v3)."""
         current = self.get(run_id)
         if status is not None:
             _choice(status, AGENT_STATUSES, "agent status")
@@ -554,13 +562,15 @@ class AgentRuns:
             ended = _now(now)
         with self.db.transaction():
             self.db.execute(
-                "UPDATE agent_runs SET status = ?, steps = ?, token_usage = ?, ended_at = ?"
-                " WHERE id = ?",
+                "UPDATE agent_runs SET status = ?, steps = ?, token_usage = ?, ended_at = ?,"
+                " result = ?, stop_reason = ? WHERE id = ?",
                 (
                     new_status,
                     current.steps if steps is None else steps,
                     _json(current.token_usage if token_usage is None else token_usage),
                     ended,
+                    current.result if result is None else result,
+                    current.stop_reason if stop_reason is None else stop_reason,
                     run_id,
                 ),
             )
