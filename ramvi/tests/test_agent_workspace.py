@@ -18,9 +18,9 @@ def tree(tmp_path: Path) -> tuple[Path, Path]:
     root, outside = tmp_path / "project", tmp_path / "outside"
     (root / "src").mkdir(parents=True)
     outside.mkdir()
-    (root / "src" / "main.py").write_text("print(1)\n")
-    (root / "README.md").write_text("readme\n")
-    (outside / "secret.txt").write_text("outside\n")
+    (root / "src" / "main.py").write_bytes(b"print(1)\n")
+    (root / "README.md").write_bytes(b"readme\n")
+    (outside / "secret.txt").write_bytes(b"outside\n")
     return root, outside
 
 
@@ -104,7 +104,7 @@ def test_secrets_are_hidden_at_any_depth(tree: tuple[Path, Path], name: str) -> 
     root, _ = tree
     target = root / "src" / name
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("token\n")
+    target.write_bytes(b"token\n")
     ws = Workspace(root, Permissions(write=True))
     assert _code(lambda: ws.resolve(f"src/{name}")) == "agent.access.secret"
     assert _code(lambda: ws.open_read(f"src/{name}")) == "agent.access.secret"
@@ -118,7 +118,7 @@ def test_secrets_are_hidden_at_any_depth(tree: tuple[Path, Path], name: str) -> 
 def test_git_is_readable_but_not_writable(tree: tuple[Path, Path]) -> None:
     root, _ = tree
     (root / ".git" / "hooks").mkdir(parents=True)
-    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    (root / ".git" / "HEAD").write_bytes(b"ref: refs/heads/main\n")
     ws = Workspace(root, Permissions(write=True))
     assert ws.resolve(".git/HEAD").name == "HEAD"
     hook = lambda: ws.resolve(".Git/hooks/pre-commit", permission="write", must_exist=False)  # noqa: E731
@@ -173,7 +173,7 @@ def test_user_can_grant_full_access(tree: tuple[Path, Path]) -> None:
     """Ограничения — только по умолчанию; полный доступ пользователь включает сам."""
     root, outside = tree
     (root / "out").symlink_to(outside, target_is_directory=True)
-    (root / ".env").write_text("token\n")
+    (root / ".env").write_bytes(b"token\n")
     (root / ".git").mkdir()
     os.link(outside / "secret.txt", root / "linked.txt")
     ws = Workspace(root, Permissions.full(), Restrictions.none())
@@ -195,7 +195,7 @@ def test_user_can_grant_full_access(tree: tuple[Path, Path]) -> None:
 
 def test_each_restriction_can_be_lifted_separately(tree: tuple[Path, Path]) -> None:
     root, outside = tree
-    (root / ".env").write_text("token\n")
+    (root / ".env").write_bytes(b"token\n")
     (root / ".git").mkdir()
     secrets_open = Workspace(root, restrictions=Restrictions(secret_patterns=()))
     assert secrets_open.resolve(".env").name == ".env"

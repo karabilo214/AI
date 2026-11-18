@@ -590,6 +590,29 @@ class AgentRuns:
         assert row is not None
         return _call(row)
 
+    def finish_tool_call(
+        self,
+        call_id: str,
+        result: str,
+        duration: float,
+        *,
+        permission: str | None = None,
+    ) -> ToolCall:
+        """Дописать результат вызова, записанного до выполнения (журнал AG-02)."""
+        if permission is not None:
+            _choice(permission, TOOL_PERMISSIONS, "tool permission")
+        with self.db.transaction():
+            cursor = self.db.execute(
+                "UPDATE tool_calls SET result = ?, duration = ?,"
+                " permission = COALESCE(?, permission) WHERE id = ?",
+                (result, max(0.0, duration), permission, call_id),
+            )
+            if cursor.rowcount == 0:
+                raise NotFound(call_id)
+        row = self.db.one("SELECT * FROM tool_calls WHERE id = ?", (call_id,))
+        assert row is not None
+        return _call(row)
+
     def tool_calls(self, run_id: str) -> list[ToolCall]:
         self.get(run_id)
         rows = self.db.all(
