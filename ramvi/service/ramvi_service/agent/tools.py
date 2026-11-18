@@ -36,6 +36,10 @@ MAX_JOURNAL_ARG_CHARS = 2_000
 SECRET_KEY = re.compile(r"(?i)(password|passwd|secret|token|api[_-]?key|authorization)")
 
 
+class StopRequested(Exception):
+    """Пользователь остановил запуск агента (например, в запросе подтверждения)."""
+
+
 class ToolError(Exception):
     """Ожидаемая ошибка инструмента с ключом (`agent.tool.*`) — уходит модели."""
 
@@ -79,11 +83,17 @@ class ToolAccess:
 
     `disabled` — выключенные инструменты; `allow_destructive_commands` — разрешить
     команды, которые удаляют данные, повышают права или исполняют произвольный код
-    (по умолчанию заблокированы). Меняет только пользователь.
+    (по умолчанию заблокированы). `confirm_*` — спрашивать подтверждение перед
+    записью, командой и разрушительной командой (6.4); `max_series` — сколько
+    следующих действий можно разрешить одним подтверждением. Меняет только пользователь.
     """
 
     disabled: frozenset[str] = frozenset()
     allow_destructive_commands: bool = False
+    confirm_writes: bool = True
+    confirm_commands: bool = True
+    confirm_destructive: bool = True
+    max_series: int = 20
 
 
 @dataclass(frozen=True)
@@ -168,7 +178,9 @@ class Journal(Protocol):
 
     def begin(self, tool: str, args: dict[str, Any], permission: str) -> str: ...
 
-    def finish(self, call_id: str, result: str, duration: float) -> None: ...
+    def finish(
+        self, call_id: str, result: str, duration: float, permission: str | None = None
+    ) -> None: ...
 
 
 def redact(args: Mapping[str, Any]) -> dict[str, Any]:
@@ -196,8 +208,10 @@ class StorageJournal:
     def begin(self, tool: str, args: dict[str, Any], permission: str) -> str:
         return str(self.runs.add_tool_call(self.run_id, tool, args, permission).id)
 
-    def finish(self, call_id: str, result: str, duration: float) -> None:
-        self.runs.finish_tool_call(call_id, result, duration)
+    def finish(
+        self, call_id: str, result: str, duration: float, permission: str | None = None
+    ) -> None:
+        self.runs.finish_tool_call(call_id, result, duration, permission=permission)
 
 
 def _journal_result(result: ToolResult) -> str:
@@ -206,6 +220,7 @@ def _journal_result(result: ToolResult) -> str:
         "error": result.error,
         "truncated": result.truncated or len(result.content) > MAX_RESULT_CHARS,
         "chars": len(result.content),
+        "change_id": result.data.get("change_id"),
         "content": result.content[:MAX_JOURNAL_CHARS],
     }
     return json.dumps(summary, ensure_ascii=False)
@@ -220,11 +235,16 @@ class ToolRunner:
     """Реестр инструментов и единственный путь их исполнения."""
 
     def __init__(
-        self, workspace: Workspace | None = None, access: ToolAccess | None = None
+        self,
+        workspace: Workspace | None = None,
+        access: ToolAccess | None = None,
+        gate: Any = None,
     ) -> None:
+        """`gate` — `ApprovalGate` (6.4); без него write/command только возвращают предложение."""
         self._tools: dict[str, tuple[ToolSpec, Handler]] = {}
         self.workspace = workspace
         self.access = access or ToolAccess()
+        self.gate = gate
 
     def register(self, spec: ToolSpec, handler: Handler) -> None:
         if spec.name in self._tools:
@@ -301,7 +321,16 @@ class ToolRunner:
             result = ToolResult.failure(error.code, **error.params)
         except Exception as error:  # noqa: BLE001 — любая ошибка возвращается модели
             result = ToolResult.failure("agent.tool.failed", error=type(error).__name__)
-        journal.finish(call_id, _journal_result(result), time.monotonic() - started)
+        decided: str | None = None
+        proposal = result.data.get("proposal")
+        if result.ok and spec.effect != "read" and self.gate is not None and proposal:
+            try:
+                result, decided = self.gate.handle(spec, proposal)
+            except Exception as error:  # noqa: BLE001
+                result = ToolResult.failure("agent.tool.failed", error=type(error).__name__)
+        journal.finish(call_id, _journal_result(result), time.monotonic() - started, decided)
+        if result.error == "agent.approval.stopped":
+            raise StopRequested
         return result
 
     @staticmethod

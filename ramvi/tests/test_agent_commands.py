@@ -23,7 +23,9 @@ class Journal:
         self.calls.append((tool, permission))
         return str(len(self.calls) - 1)
 
-    def finish(self, call_id: str, result: str, duration: float) -> None:
+    def finish(
+        self, call_id: str, result: str, duration: float, permission: str | None = None
+    ) -> None:
         json.loads(result)
 
 

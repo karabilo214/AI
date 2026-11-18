@@ -39,7 +39,9 @@ class ListJournal:
         self.entries.append({"tool": tool, "args": args, "permission": permission})
         return str(len(self.entries) - 1)
 
-    def finish(self, call_id: str, result: str, duration: float) -> None:
+    def finish(
+        self, call_id: str, result: str, duration: float, permission: str | None = None
+    ) -> None:
         self.entries[int(call_id)]["result"] = json.loads(result)
 
 

@@ -36,7 +36,9 @@ class Journal:
     def begin(self, tool: str, args: dict[str, Any], permission: str) -> str:
         return "0"
 
-    def finish(self, call_id: str, result: str, duration: float) -> None:
+    def finish(
+        self, call_id: str, result: str, duration: float, permission: str | None = None
+    ) -> None:
         json.loads(result)
 
 
