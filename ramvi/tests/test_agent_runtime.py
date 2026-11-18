@@ -425,7 +425,7 @@ def test_llm_strategy_builds_request_and_parses_tool_calls() -> None:
 
 
 def test_describing_instead_of_acting_is_not_success(tmp_path: Path, db: Database) -> None:
-    """Как qwen3:8b на ASUS: «сейчас запущу тест» без вызова — не итог."""
+    """Как qwen3:8b на проверке 6.1: «сейчас запущу тест» без вызова — не итог."""
     intent = reply("Now I will change calc.py and run the test.")
     script = Script(intent, reply("", FIX), done("Fixed add()."))
     env = Env(tmp_path, db, script, [Decision("approve")])
