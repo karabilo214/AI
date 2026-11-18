@@ -96,7 +96,7 @@
   "section.state.initialized": "Loaded",
   "section.state.ready": "Ready",
   "section.state.suspended": "Suspended",
-  "settings.api_note": "Port and network access apply together with the external API for other programs. The external API is not running now; network is off.",
+  "settings.api_note": "The external API for other programs (IDEs, agents) runs on this port; keys are in Connections. Changes apply at once.",
   "settings.api_port": "External API port",
   "settings.browse": "Browse…",
   "settings.cancel": "Close",
@@ -109,7 +109,7 @@
   "settings.language": "Interface language",
   "settings.models_dir": "Models folder (downloads and “Refresh list”)",
   "settings.network_access": "Network access (not only from this computer)",
-  "settings.network_warning": "Enable network only on a trusted network: other devices will be able to reach the API (with a key).",
+  "settings.network_warning": "Turn the network on only in a trusted network. Only keys with the “from network” permission and only from allowed addresses get in. Traffic is not encrypted — put a TLS proxy in front of RAMVI for an outside network.",
   "settings.onboarding": "First-run wizard",
   "settings.onboarding_note": "Computer check and connecting a model file. The model for a chat is chosen in the “Model” list above the chat.",
   "settings.model": "Model in memory",
@@ -566,5 +566,6 @@
   "api.bad_body": "Wrong request body size",
   "api.bad_json": "The request body must be a JSON object",
   "api.engine_error": "The engine did not answer",
-  "api.port_busy": "External API port {port} is used by another program — choose another port in settings"
+  "api.port_busy": "External API port {port} is used by another program — choose another port in settings",
+  "settings.bad_network_allow": "Wrong address or network in the allow list: “{value}” (example: 192.168.1.0/24)"
 }

@@ -13,13 +13,18 @@
    поток), ответ возвращается клиенту по мере генерации. Клиент оборвал связь — запрос
    в движке отменяется.
 
-Слушает только 127.0.0.1 (сеть — 7.4). Discovery — файл `<run>/api.json`: адрес,
+По умолчанию слушает только 127.0.0.1. Сеть (7.4) — только по явному включению
+`network_access`: тогда слушает все адреса, но не с этого компьютера пускаются
+только адреса из списка `network_allow` и только ключи с правом `remote`; даже
+«жив ли сервис» без ключа не отвечает. Трафик не шифруется — для внешней сети
+перед RAMVI ставится прокси с TLS. Настройки применяются сразу (`apply`). Discovery — файл `<run>/api.json`: адрес,
 порт, маршруты, PID; секретов в нём нет. Сервис можно запустить без окна
 (`python -m ramvi_service.app --headless`), чтобы IDE работала без интерфейса.
 """
 
 import contextlib
 import http.client
+import ipaddress
 import json
 import os
 import threading
@@ -44,10 +49,45 @@ DISCOVERY_VERSION = 1
 
 @dataclass(frozen=True)
 class ApiOptions:
-    host: str = "127.0.0.1"
+    host: str = "127.0.0.1"  # 0.0.0.0 — сеть, только по явному включению
     port: int = 11435  # 0 — свободный порт
     queue_timeout: float = 600.0  # сколько ждать своей очереди к модели
     read_timeout: float = 3600.0  # ответ движка (длинная генерация)
+    allow: tuple[str, ...] = ()  # сети, откуда можно при включённой сети (CIDR)
+
+    @classmethod
+    def from_settings(cls, settings: Any) -> "ApiOptions":
+        allow = tuple(p.strip() for p in settings.network_allow.split(",") if p.strip())
+        host = "0.0.0.0" if settings.network_access else "127.0.0.1"
+        return cls(host=host, port=settings.api_port, allow=allow)
+
+    @property
+    def network(self) -> bool:
+        return self.host not in ("127.0.0.1", "localhost", "::1")
+
+
+def is_local(address: str) -> bool:
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return False
+
+
+def allowed(address: str, allow: tuple[str, ...]) -> bool:
+    """Адрес клиента входит в одну из разрешённых сетей."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    for network in allow:
+        try:
+            if ip in ipaddress.ip_network(network, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 class ApiError(Exception):
@@ -139,7 +179,8 @@ class ApiServer:
 
     @property
     def url(self) -> str:
-        return f"http://{self.options.host}:{self.port}"
+        """Адрес для программ на этом компьютере (и при включённой сети тоже)."""
+        return f"http://127.0.0.1:{self.port}"
 
     @property
     def discovery_file(self) -> Path:
@@ -154,6 +195,18 @@ class ApiServer:
         self._thread = threading.Thread(target=server.serve_forever, name="ramvi-api", daemon=True)
         self._thread.start()
         self._write_discovery()
+
+    def apply(self, options: ApiOptions) -> str | None:
+        """Применить новые порт/сеть/список адресов сразу; ошибка — код сообщения."""
+        if options == self.options and self._server is not None:
+            return None
+        self.close()
+        self.options = options
+        try:
+            self.start()
+        except OSError:
+            return "api.port_busy"
+        return None
 
     def close(self) -> None:
         if self._server is not None:
@@ -172,6 +225,7 @@ class ApiServer:
             "url": self.url,
             "host": self.options.host,
             "port": self.port,
+            "network": self.options.network,
             "pid": os.getpid(),
             "auth": "Authorization: Bearer <key> or x-api-key: <key>",
             "routes": {
@@ -189,7 +243,11 @@ class ApiServer:
 
     # --- запросы ------------------------------------------------------------------------
 
-    def authorize(self, headers: Any, path: str) -> Any:
+    def admit(self, address: str) -> bool:
+        """Можно ли этому адресу вообще разговаривать с API."""
+        return is_local(address) or (self.options.network and allowed(address, self.options.allow))
+
+    def authorize(self, headers: Any, path: str, address: str = "127.0.0.1") -> Any:
         token = None
         auth = headers.get("Authorization") or ""
         if auth.startswith("Bearer "):
@@ -198,6 +256,8 @@ class ApiServer:
         client = self.keys.verify(token, permission_for(path)) if token else None
         if client is None:
             raise ApiError(401, "api.unauthorized", "missing, wrong, revoked or limited key")
+        if not is_local(address) and "remote" not in client.permissions:
+            raise ApiError(401, "api.unauthorized", "this key works only on this computer")
         return client
 
     # --- клиенты (7.2) ------------------------------------------------------------------
@@ -300,12 +360,21 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                 {"error": {"message": error.message, "type": error.code, "params": error.params}},
             )
 
+        def _admit(self) -> str:
+            address = str(self.client_address[0])
+            if not api.admit(address):
+                raise ApiError(403, "api.forbidden", "this address is not allowed")
+            return address
+
         def do_GET(self) -> None:
             path = urlsplit(self.path).path.rstrip("/") or "/"
             try:
+                address = self._admit()
+                if path == "/" and is_local(address):
+                    return self._send_json(200, {"service": "ramvi", "status": "ok"})
+                api.authorize(self.headers, path, address)
                 if path == "/":
                     return self._send_json(200, {"service": "ramvi", "status": "ok"})
-                api.authorize(self.headers, path)
                 if path in ("/v1/models", "/api/tags", "/api/version"):
                     return self._send_json(200, api.models_payload(path))
                 raise ApiError(404, "api.not_found", f"unknown route {path}")
@@ -315,7 +384,7 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:
             path = urlsplit(self.path).path.rstrip("/")
             try:
-                client = api.authorize(self.headers, path)
+                client = api.authorize(self.headers, path, self._admit())
                 if path not in GENERATION:
                     raise ApiError(404, "api.not_found", f"unknown route {path}")
                 length = int(self.headers.get("Content-Length") or 0)

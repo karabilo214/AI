@@ -36,6 +36,7 @@ def test_defaults_are_inside_app_folder(config: AppConfig) -> None:
         "language": "ru",
         "api_port": 11435,
         "network_access": False,
+        "network_allow": "192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12",
         "theme": "system",
         "task_mode": "chat",
         "task_priority": "balanced",

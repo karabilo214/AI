@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ramvi_service.agent.desktop import AgentDesktop
+from ramvi_service.api_server import ApiOptions
 from ramvi_service.app_config import AppConfig
 from ramvi_service.catalog import Catalog
 from ramvi_service.chat import ChatError, ChatService, Generation
@@ -136,7 +137,14 @@ class UIServer:
             if method == "GET":
                 return self.config.get()
             if method == "POST":
-                return self.config.update(body)
+                result = self.config.update(body)
+                if self.api is not None and {"api_port", "network_access", "network_allow"} & set(
+                    body
+                ):
+                    # 7.4: порт и сеть применяются сразу, без перезапуска приложения.
+                    error = self.api.apply(ApiOptions.from_settings(self.config.current()))
+                    result = {**result, "api_error": error}
+                return result
         if path == "/downloads" or path.startswith("/downloads/"):
             return self._downloads_route(method, path, body)
         if path == "/voice" or path.startswith("/voice/"):

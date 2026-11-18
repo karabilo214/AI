@@ -16,6 +16,7 @@ import sqlite3
 import sys
 import threading
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -234,7 +235,7 @@ def build(
         llm,
         engines,
         data_dir / "run",
-        ApiOptions(port=current_settings().api_port),
+        ApiOptions.from_settings(current_settings()),
     )
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
@@ -305,7 +306,7 @@ def main(argv: list[str] | None = None) -> None:
     server.start()
     api = server.api
     if args.api_port is not None:
-        api.options = ApiOptions(port=args.api_port)
+        api.options = replace(api.options, port=args.api_port)
     try:
         api.start()
         api_url: str | None = api.url

@@ -6,6 +6,7 @@
 3.14: неверное значение — `SettingsError` с ключом `settings.*` (текст — в каталоге).
 """
 
+import ipaddress
 import json
 import os
 import tempfile
@@ -38,6 +39,9 @@ class Settings:
     language: str = "ru"
     api_port: int = 11435
     network_access: bool = False  # слушать не только 127.0.0.1 — только по явному включению
+    # 7.4: с каких адресов можно обращаться при включённой сети (через запятую, CIDR);
+    # по умолчанию — домашние и офисные сети; «0.0.0.0/0» — откуда угодно (выбор пользователя)
+    network_allow: str = "192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12"
     theme: str = "system"
     # 4.5: профиль задачи (режим, приоритет, контекст; 0 — по режиму)
     task_mode: str = "chat"
@@ -71,6 +75,14 @@ class Settings:
             raise SettingsError("settings.bad_theme", allowed=", ".join(THEMES))
         if not isinstance(self.network_access, bool):
             raise SettingsError("settings.bad_network")
+        if not isinstance(self.network_allow, str):
+            raise SettingsError("settings.bad_network_allow", value="")
+        for part in self.network_allow.split(","):
+            if part.strip():
+                try:
+                    ipaddress.ip_network(part.strip(), strict=False)
+                except ValueError:
+                    raise SettingsError("settings.bad_network_allow", value=part.strip()) from None
         if not isinstance(self.voice_device, str):
             raise SettingsError("settings.bad_voice_device")
         if self.voice_language not in VOICE_LANGUAGES:

@@ -9,8 +9,8 @@
 - `theme` и `language` — сразу: оболочка меняет тему окна (3.16) и язык всех текстов (3.14);
 - `models_dir` — сразу: «Обновить список» подключает найденные в ней модели на месте
   (`POST /models/scan`, в т.ч. Ollama `blobs`), и туда пойдут загрузки (4.3); ничего не копируется;
-- `api_port`, `network_access` — вместе с внешним API (раздел 7: 7.1, 7.4);
-  до этого порт не открывается, сеть выключена.
+- `api_port`, `network_access`, `network_allow` — сразу: внешний API (7.1, 7.4)
+  перезапускается на новом порту / с новым режимом сети без перезапуска приложения.
 """
 
 import os
@@ -38,6 +38,9 @@ def check_folder(path: Path) -> None:
 class AppConfig:
     def __init__(self, app_dir: Path, data_dir: Path) -> None:
         self.app_dir, self.data_dir = Path(app_dir), Path(data_dir)
+
+    def current(self) -> st.Settings:
+        return st.load(self.app_dir)
 
     def get(self) -> dict[str, Any]:
         current = st.load(self.app_dir)

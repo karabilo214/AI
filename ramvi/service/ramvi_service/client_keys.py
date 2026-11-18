@@ -20,7 +20,8 @@ from ramvi_storage import CORE_MIGRATIONS, CORE_OWNER, Database, migrate
 from ramvi_service.i18n import UserError
 
 PREFIX = "ramvi-"
-PERMISSIONS = frozenset({"chat", "models", "agent"})
+# remote (7.4) — ключ можно использовать из сети; без него ключ работает только локально.
+PERMISSIONS = frozenset({"chat", "models", "agent", "remote"})
 
 
 class ClientKeyError(UserError, ValueError):
