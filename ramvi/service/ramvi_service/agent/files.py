@@ -1,8 +1,10 @@
 """6.2 (AG-02): файловые инструменты агента поверх `Workspace`.
 
-Чтение: `list_dir`, `read_file`, `find_files`, `grep` (ограниченный), `diff`.
-Запись: `write_file`, `edit_file` только готовят `WriteProposal` с diff — файлы не
-меняются; применение после подтверждения пользователя — 6.4.
+Чтение: `list_dir`, `read_file`, `file_info`, `find_files`, `grep` (ограниченный), `diff`.
+Запись: `write_file`, `edit_file`, `apply_patch` только готовят предложение с diff —
+файлы не меняются; применение после подтверждения пользователя — 6.4. `apply_patch`
+собирает несколько правок (в том числе в разных файлах) в одно предложение: оно
+применяется целиком или не применяется вовсе.
 
 Каждый путь проходит `Workspace.resolve`/`open_read`, поэтому права, границы папки
 и скрытые секреты действуют одинаково для всех инструментов. Обход папок не идёт по
@@ -17,6 +19,7 @@ import re
 import stat
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +53,14 @@ class WriteProposal:
     display: str
     before_sha256: str | None  # None — файла не было
     after: bytes
+    diff: str
+
+
+@dataclass(frozen=True)
+class PatchProposal:
+    """Атомарный патч: несколько предложенных записей, применяются все или ни одна."""
+
+    files: tuple[WriteProposal, ...]
     diff: str
 
 
@@ -148,6 +159,28 @@ class FileTools:
         data = {"start_line": start, "end_line": end, "total_lines": len(lines)}
         return ToolResult(True, body + footer, data, None, more)
 
+    def file_info(self, args: dict[str, Any]) -> ToolResult:
+        target = self.ws.resolve(args["path"])
+        info = os.lstat(target)
+        if stat.S_ISLNK(info.st_mode) or os.path.isjunction(target):
+            kind = "link"
+        elif stat.S_ISDIR(info.st_mode):
+            kind = "directory"
+        elif stat.S_ISREG(info.st_mode):
+            kind = "file"
+        else:
+            kind = "other"
+        data = {
+            "path": self.ws.relative(target),
+            "type": kind,
+            "size": info.st_size,
+            "modified": datetime.fromtimestamp(info.st_mtime, UTC).isoformat(timespec="seconds"),
+            "mode": stat.filemode(info.st_mode),
+            "writable": os.access(target, os.W_OK),
+        }
+        content = "\n".join(f"{key}: {value}" for key, value in data.items())
+        return ToolResult(True, content, data)
+
     def find_files(self, args: dict[str, Any]) -> ToolResult:
         pattern = args["pattern"].lower()
         base = self._base(args.get("path", "."))
@@ -242,7 +275,7 @@ class FileTools:
             raise ToolError("agent.tool.not_text", path=path)
         return target, data
 
-    def _propose(self, path: str, target: Path, before: bytes | None, after: str) -> ToolResult:
+    def _proposal(self, path: str, target: Path, before: bytes | None, after: str) -> WriteProposal:
         encoded = after.encode("utf-8")
         if len(encoded) > self.limits.max_text_bytes:
             raise ToolError("agent.tool.too_large", limit=self.limits.max_text_bytes)
@@ -254,13 +287,17 @@ class FileTools:
         except UnicodeDecodeError:
             raise ToolError("agent.tool.not_text", path=path) from None
         diff = unified_diff(old, after, display, new=before is None)
-        proposal = WriteProposal(
+        return WriteProposal(
             path=target,
             display=display,
             before_sha256=None if before is None else hashlib.sha256(before).hexdigest(),
             after=encoded,
             diff=diff,
         )
+
+    def _propose(self, path: str, target: Path, before: bytes | None, after: str) -> ToolResult:
+        proposal = self._proposal(path, target, before, after)
+        display, diff = proposal.display, proposal.diff
         content = f"Proposed change to {display} (awaiting user approval):\n{diff}"
         return ToolResult(True, content, {"proposal": proposal})
 
@@ -283,6 +320,48 @@ class FileTools:
         if found > 1:
             raise ToolError("agent.tool.edit_ambiguous", path=path, occurrences=found)
         return self._propose(path, target, before, text.replace(old, new, 1))
+
+    def apply_patch(self, args: dict[str, Any]) -> ToolResult:
+        """Собрать правки в одно атомарное предложение; любая ошибка отменяет всё."""
+        files: dict[str, list[Any]] = {}  # реальный путь → [путь модели, путь, исходник, текст]
+        for index, edit in enumerate(args["edits"]):
+            path, old, new = edit["path"], edit["old_text"], edit["new_text"]
+            key = str(self.ws.resolve(path, permission="write", must_exist=False))
+            if key not in files:
+                target, before = self._current(path)
+                try:
+                    text = None if before is None else before.decode("utf-8")
+                except UnicodeDecodeError:
+                    raise ToolError("agent.tool.not_text", path=path, edit=index) from None
+                files[key] = [path, target, before, text]
+            entry = files[key]
+            if entry[3] is None:  # новый файл: только создание целиком
+                if old:
+                    raise ToolError("agent.tool.edit_not_found", path=path, edit=index)
+                entry[3] = new
+                continue
+            if not old:
+                raise ToolError("agent.tool.edit_empty", path=path, edit=index)
+            found = entry[3].count(old)
+            if found == 0:
+                raise ToolError("agent.tool.edit_not_found", path=path, edit=index)
+            if found > 1:
+                raise ToolError(
+                    "agent.tool.edit_ambiguous", path=path, edit=index, occurrences=found
+                )
+            entry[3] = entry[3].replace(old, new, 1)
+        proposals: list[WriteProposal] = []
+        for path, target, before, text in files.values():
+            if before is not None and text.encode("utf-8") == before:
+                continue
+            proposals.append(self._proposal(path, target, before, text))
+        if not proposals:
+            raise ToolError("agent.tool.no_change")
+        diff = "".join(p.diff for p in proposals)
+        patch = PatchProposal(tuple(proposals), diff)
+        names = ", ".join(p.display for p in proposals)
+        content = f"Proposed patch for {names} (awaiting user approval):\n{diff}"
+        return ToolResult(True, content, {"proposal": patch})
 
 
 def _schema(properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
@@ -336,6 +415,15 @@ def register_file_tools(
         ),
         (
             ToolSpec(
+                "file_info",
+                "File or folder metadata: type, size, modification time, permissions.",
+                _schema({"path": _PATH}, ["path"]),
+                "read",
+            ),
+            tools.file_info,
+        ),
+        (
+            ToolSpec(
                 "find_files",
                 "Find files by glob pattern (e.g. '*.py' or 'src/*/test_*.py').",
                 _schema(
@@ -384,6 +472,7 @@ def register_file_tools(
                 _schema({"path": _PATH, "content": {"type": "string"}}, ["path", "content"]),
                 "write",
                 "write",
+                "high",
             ),
             tools.write_file,
         ),
@@ -401,8 +490,38 @@ def register_file_tools(
                 ),
                 "write",
                 "write",
+                "high",
             ),
             tools.edit_file,
+        ),
+        (
+            ToolSpec(
+                "apply_patch",
+                "Several exact edits, possibly in different files, as one atomic patch. "
+                "Each old_text must be unique in its file; empty old_text creates a new file. "
+                "The user sees the whole diff and approves it or not.",
+                _schema(
+                    {
+                        "edits": {
+                            "type": "array",
+                            "maxItems": 50,
+                            "items": _schema(
+                                {
+                                    "path": _PATH,
+                                    "old_text": {"type": "string"},
+                                    "new_text": {"type": "string"},
+                                },
+                                ["path", "old_text", "new_text"],
+                            ),
+                        }
+                    },
+                    ["edits"],
+                ),
+                "write",
+                "write",
+                "high",
+            ),
+            tools.apply_patch,
         ),
     ]
     for spec, handler in specs:

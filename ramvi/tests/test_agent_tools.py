@@ -6,10 +6,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from ramvi_service.agent.files import FileLimits, WriteProposal, register_file_tools
+from ramvi_service.agent.files import (
+    FileLimits,
+    PatchProposal,
+    WriteProposal,
+    register_file_tools,
+)
+from ramvi_service.agent.toolbox import build_tools
 from ramvi_service.agent.tools import (
     SCHEMA_VERSION,
     StorageJournal,
+    ToolAccess,
     ToolResult,
     ToolRunner,
     ToolSpec,
@@ -72,11 +79,13 @@ def test_schema_is_versioned_and_exportable(project: Path) -> None:
     assert names == [
         "list_dir",
         "read_file",
+        "file_info",
         "find_files",
         "grep",
         "diff",
         "write_file",
         "edit_file",
+        "apply_patch",
     ]
     effects = {tool["name"]: tool["effect"] for tool in schema["tools"]}
     assert effects["write_file"] == effects["edit_file"] == "write"
@@ -338,3 +347,89 @@ def test_crlf_and_bom_are_preserved(project: Path) -> None:
     runner = _runner(project, Permissions(write=True))
     result = _run(runner, "edit_file", path="win.txt", old_text="two", new_text="TWO")
     assert result.data["proposal"].after == b"\xef\xbb\xbfone\r\nTWO\r\n"
+
+
+def test_file_info(project: Path) -> None:
+    info = _run(_runner(project), "file_info", path="README.md").data
+    assert info["type"] == "file" and info["size"] == 18 and info["path"] == "README.md"
+    assert info["modified"].endswith("+00:00") and info["mode"].startswith("-r")
+    assert _run(_runner(project), "file_info", path="src").data["type"] == "directory"
+    assert _run(_runner(project), "file_info", path=".env").error == "agent.access.secret"
+
+
+def test_apply_patch_is_one_atomic_proposal(project: Path) -> None:
+    runner = _runner(project, Permissions(write=True))
+    before = (project / "src" / "main.py").read_bytes()
+    edits = [
+        {"path": "src/main.py", "old_text": "import os\n", "new_text": "import sys\n"},
+        {"path": "src/main.py", "old_text": "return 42", "new_text": "return 0"},
+        {"path": "src/pkg/util.py", "old_text": "'Main'", "new_text": "'main'"},
+        {"path": "docs/CHANGES.md", "old_text": "", "new_text": "# Changes\n"},
+    ]
+    result = _run(runner, "apply_patch", edits=edits)
+    patch = result.data["proposal"]
+    assert isinstance(patch, PatchProposal)
+    assert [p.display for p in patch.files] == ["src/main.py", "src/pkg/util.py", "docs/CHANGES.md"]
+    assert patch.files[0].after == b"import sys\n\ndef main():\n    return 0\n"
+    assert patch.files[2].before_sha256 is None
+    assert "+++ b/src/pkg/util.py" in patch.diff and "--- /dev/null" in patch.diff
+    assert (project / "src" / "main.py").read_bytes() == before
+    assert not (project / "docs").exists()
+
+
+def test_apply_patch_fails_as_a_whole(project: Path) -> None:
+    runner = _runner(project, Permissions(write=True))
+    good = {"path": "src/main.py", "old_text": "return 42", "new_text": "return 0"}
+    cases = [
+        (
+            {"path": "src/main.py", "old_text": "missing", "new_text": "x"},
+            "agent.tool.edit_not_found",
+        ),
+        ({"path": "src/main.py", "old_text": "", "new_text": "x"}, "agent.tool.edit_empty"),
+        ({"path": "new.txt", "old_text": "a", "new_text": "x"}, "agent.tool.edit_not_found"),
+        ({"path": "../x", "old_text": "", "new_text": "x"}, "agent.access.parent"),
+        ({"path": ".env", "old_text": "T", "new_text": "x"}, "agent.access.secret"),
+    ]
+    for bad, code in cases:
+        result = _run(runner, "apply_patch", edits=[good, bad])
+        assert result.error == code, (bad, result.content)
+        assert result.data["params"].get("edit", 1) == 1
+    same = {"path": "src/main.py", "old_text": "return 42", "new_text": "return 42"}
+    assert _run(runner, "apply_patch", edits=[same]).error == "agent.tool.no_change"
+    too_many = [good] * 51
+    assert _run(runner, "apply_patch", edits=too_many).error == "agent.tool.invalid_args"
+
+
+def test_dangerous_tools_are_settings_and_need_permissions(project: Path) -> None:
+    runner = build_tools(Workspace(project))
+    tools = {t["name"]: t for t in runner.schema()["tools"]}
+    configurable = sorted(n for n, t in tools.items() if t["configurable"])
+    assert configurable == ["apply_patch", "edit_file", "run_command", "write_file"]
+    assert tools["run_command"]["risk"] == "critical"
+    # По умолчанию только чтение: опасные инструменты модели не предлагаются.
+    offered = {t["function"]["name"] for t in runner.openai_tools()}
+    assert offered == {
+        "list_dir",
+        "read_file",
+        "file_info",
+        "find_files",
+        "grep",
+        "diff",
+        "git_status",
+        "git_diff",
+        "git_log",
+    }
+    full = build_tools(Workspace(project, Permissions.full()))
+    assert len(full.openai_tools()) == len(full.specs) == 13
+    # Пользователь выключил отдельный инструмент — он не предлагается и не исполняется.
+    off = ToolAccess(disabled=frozenset({"apply_patch"}))
+    partial = build_tools(Workspace(project, Permissions.full()), off)
+    assert "apply_patch" not in {t["function"]["name"] for t in partial.openai_tools()}
+    journal = ListJournal()
+    edits = [{"path": "src/main.py", "old_text": "42", "new_text": "1"}]
+    assert partial.execute("apply_patch", {"edits": edits}, journal).error == "agent.tool.disabled"
+    assert journal.entries[0]["permission"] == "denied"
+    assert partial.execute("write_file", {"path": "a", "content": "b"}, journal).ok
+    # Отзыв grant убирает все инструменты.
+    partial.workspace.revoke()  # type: ignore[union-attr]
+    assert partial.openai_tools() == []

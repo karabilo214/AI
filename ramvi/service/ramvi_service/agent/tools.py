@@ -8,8 +8,12 @@
 3. обработчик выполняется; результат или ошибка становятся `ToolResult`,
    который возвращается в контекст модели и дописывается в журнал.
 
-Эффект `write` не меняет файлы: обработчик готовит предложение с diff, применение —
-после подтверждения пользователя (6.4). Эффект `command` исполняется в 6.5.
+Эффекты `write` и `command` ничего не меняют сами: обработчик готовит предложение
+(diff или команду), применение — после подтверждения пользователя (6.4).
+
+Опасные инструменты (риск high/critical) — переключатели в настройках доступа
+агента (`ToolAccess`, вкладка «Агент»). Модели предлагается инструмент, только если
+он включён и его право выдано; выключенный вызов не исполняется.
 """
 
 import hashlib
@@ -20,15 +24,16 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
-from ramvi_service.agent.workspace import AccessDenied, Permission
+from ramvi_service.agent.workspace import AccessDenied, Permission, Workspace
 
 SCHEMA_VERSION = "ramvi.agent.tools/1"
 Effect = Literal["read", "write", "command"]
+Risk = Literal["low", "medium", "high", "critical"]
 
 MAX_RESULT_CHARS = 16_000  # что видит модель
 MAX_JOURNAL_CHARS = 4_000  # что хранит журнал о результате
 MAX_JOURNAL_ARG_CHARS = 2_000
-_SECRET_KEY = re.compile(r"(?i)(password|passwd|secret|token|api[_-]?key|authorization)")
+SECRET_KEY = re.compile(r"(?i)(password|passwd|secret|token|api[_-]?key|authorization)")
 
 
 class ToolError(Exception):
@@ -48,7 +53,13 @@ class ToolSpec:
     parameters: dict[str, Any]
     permission: Permission
     effect: Effect = "read"
+    risk: Risk = "low"
     version: int = 1
+
+    @property
+    def configurable(self) -> bool:
+        """Опасный инструмент: пользователь включает и выключает его в настройках."""
+        return self.risk in ("high", "critical")
 
     def to_openai(self) -> dict[str, Any]:
         """Описание для `tools` в OpenAI-совместимом запросе к модели."""
@@ -60,6 +71,19 @@ class ToolSpec:
                 "parameters": self.parameters,
             },
         }
+
+
+@dataclass(frozen=True)
+class ToolAccess:
+    """Настройки доступа к опасным инструментам (вкладка «Агент» в настройках).
+
+    `disabled` — выключенные инструменты; `allow_destructive_commands` — разрешить
+    команды, которые удаляют данные, повышают права или исполняют произвольный код
+    (по умолчанию заблокированы). Меняет только пользователь.
+    """
+
+    disabled: frozenset[str] = frozenset()
+    allow_destructive_commands: bool = False
 
 
 @dataclass(frozen=True)
@@ -151,7 +175,7 @@ def redact(args: Mapping[str, Any]) -> dict[str, Any]:
     """Аргументы для журнала: секретные ключи скрыты, длинный текст — длина и хеш."""
     clean: dict[str, Any] = {}
     for key, value in args.items():
-        if _SECRET_KEY.search(key):
+        if SECRET_KEY.search(key):
             clean[key] = "***"
         elif isinstance(value, str) and len(value) > MAX_JOURNAL_ARG_CHARS:
             digest = hashlib.sha256(value.encode()).hexdigest()[:16]
@@ -195,8 +219,12 @@ Handler = Callable[[dict[str, Any]], ToolResult]
 class ToolRunner:
     """Реестр инструментов и единственный путь их исполнения."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self, workspace: Workspace | None = None, access: ToolAccess | None = None
+    ) -> None:
         self._tools: dict[str, tuple[ToolSpec, Handler]] = {}
+        self.workspace = workspace
+        self.access = access or ToolAccess()
 
     def register(self, spec: ToolSpec, handler: Handler) -> None:
         if spec.name in self._tools:
@@ -209,6 +237,20 @@ class ToolRunner:
     def specs(self) -> list[ToolSpec]:
         return [spec for spec, _ in self._tools.values()]
 
+    def is_available(self, spec: ToolSpec) -> bool:
+        """Инструмент включён в настройках, его право выдано и grant не отозван."""
+        if spec.name in self.access.disabled:
+            return False
+        ws = self.workspace
+        return ws is None or (not ws.revoked and ws.permissions.allows(spec.permission))
+
+    def available(self) -> list[ToolSpec]:
+        return [spec for spec in self.specs if self.is_available(spec)]
+
+    def openai_tools(self) -> list[dict[str, Any]]:
+        """Только доступные инструменты — то, что предлагается модели."""
+        return [spec.to_openai() for spec in self.available()]
+
     def schema(self) -> dict[str, Any]:
         """Версионированное описание всех инструментов (для модели и интерфейса)."""
         return {
@@ -219,6 +261,9 @@ class ToolRunner:
                     "version": s.version,
                     "permission": s.permission,
                     "effect": s.effect,
+                    "risk": s.risk,
+                    "configurable": s.configurable,
+                    "available": self.is_available(s),
                     "description": s.description,
                     "parameters": s.parameters,
                 }
@@ -234,6 +279,14 @@ class ToolRunner:
         if entry is None:
             return self._reject(journal, name, args, ToolResult.failure("agent.tool.unknown"))
         spec, handler = entry
+        if spec.name in self.access.disabled:
+            return self._reject(journal, name, args, ToolResult.failure("agent.tool.disabled"))
+        if self.workspace is not None:
+            try:
+                self.workspace.require(spec.permission)
+            except AccessDenied as error:
+                failure = ToolResult.failure(error.code, **error.params)
+                return self._reject(journal, name, args, failure)
         errors = validate(spec.parameters, args)
         if errors:
             failure = ToolResult.failure("agent.tool.invalid_args", errors=errors)

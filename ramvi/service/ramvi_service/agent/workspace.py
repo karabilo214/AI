@@ -113,16 +113,19 @@ class Restrictions:
     быть любыми, ссылки открываются как обычно.
     `secret_patterns` — скрытые имена; пустой набор открывает секреты.
     `protect_git` — запрет записи внутрь `.git`.
+    `safe_git` — git-инструменты отказывают, если настройки репозитория могут
+    запустить программу (фильтры, include, `core.worktree`).
     """
 
     confine_to_root: bool = True
     secret_patterns: tuple[str, ...] = DEFAULT_SECRETS
     protect_git: bool = True
+    safe_git: bool = True
 
     @classmethod
     def none(cls) -> "Restrictions":
         """Полный доступ — только по явному выбору пользователя."""
-        return cls(confine_to_root=False, secret_patterns=(), protect_git=False)
+        return cls(confine_to_root=False, secret_patterns=(), protect_git=False, safe_git=False)
 
 
 def _is_link(info: os.stat_result, path: str) -> bool:
