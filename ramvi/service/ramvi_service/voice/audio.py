@@ -103,6 +103,15 @@ class Recorder:
             return data, self.rate, self._peak
 
 
+def _com_init() -> None:
+    """Windows: COM в текущем потоке. Сервис обрабатывает каждый HTTP-запрос в своём потоке,
+    а WASAPI без COM в потоке не запускает запись (ошибка «Unanticipated host error»).
+    Повторный вызов безвреден (S_FALSE)."""
+    import ctypes
+
+    ctypes.windll.ole32.CoInitializeEx(None, 0)  # type: ignore[attr-defined,unused-ignore]
+
+
 class SoundDeviceMicrophone:
     """PortAudio: устройства одного интерфейса, без дублей.
 
@@ -112,8 +121,9 @@ class SoundDeviceMicrophone:
     устройства по умолчанию.
     """
 
-    def __init__(self, platform: str = sys.platform) -> None:
+    def __init__(self, platform: str = sys.platform, com: Callable[[], None] | None = None) -> None:
         self.platform = platform
+        self.com = com or (_com_init if platform == "win32" else (lambda: None))
 
     def _sd(self) -> Any:
         try:
@@ -124,6 +134,7 @@ class SoundDeviceMicrophone:
 
     def _inputs(self) -> tuple[Any, list[tuple[int, str]], int | None, bool]:
         """(модуль, [(индекс, имя)], индекс по умолчанию, это WASAPI)."""
+        self.com()
         sd = self._sd()
         try:
             devices = sd.query_devices()
@@ -184,15 +195,16 @@ class SoundDeviceMicrophone:
             except Exception as error:  # частота не поддерживается или устройство занято
                 last = error
                 continue
-            return _SoundDeviceStream(stream, rate)
+            return _SoundDeviceStream(stream, rate, self.com)
         raise ChatError("voice.device_error", detail=str(last))
 
 
 class _SoundDeviceStream:
-    def __init__(self, stream: Any, rate: int) -> None:
-        self._stream, self.rate = stream, rate
+    def __init__(self, stream: Any, rate: int, com: Callable[[], None]) -> None:
+        self._stream, self.rate, self.com = stream, rate, com
 
     def close(self) -> None:
+        self.com()  # остановка приходит другим HTTP-запросом — из другого потока
         try:
             self._stream.stop()
         finally:

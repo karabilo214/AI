@@ -251,7 +251,8 @@ def test_windows_uses_wasapi_with_full_names_and_16k_convert(
     from ramvi_service.voice.audio import SoundDeviceMicrophone
 
     sd = FakeSd()
-    mic = SoundDeviceMicrophone(platform="win32")
+    com: list[int] = []
+    mic = SoundDeviceMicrophone(platform="win32", com=lambda: com.append(len(sd.opened)))
     monkeypatch.setattr(mic, "_sd", lambda: sd)
     assert mic.devices() == [
         Device("Mic Array (Realtek(R) Audio)", False),
@@ -259,6 +260,10 @@ def test_windows_uses_wasapi_with_full_names_and_16k_convert(
     ]
     stream = mic.open(None, lambda b: None)
     assert stream.rate == 16_000 and sd.opened == [(5, 16_000, "wasapi auto_convert=True")]
+    # WASAPI без COM в потоке не запускает запись: COM — до открытия и до закрытия
+    assert com == [0, 0]  # devices() и open() — до открытия потока
+    stream.close()
+    assert com == [0, 0, 1]
     mic.open("Mic Array (Realtek(R) Audio)", lambda b: None)
     assert sd.opened[-1][0] == 4
 
