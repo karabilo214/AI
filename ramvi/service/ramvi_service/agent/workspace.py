@@ -15,6 +15,11 @@
 * права read / write / terminal / network раздельные; `revoke()` закрывает все новые
   обращения сразу.
 
+Это ограничения **по умолчанию**. Пользователь вправе снять любое из них, вплоть до
+полного доступа (`Permissions.full()`, `Restrictions.none()`): это его компьютер.
+Снимает их только пользователь — настройками или в интерфейсе; у модели и
+инструментов такого пути нет.
+
 Ошибки — `AccessDenied` с ключом сообщения для интерфейса, как в чате (3.14).
 Проверка и открытие файла — разные системные вызовы; `open_read` сверяет открытый
 файл с проверенным (устройство и inode), чтобы подмену между ними не прочитать.
@@ -24,6 +29,7 @@ import fnmatch
 import os
 import stat
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Any, BinaryIO, Literal
@@ -87,10 +93,36 @@ class Permissions:
     terminal: bool = False
     network: bool = False
 
+    @classmethod
+    def full(cls) -> "Permissions":
+        """Все права — только по явному выбору пользователя."""
+        return cls(read=True, write=True, terminal=True, network=True)
+
     def allows(self, permission: Permission) -> bool:
         if permission not in PERMISSIONS:
             raise ValueError(f"unknown permission: {permission}")
         return bool(getattr(self, permission))
+
+
+@dataclass(frozen=True)
+class Restrictions:
+    """Ограничения путей. По умолчанию строгие; каждое пользователь может снять сам.
+
+    `confine_to_root` — только внутри папки: без абсолютных путей и `..`, без symlink
+    и junction, без файлов с несколькими жёсткими ссылками. Если снято, пути могут
+    быть любыми, ссылки открываются как обычно.
+    `secret_patterns` — скрытые имена; пустой набор открывает секреты.
+    `protect_git` — запрет записи внутрь `.git`.
+    """
+
+    confine_to_root: bool = True
+    secret_patterns: tuple[str, ...] = DEFAULT_SECRETS
+    protect_git: bool = True
+
+    @classmethod
+    def none(cls) -> "Restrictions":
+        """Полный доступ — только по явному выбору пользователя."""
+        return cls(confine_to_root=False, secret_patterns=(), protect_git=False)
 
 
 def _is_link(info: os.stat_result, path: str) -> bool:
@@ -116,8 +148,7 @@ class Workspace:
         self,
         root: str | Path,
         permissions: Permissions | None = None,
-        *,
-        secret_patterns: tuple[str, ...] = DEFAULT_SECRETS,
+        restrictions: Restrictions | None = None,
     ) -> None:
         given = Path(root)
         if not given.is_absolute():
@@ -128,11 +159,10 @@ class Workspace:
             raise AccessDenied("agent.access.root_missing") from None
         if not os.path.isdir(real):
             raise AccessDenied("agent.access.root_not_directory")
-        if Path(real) == Path(Path(real).anchor):
-            raise AccessDenied("agent.access.root_is_drive")
         self.root = Path(real)
         self.permissions = permissions or Permissions()
-        self._secrets = tuple(p.lower() for p in secret_patterns)
+        self.restrictions = restrictions or Restrictions()
+        self._secrets = tuple(p.lower() for p in self.restrictions.secret_patterns)
         self._revoked = threading.Event()
 
     # --- права ------------------------------------------------------------------------
@@ -159,8 +189,6 @@ class Workspace:
     # --- пути -------------------------------------------------------------------------
 
     def _parts(self, path: str) -> list[str]:
-        if not isinstance(path, str) or len(path) > MAX_PATH_CHARS or "\0" in path:
-            raise AccessDenied("agent.access.invalid")
         if path.startswith(("/", "\\")) or PureWindowsPath(path).drive:
             raise AccessDenied("agent.access.absolute")
         parts: list[str] = []
@@ -179,18 +207,22 @@ class Workspace:
     def resolve(
         self, path: str, *, permission: Permission = "read", must_exist: bool = True
     ) -> Path:
-        """Проверить относительный путь модели и вернуть абсолютный путь внутри папки.
+        """Проверить путь модели и вернуть абсолютный путь.
 
         `must_exist=False` — для создания: недостающий хвост пути разрешён, проверяется
         существующая часть. Права проверяются при каждом вызове (отзыв действует сразу).
         """
         self.require(permission)
+        if not isinstance(path, str) or len(path) > MAX_PATH_CHARS or "\0" in path:
+            raise AccessDenied("agent.access.invalid")
+        if not self.restrictions.confine_to_root:
+            target = os.path.abspath(os.path.join(self.root, path.replace("\\", os.sep)))
+            self._check_names(Path(target).parts[1:], path, permission)
+            if must_exist and not os.path.lexists(target):
+                raise AccessDenied("agent.access.not_found", path=path)
+            return Path(target)
         parts = self._parts(path)
-        for part in parts:
-            if self.is_secret(part):
-                raise AccessDenied("agent.access.secret", path=path)
-        if permission == "write" and any(p.rstrip(" .").lower() == ".git" for p in parts):
-            raise AccessDenied("agent.access.git_write", path=path)
+        self._check_names(parts, path, permission)
         existing = str(self.root)  # самая длинная проверенная существующая часть
         info: os.stat_result | None = os.lstat(existing)
         missing: list[str] = []
@@ -218,25 +250,43 @@ class Workspace:
             raise AccessDenied("agent.access.hardlink", path=path)
         return Path(current)
 
+    def _check_names(self, parts: Sequence[str], path: str, permission: Permission) -> None:
+        if any(self.is_secret(part) for part in parts):
+            raise AccessDenied("agent.access.secret", path=path)
+        if (
+            permission == "write"
+            and self.restrictions.protect_git
+            and any(p.rstrip(" .").lower() == ".git" for p in parts)
+        ):
+            raise AccessDenied("agent.access.git_write", path=path)
+
     def relative(self, path: Path) -> str:
-        """Путь внутри папки для журнала и интерфейса (через `/`, без корня)."""
+        """Путь для журнала и интерфейса: внутри папки — через `/` без корня, иначе полный."""
+        if not _within(str(path), str(self.root)):
+            return str(path)
         rel = path.relative_to(self.root).as_posix()
         return "." if rel in ("", ".") else rel
 
     def open_read(self, path: str) -> BinaryIO:
         """Открыть обычный файл на чтение; подмена после проверки не читается."""
         target = self.resolve(path)
-        checked = os.lstat(target)
+        confined = self.restrictions.confine_to_root
+        try:
+            checked = os.lstat(target) if confined else os.stat(target)
+        except OSError:
+            raise AccessDenied("agent.access.invalid", path=path) from None
         if not stat.S_ISREG(checked.st_mode):
             raise AccessDenied("agent.access.not_file", path=path)
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+        if confined:
+            flags |= getattr(os, "O_NOFOLLOW", 0)
         try:
             fd = os.open(target, flags)
         except OSError:
             raise AccessDenied("agent.access.invalid", path=path) from None
         opened = os.fstat(fd)
         if (opened.st_dev, opened.st_ino) != (checked.st_dev, checked.st_ino) or (
-            opened.st_nlink > 1
+            confined and opened.st_nlink > 1
         ):
             os.close(fd)
             raise AccessDenied("agent.access.changed", path=path)

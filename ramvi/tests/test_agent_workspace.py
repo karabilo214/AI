@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import pytest
-from ramvi_service.agent.workspace import AccessDenied, Permissions, Workspace
+from ramvi_service.agent.workspace import AccessDenied, Permissions, Restrictions, Workspace
 
 
 def _code(call: object) -> str:
@@ -149,7 +149,8 @@ def test_grant_root_must_be_an_existing_folder(tree: tuple[Path, Path]) -> None:
     assert _code(lambda: Workspace("project")) == "agent.access.root_relative"
     assert _code(lambda: Workspace(root / "nope")) == "agent.access.root_missing"
     assert _code(lambda: Workspace(root / "README.md")) == "agent.access.root_not_directory"
-    assert _code(lambda: Workspace(Path(root.anchor))) == "agent.access.root_is_drive"
+    # Корень диска — выбор пользователя, не запрещается.
+    assert Workspace(Path(root.anchor)).root == Path(os.path.realpath(root.anchor))
 
 
 def test_open_read_rejects_directories_and_swapped_files(
@@ -166,3 +167,53 @@ def test_open_read_rejects_directories_and_swapped_files(
 
     monkeypatch.setattr(os, "open", swapped)
     assert _code(lambda: ws.open_read("README.md")) == "agent.access.changed"
+
+
+def test_user_can_grant_full_access(tree: tuple[Path, Path]) -> None:
+    """Ограничения — только по умолчанию; полный доступ пользователь включает сам."""
+    root, outside = tree
+    (root / "out").symlink_to(outside, target_is_directory=True)
+    (root / ".env").write_text("token\n")
+    (root / ".git").mkdir()
+    os.link(outside / "secret.txt", root / "linked.txt")
+    ws = Workspace(root, Permissions.full(), Restrictions.none())
+    for permission in ("read", "write", "terminal", "network"):
+        ws.require(permission)
+    absolute = str(outside / "secret.txt")
+    for path in (absolute, "../outside/secret.txt", "out/secret.txt", "linked.txt"):
+        with ws.open_read(path) as handle:
+            assert handle.read() == b"outside\n"
+    assert ws.resolve("../outside/secret.txt") == Path(os.path.abspath(absolute))
+    assert ws.relative(ws.resolve(absolute)) == os.path.abspath(absolute)
+    with ws.open_read(".env") as handle:
+        assert handle.read() == b"token\n"
+    assert ws.resolve(".git/hooks/pre-commit", permission="write", must_exist=False)
+    assert _code(lambda: ws.resolve(str(outside / "nope"))) == "agent.access.not_found"
+    ws.revoke()
+    assert _code(lambda: ws.resolve(absolute)) == "agent.access.revoked"
+
+
+def test_each_restriction_can_be_lifted_separately(tree: tuple[Path, Path]) -> None:
+    root, outside = tree
+    (root / ".env").write_text("token\n")
+    (root / ".git").mkdir()
+    secrets_open = Workspace(root, restrictions=Restrictions(secret_patterns=()))
+    assert secrets_open.resolve(".env").name == ".env"
+    assert _code(lambda: secrets_open.resolve("../outside")) == "agent.access.parent"
+    git_open = Workspace(root, Permissions(write=True), Restrictions(protect_git=False))
+    assert git_open.resolve(".git/config", permission="write", must_exist=False)
+    assert _code(lambda: git_open.resolve(".env")) == "agent.access.secret"
+    # Выход за папку разрешён, но секреты по умолчанию всё ещё скрыты.
+    free = Workspace(root, restrictions=Restrictions(confine_to_root=False))
+    assert free.resolve(str(outside / "secret.txt")).name == "secret.txt"
+    assert _code(lambda: free.resolve(".env")) == "agent.access.secret"
+    assert _code(lambda: free.resolve(str(root / ".env"))) == "agent.access.secret"
+    # Права остаются отдельным выбором и полным доступом к путям не расширяются.
+    write = lambda: free.resolve("README.md", permission="write")  # noqa: E731
+    assert _code(write) == "agent.access.permission"
+
+
+def test_defaults_are_strict() -> None:
+    assert Permissions() == Permissions(read=True, write=False, terminal=False, network=False)
+    assert Restrictions().confine_to_root and Restrictions().protect_git
+    assert ".env" in Restrictions().secret_patterns
