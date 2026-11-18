@@ -1,0 +1,40 @@
+{
+  "cell_size": [
+    768,
+    768
+  ],
+  "columns": 4,
+  "rows": 2,
+  "sprites": {
+    "front": {
+      "x": 0,
+      "y": 0,
+      "w": 768,
+      "h": 768
+    },
+    "three_quarter_left": {
+      "x": 768,
+      "y": 0,
+      "w": 768,
+      "h": 768
+    },
+    "profile_left": {
+      "x": 1536,
+      "y": 0,
+      "w": 768,
+      "h": 768
+    },
+    "three_quarter_right": {
+      "x": 2304,
+      "y": 0,
+      "w": 768,
+      "h": 768
+    },
+    "profile_right": {
+      "x": 0,
+      "y": 768,
+      "w": 768,
+      "h": 768
+    }
+  }
+}

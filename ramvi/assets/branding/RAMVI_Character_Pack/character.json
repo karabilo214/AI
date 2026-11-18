@@ -1,0 +1,211 @@
+{
+  "name": "RAMVI Character Pack",
+  "version": "1.0",
+  "canvas": [
+    768,
+    768
+  ],
+  "format": "RGBA PNG",
+  "original_source": "source/ramvi_original_logo.png",
+  "character_base": "parts/body/visor_without_features.png",
+  "eye_parts": [
+    "parts/eyes/normal.png",
+    "parts/eyes/half.png",
+    "parts/eyes/closed.png",
+    "parts/eyes/happy.png",
+    "parts/eyes/surprised.png",
+    "parts/eyes/wink.png",
+    "parts/eyes/angry.png",
+    "parts/eyes/look_left.png",
+    "parts/eyes/look_right.png",
+    "parts/eyes/sleep.png"
+  ],
+  "mouth_parts": [
+    "parts/mouths/neutral.png",
+    "parts/mouths/smile.png",
+    "parts/mouths/open.png",
+    "parts/mouths/wide.png",
+    "parts/mouths/o.png",
+    "parts/mouths/grin.png",
+    "parts/mouths/frown.png",
+    "parts/mouths/tiny.png",
+    "parts/mouths/talk_a.png",
+    "parts/mouths/talk_e.png"
+  ],
+  "expressions": {
+    "neutral": {
+      "eyes": "normal",
+      "mouth": "neutral",
+      "file": "sprites/expressions/neutral.png"
+    },
+    "confident": {
+      "eyes": "normal",
+      "mouth": "smile",
+      "file": "sprites/expressions/confident.png"
+    },
+    "cheerful": {
+      "eyes": "happy",
+      "mouth": "wide",
+      "file": "sprites/expressions/cheerful.png"
+    },
+    "laugh": {
+      "eyes": "happy",
+      "mouth": "open",
+      "file": "sprites/expressions/laugh.png"
+    },
+    "surprise": {
+      "eyes": "surprised",
+      "mouth": "o",
+      "file": "sprites/expressions/surprise.png"
+    },
+    "wink": {
+      "eyes": "wink",
+      "mouth": "smile",
+      "file": "sprites/expressions/wink.png"
+    },
+    "angry": {
+      "eyes": "angry",
+      "mouth": "frown",
+      "file": "sprites/expressions/angry.png"
+    },
+    "sad": {
+      "eyes": "half",
+      "mouth": "frown",
+      "file": "sprites/expressions/sad.png"
+    },
+    "sleepy": {
+      "eyes": "sleep",
+      "mouth": "neutral",
+      "file": "sprites/expressions/sleepy.png"
+    },
+    "thinking": {
+      "eyes": "look_left",
+      "mouth": "tiny",
+      "file": "sprites/expressions/thinking.png"
+    },
+    "talking": {
+      "eyes": "normal",
+      "mouth": "talk_a",
+      "file": "sprites/expressions/talking.png"
+    },
+    "excited": {
+      "eyes": "surprised",
+      "mouth": "wide",
+      "file": "sprites/expressions/excited.png"
+    },
+    "side_eye": {
+      "eyes": "look_right",
+      "mouth": "smile",
+      "file": "sprites/expressions/side_eye.png"
+    }
+  },
+  "turns": {
+    "front": "sprites/turns/front.png",
+    "three_quarter_left": "sprites/turns/three_quarter_left.png",
+    "profile_left": "sprites/turns/profile_left.png",
+    "three_quarter_right": "sprites/turns/three_quarter_right.png",
+    "profile_right": "sprites/turns/profile_right.png"
+  },
+  "animations": {
+    "idle": {
+      "frames": [
+        "animations/idle/000.png",
+        "animations/idle/001.png",
+        "animations/idle/002.png",
+        "animations/idle/003.png",
+        "animations/idle/004.png",
+        "animations/idle/005.png",
+        "animations/idle/006.png",
+        "animations/idle/007.png",
+        "animations/idle/008.png",
+        "animations/idle/009.png",
+        "animations/idle/010.png",
+        "animations/idle/011.png"
+      ],
+      "duration_ms": 115,
+      "loop": true,
+      "canvas": [
+        768,
+        768
+      ]
+    },
+    "blink": {
+      "frames": [
+        "animations/blink/000.png",
+        "animations/blink/001.png",
+        "animations/blink/002.png",
+        "animations/blink/003.png",
+        "animations/blink/004.png",
+        "animations/blink/005.png"
+      ],
+      "duration_ms": 100,
+      "loop": true,
+      "canvas": [
+        768,
+        768
+      ]
+    },
+    "talk": {
+      "frames": [
+        "animations/talk/000.png",
+        "animations/talk/001.png",
+        "animations/talk/002.png",
+        "animations/talk/003.png",
+        "animations/talk/004.png",
+        "animations/talk/005.png",
+        "animations/talk/006.png",
+        "animations/talk/007.png"
+      ],
+      "duration_ms": 95,
+      "loop": true,
+      "canvas": [
+        768,
+        768
+      ]
+    },
+    "nod": {
+      "frames": [
+        "animations/nod/000.png",
+        "animations/nod/001.png",
+        "animations/nod/002.png",
+        "animations/nod/003.png",
+        "animations/nod/004.png",
+        "animations/nod/005.png",
+        "animations/nod/006.png",
+        "animations/nod/007.png",
+        "animations/nod/008.png"
+      ],
+      "duration_ms": 115,
+      "loop": true,
+      "canvas": [
+        768,
+        768
+      ]
+    },
+    "shake": {
+      "frames": [
+        "animations/shake/000.png",
+        "animations/shake/001.png",
+        "animations/shake/002.png",
+        "animations/shake/003.png",
+        "animations/shake/004.png",
+        "animations/shake/005.png",
+        "animations/shake/006.png",
+        "animations/shake/007.png",
+        "animations/shake/008.png",
+        "animations/shake/009.png"
+      ],
+      "duration_ms": 115,
+      "loop": true,
+      "canvas": [
+        768,
+        768
+      ]
+    }
+  },
+  "notes": [
+    "Front-facing expressions and animations are layered edits of the uploaded RAMVI mascot.",
+    "Turns are simulated 2D transforms, not redrawn side/back character art.",
+    "Concept board is a design reference image, not layered PSD/SVG."
+  ]
+}
