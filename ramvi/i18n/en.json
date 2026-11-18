@@ -567,5 +567,7 @@
   "api.bad_json": "The request body must be a JSON object",
   "api.engine_error": "The engine did not answer",
   "api.port_busy": "External API port {port} is used by another program — choose another port in settings",
-  "settings.bad_network_allow": "Wrong address or network in the allow list: “{value}” (example: 192.168.1.0/24)"
+  "settings.bad_network_allow": "Wrong address or network in the allow list: “{value}” (example: 192.168.1.0/24)",
+  "api.client_queue_full": "Too many requests from this program at once (at most {limit} queued)",
+  "api.too_many_clients": "Too many programs at once (at most {limit})"
 }

@@ -13,6 +13,15 @@
    поток), ответ возвращается клиенту по мере генерации. Клиент оборвал связь — запрос
    в движке отменяется.
 
+**Очередь (7.3).** Общая очередь модели строго по порядку прихода, поэтому перед
+ней у каждого клиента свои «ворота»: в общей очереди не больше одного его запроса,
+остальные ждут у ворот. Так клиенты чередуются, и приславший десять запросов не
+занимает очередь перед тем, кто прислал один. Лимиты: ждущих запросов на клиента
+(`per_client_queue`, сверх — 429) и одновременно работающих клиентов (`max_clients`,
+сверх — 503). Движок считает один ответ за раз, и у каждого запроса свой KV-кэш,
+поэтому одновременно идёт один ответ (`max_concurrent` = 1) — клиенты не
+перезаписывают чужой контекст. История не хранится: клиент сам присылает сообщения.
+
 По умолчанию слушает только 127.0.0.1. Сеть (7.4) — только по явному включению
 `network_access`: тогда слушает все адреса, но не с этого компьютера пускаются
 только адреса из списка `network_allow` и только ключи с правом `remote`; даже
@@ -54,6 +63,8 @@ class ApiOptions:
     queue_timeout: float = 600.0  # сколько ждать своей очереди к модели
     read_timeout: float = 3600.0  # ответ движка (длинная генерация)
     allow: tuple[str, ...] = ()  # сети, откуда можно при включённой сети (CIDR)
+    per_client_queue: int = 8  # ждущих запросов одного клиента (7.3)
+    max_clients: int = 16  # клиентов с запросами одновременно (7.3)
 
     @classmethod
     def from_settings(cls, settings: Any) -> "ApiOptions":
@@ -139,6 +150,73 @@ def parse_usage(head: bytes, tail: bytes) -> tuple[int, int]:
     return prompt, completion
 
 
+MAX_CONCURRENT = 1  # движок: один ответ за раз, у каждого запроса свой KV-кэш
+
+
+class _Server(ThreadingHTTPServer):
+    # У socketserver очередь входящих соединений — 5: шестое одновременное соединение
+    # ОС сбрасывает, и запрос теряется целиком (IDE открывает много соединений сразу).
+    request_queue_size = 128
+    daemon_threads = True
+
+
+class FairGate:
+    """Ворота клиентов перед общей очередью модели (справедливость и лимиты, 7.3)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._gates: dict[str, threading.Lock] = {}
+        self._pending: dict[str, int] = {}
+
+    def pending(self, client_id: str) -> int:
+        with self._lock:
+            return self._pending.get(client_id, 0)
+
+    def clients(self) -> int:
+        with self._lock:
+            return sum(1 for n in self._pending.values() if n > 0)
+
+    @contextlib.contextmanager
+    def turn(
+        self, client_id: str, options: "ApiOptions", cancel: threading.Event
+    ) -> Iterator[None]:
+        with self._lock:
+            mine = self._pending.get(client_id, 0)
+            if mine >= options.per_client_queue:
+                raise ApiError(
+                    429,
+                    "api.client_queue_full",
+                    "too many requests from this client",
+                    limit=options.per_client_queue,
+                )
+            busy = sum(1 for n in self._pending.values() if n > 0)
+            if mine == 0 and busy >= options.max_clients:
+                raise ApiError(
+                    503,
+                    "api.too_many_clients",
+                    "too many clients at once",
+                    limit=options.max_clients,
+                )
+            self._pending[client_id] = mine + 1
+            gate = self._gates.setdefault(client_id, threading.Lock())
+        acquired = False
+        try:
+            deadline = time.monotonic() + options.queue_timeout
+            while not (acquired := gate.acquire(timeout=0.05)):
+                if cancel.is_set():
+                    raise InterruptedError("revoked")
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("client gate")
+            yield
+        finally:
+            if acquired:
+                gate.release()
+            with self._lock:
+                self._pending[client_id] -= 1
+                if self._pending[client_id] == 0:
+                    del self._pending[client_id]
+
+
 @dataclass
 class _Active:
     """Идущий запрос клиента: отзыв ключа может его остановить."""
@@ -168,6 +246,7 @@ class ApiServer:
         self.on_usage = on_usage
         self._active: list[_Active] = []
         self._lock = threading.Lock()
+        self.gate = FairGate()
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -189,8 +268,7 @@ class ApiServer:
     def start(self) -> None:
         """Занять порт и начать обслуживание; порт занят — OSError."""
         handler = _handler(self)
-        server = ThreadingHTTPServer((self.options.host, self.options.port), handler)
-        server.daemon_threads = True
+        server = _Server((self.options.host, self.options.port), handler)
         self._server = server
         self._thread = threading.Thread(target=server.serve_forever, name="ramvi-api", daemon=True)
         self._thread.start()
@@ -294,6 +372,14 @@ class ApiServer:
     def clients(self) -> list[dict[str, Any]]:
         """Список для экрана «Подключения»: без ключей, со счётчиками и идущими запросами."""
         return [{**k.json(), "running": self.running(k.id)} for k in self.keys.list()]
+
+    def queue_status(self) -> dict[str, Any]:
+        return {
+            "max_concurrent": MAX_CONCURRENT,
+            "per_client_queue": self.options.per_client_queue,
+            "max_clients": self.options.max_clients,
+            "active_clients": self.gate.clients(),
+        }
 
     def loaded(self) -> tuple[str, Any]:
         model_id = self.engines.model_id
@@ -417,6 +503,7 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
             active = api.track(client.id)
             try:
                 with (
+                    api.gate.turn(client.id, api.options, active.cancel),
                     api.request_owner(client.id) as owner,
                     api.llm.exclusive(
                         owner, timeout=api.options.queue_timeout, cancel=active.cancel

@@ -41,6 +41,11 @@ PREFIX = "/ui/v1"
 _ID = r"([0-9a-f]{16})"
 
 
+class _Server(ThreadingHTTPServer):
+    # Очередь входящих соединений socketserver по умолчанию — 5; лишние ОС сбрасывает.
+    request_queue_size = 128
+
+
 class UIServer:
     def __init__(
         self,
@@ -78,7 +83,7 @@ class UIServer:
         self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
-        self._server = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
+        self._server = _Server(("127.0.0.1", port), _handler(self))
         self._server.daemon_threads = True
         self._thread: threading.Thread | None = None
 
@@ -267,6 +272,7 @@ class UIServer:
                     "running": running,
                 },
                 "clients": api.clients(),
+                "queue": api.queue_status(),
             }
         if method == "POST" and path == "/connections/keys":
             permissions = body.get("permissions")
