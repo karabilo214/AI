@@ -224,6 +224,9 @@
   "cli.service.port": "порт API интерфейса (0 — любой)",
   "cli.service.app_dir": "папка приложения с settings.json (экран настроек, 3.7)",
   "cli.service.engine_command_json": "для проверок: JSON-список команды поддельного движка вместо настоящего",
+  "cli.service.headless": "без окна: внешний API работает, пока сервис не остановлен (Ctrl+C)",
+  "cli.service.model": "загрузить эту модель при запуске (id из библиотеки моделей)",
+  "cli.service.api_port": "порт внешнего API (по умолчанию — из настроек, 0 — любой свободный)",
   "cli.service.need_token": "нужен {name} длиной от 16 символов",
   "section.error": "Ошибка модуля: {detail}",
   "task.reason.capability": "для этой задачи нужна возможность «{capability}»",
@@ -557,5 +560,11 @@
   "agent.tool_approval_required": "Требуется подтверждение действия",
   "agent.tool_call": "Вызов инструмента",
   "agent.tool_result": "Результат инструмента",
-  "agent.usage": "Использование ресурсов"
+  "agent.usage": "Использование ресурсов",
+  "api.no_model": "В RAMVI не загружена модель. Загрузите модель в приложении или запустите сервис с --model",
+  "api.model_not_loaded": "Модель {asked} не загружена; сейчас загружена {loaded}",
+  "api.bad_body": "Неверный размер тела запроса",
+  "api.bad_json": "Тело запроса должно быть объектом JSON",
+  "api.engine_error": "Движок не ответил",
+  "api.port_busy": "Порт внешнего API {port} занят другой программой — выберите другой порт в настройках"
 }

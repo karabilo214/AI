@@ -71,6 +71,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(
                 {"instance_id": os.environ["RAMVI_INSTANCE_ID"], "versions": {"api": API_VERSION}}
             )
+        elif self.path == "/debug/cancelled":  # 7.1: проверка отмены по разрыву клиента
+            with lock:
+                self._json({"cancelled": sorted(cancelled)})
         elif self.path == "/crash":
             os._exit(17)
         else:
@@ -86,10 +89,33 @@ class Handler(BaseHTTPRequestHandler):
                 cancelled.add(body.get("request_id", ""))
             self._json({"cancelled": True})
             return
+        served = os.path.basename(MODEL.rstrip("/\\")) or "fake"
+        if self.path in ("/v1/messages", "/api/chat"):  # 7.1: другие форматы — одним ответом
+            if body.get("model") not in (None, served):
+                self._json({"error": {"message": f"загружена только модель {served}"}}, 400)
+                return
+            text = f"[{served}] {self.path} echo: {body['messages'][-1]['content'][:40]}"
+            if self.path == "/v1/messages":
+                self._json(
+                    {
+                        "type": "message",
+                        "content": [{"type": "text", "text": text}],
+                        "usage": {"input_tokens": 7, "output_tokens": 3},
+                    }
+                )
+            else:
+                self._json(
+                    {
+                        "message": {"role": "assistant", "content": text},
+                        "done": True,
+                        "prompt_eval_count": 7,
+                        "eval_count": 3,
+                    }
+                )
+            return
         if self.path != "/v1/chat/completions":
             self._json({"error": "not found"}, 404)
             return
-        served = os.path.basename(MODEL.rstrip("/\\")) or "fake"
         if body.get("model") not in (None, served):  # как validate_capabilities движка
             self._json({"error": {"message": f"загружена только модель {served}"}}, 400)
             return

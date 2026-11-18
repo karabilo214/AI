@@ -72,6 +72,7 @@ class UIServer:
         self.library: ModelLibrary | None = None  # 4.11: по умолчанию / удалить
         self.voice: VoiceService | None = None  # 5.2: голосовой ввод
         self.agent_ui: AgentDesktop | None = None
+        self.api: Any = None  # 7.1: внешний API (ApiServer), запускается в main
         self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data

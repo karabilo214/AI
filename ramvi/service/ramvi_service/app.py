@@ -11,6 +11,7 @@
 import argparse
 import json
 import os
+import secrets
 import sqlite3
 import sys
 import threading
@@ -26,10 +27,12 @@ from ramvi_service import settings as app_settings
 from ramvi_service.agent.desktop import AgentDesktop
 from ramvi_service.agent.gateway import AgentGateway
 from ramvi_service.agent.readiness import facts_from_fit
+from ramvi_service.api_server import ApiOptions, ApiServer
 from ramvi_service.app_config import AppConfig, check_folder
 from ramvi_service.catalog import Catalog
 from ramvi_service.catalog.support import capabilities
 from ramvi_service.chat import ChatService
+from ramvi_service.client_keys import KeyStore
 from ramvi_service.context import ContextProvider
 from ramvi_service.contracts.modules import Authority
 from ramvi_service.control_run import ControlRun
@@ -225,9 +228,18 @@ def build(
         return count
 
     control._stop_generations = stop_all_generations
+    # 7.1: внешний API — общий ключевой реестр и общая очередь модели; порт из настроек.
+    server.api = ApiServer(
+        KeyStore(db),
+        llm,
+        engines,
+        data_dir / "run",
+        ApiOptions(port=current_settings().api_port),
+    )
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
     server.on_close.append(db.close)
+    server.on_close.append(server.api.close)
     server.on_close.append(server.downloads.close)
     server.on_close.append(host.agent.close)
     server.on_close.append(host.close)
@@ -252,8 +264,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=0, help=t("cli.service.port"))
     parser.add_argument("--app-dir", help=t("cli.service.app_dir"))
     parser.add_argument("--engine-command-json", help=t("cli.service.engine_command_json"))
+    parser.add_argument("--headless", action="store_true", help=t("cli.service.headless"))
+    parser.add_argument("--model", help=t("cli.service.model"))
+    parser.add_argument("--api-port", type=int, help=t("cli.service.api_port"))
     args = parser.parse_args(argv)
     token = os.environ.get(TOKEN_ENV, "")
+    if args.headless and not token:
+        token = secrets.token_urlsafe(32)  # без окна ключ интерфейса никому не нужен
     if len(token) < 16:
         parser.error(t("cli.service.need_token", name=TOKEN_ENV))
     command = json.loads(args.engine_command_json) if args.engine_command_json else None
@@ -286,7 +303,29 @@ def main(argv: list[str] | None = None) -> None:
     if watch is not None:
         watch.set_shutdown(stopped.set)
     server.start()
-    print(json.dumps({"event": "ready", "port": server.port}), flush=True)
+    api = server.api
+    if args.api_port is not None:
+        api.options = ApiOptions(port=args.api_port)
+    try:
+        api.start()
+        api_url: str | None = api.url
+    except OSError as error:  # порт занят — интерфейс работает, API сообщает об ошибке
+        api_url = None
+        print(
+            json.dumps(
+                {
+                    "event": "api_error",
+                    "code": "api.port_busy",
+                    "params": {"port": api.options.port, "detail": str(error)},
+                }
+            ),
+            flush=True,
+        )
+    print(json.dumps({"event": "ready", "port": server.port, "api": api_url}), flush=True)
+    if args.model:
+        threading.Thread(
+            target=lambda: engines.ensure(args.model), name="ramvi-load", daemon=True
+        ).start()
     try:
         stopped.wait()
     except KeyboardInterrupt:

@@ -224,6 +224,9 @@
   "cli.service.port": "UI API port (0 — any)",
   "cli.service.app_dir": "application folder with settings.json (settings screen, 3.7)",
   "cli.service.engine_command_json": "for tests: JSON list with a fake engine command instead of the real one",
+  "cli.service.headless": "no window: the external API works until the service is stopped (Ctrl+C)",
+  "cli.service.model": "load this model at start (id from the model library)",
+  "cli.service.api_port": "external API port (default from settings, 0 — any free port)",
   "cli.service.need_token": "{name} of at least 16 characters is required",
   "section.error": "Module error: {detail}",
   "task.reason.capability": "this task needs the “{capability}” capability",
@@ -557,5 +560,11 @@
   "agent.tool_approval_required": "Action approval required",
   "agent.tool_call": "Tool call",
   "agent.tool_result": "Tool result",
-  "agent.usage": "Resource usage"
+  "agent.usage": "Resource usage",
+  "api.no_model": "No model is loaded in RAMVI. Load a model in the app or start the service with --model",
+  "api.model_not_loaded": "Model {asked} is not loaded; loaded now: {loaded}",
+  "api.bad_body": "Wrong request body size",
+  "api.bad_json": "The request body must be a JSON object",
+  "api.engine_error": "The engine did not answer",
+  "api.port_busy": "External API port {port} is used by another program — choose another port in settings"
 }
