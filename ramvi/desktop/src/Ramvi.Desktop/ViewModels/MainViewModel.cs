@@ -91,7 +91,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             () => ModelsScreen.LoadAsync(),
             ReloadModelListAsync,
             () => Voice!.LoadAsync(),
-            Agent.LoadAsync);
+            Agent.LoadAsync,
+            copy: text => _copy!(text));
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,

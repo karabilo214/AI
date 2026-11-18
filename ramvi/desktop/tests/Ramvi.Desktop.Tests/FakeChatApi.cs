@@ -241,6 +241,42 @@ internal sealed class FakeChatApi : IChatApi
 
     public List<SettingsUpdate> SettingsUpdates { get; } = [];
 
+    /// <summary>7.2: клиенты внешнего API; ключи и отзывы, которые попросил экран.</summary>
+    public List<ClientInfo> Clients { get; } = [];
+
+    public List<(string Name, IReadOnlyList<string> Permissions)> CreatedKeys { get; } = [];
+
+    public List<(string Id, bool CancelRunning)> Revoked { get; } = [];
+
+    public string? ApiUrl { get; set; } = "http://127.0.0.1:11435";
+
+    public string? SaveApiError { get; set; }
+
+    public static ClientInfo Client(string id, string name, string state = "active", params string[] permissions) =>
+        new(id, name, permissions.Length > 0 ? permissions : ["chat", "models"], 1, null, state, null,
+            "ramvi-…" + id[^4..], 3, 120, 45, 2.5, 1, 0);
+
+    public Task<ConnectionsInfo> ConnectionsAsync(CancellationToken cancel = default) =>
+        Task.FromResult(new ConnectionsInfo(
+            new ApiState(ApiUrl, 11435, ApiUrl is not null), [.. Clients], new QueueState(1, 8, 16, 0)));
+
+    public Task<NewKeyResponse> CreateKeyAsync(
+        string name, IReadOnlyList<string> permissions, CancellationToken cancel = default)
+    {
+        CreatedKeys.Add((name, permissions));
+        var client = Client("k" + CreatedKeys.Count.ToString("D11", System.Globalization.CultureInfo.InvariantCulture), name, "active", [.. permissions]);
+        Clients.Add(client);
+        return Task.FromResult(new NewKeyResponse(client, "ramvi-SECRETKEY" + client.Id));
+    }
+
+    public Task<RevokeResponse> RevokeKeyAsync(string id, bool cancelRunning, CancellationToken cancel = default)
+    {
+        Revoked.Add((id, cancelRunning));
+        var index = Clients.FindIndex(c => c.Id == id);
+        Clients[index] = Clients[index] with { State = "revoked", Revoked = 2 };
+        return Task.FromResult(new RevokeResponse(id, 1));
+    }
+
     public ApiException? SettingsError { get; set; }
 
     public Task<SettingsInfo> SettingsAsync(CancellationToken cancel = default) => Task.FromResult(Info(null));
@@ -261,14 +297,16 @@ internal sealed class FakeChatApi : IChatApi
             update.Theme ?? before.Theme, update.VoiceDevice ?? before.VoiceDevice,
             update.VoiceLanguage ?? before.VoiceLanguage, update.VoiceModel ?? before.VoiceModel,
             update.VoiceBackend ?? before.VoiceBackend, update.VoiceApiUrl ?? before.VoiceApiUrl,
-            update.VoiceApiModel ?? before.VoiceApiModel, update.VoiceAutoSend ?? before.VoiceAutoSend);
+            update.VoiceApiModel ?? before.VoiceApiModel, update.VoiceAutoSend ?? before.VoiceAutoSend,
+            update.NetworkAllow ?? before.NetworkAllow);
         var restart = new List<string>();
         if (AppSettings.DataDir != before.DataDir)
         {
             restart.Add("data_dir");
         }
 
-        return Task.FromResult(Info(restart));
+        var info = Info(restart);
+        return Task.FromResult(SaveApiError is { } apiError ? info with { ApiError = apiError } : info);
     }
 
     private SettingsInfo Info(IReadOnlyList<string>? restart) =>

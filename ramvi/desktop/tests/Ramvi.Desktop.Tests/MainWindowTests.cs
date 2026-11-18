@@ -148,8 +148,13 @@ public sealed class MainWindowTests
         var panel = window.FindControl<Border>("SettingsPanel")!;
         Assert.True(panel.IsVisible);
         Assert.Equal("data", window.FindControl<TextBox>("DataDirBox")!.Text);
-        Assert.Equal("11435", window.FindControl<TextBox>("ApiPortBox")!.Text);
         Assert.Equal("Русский", (window.FindControl<ComboBox>("LanguageBox")!.SelectedItem as LanguageOption)?.Label);
+        // 7.1–7.4: порт и сеть — на вкладке «Подключения».
+        model.Settings.SelectedTab = model.Settings.Tabs.First(t => t.Id == "connections");
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("11435", window.FindControl<TextBox>("ApiPortBox")!.Text);
+        Assert.False(window.FindControl<TextBox>("NetworkAllowBox")!.IsEffectivelyVisible);
         var visible = panel.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
         Assert.Contains(Localizer.Current["settings.api_note"], visible);
         Assert.DoesNotContain(Localizer.Current["settings.network_warning"], visible);
@@ -158,6 +163,7 @@ public sealed class MainWindowTests
         Dispatcher.UIThread.RunJobs();
         visible = panel.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
         Assert.Contains(Localizer.Current["settings.network_warning"], visible);
+        Assert.True(window.FindControl<TextBox>("NetworkAllowBox")!.IsEffectivelyVisible);
         Assert.False(window.FindControl<Button>("RestartButton")!.IsVisible);
         Assert.Empty(Localizer.Current.Missing);
         window.Close();

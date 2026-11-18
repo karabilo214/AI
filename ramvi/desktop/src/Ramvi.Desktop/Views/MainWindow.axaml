@@ -336,7 +336,7 @@
       </ScrollViewer>
     </DockPanel>
 
-    <!-- Настройки (3.7): поверх окна; вкладки «Общие», «Звук», «Модели» и вкладки модулей.
+    <!-- Настройки (3.7): поверх окна; вкладки «Общие», «Звук», «Модели», «Подключения» и вкладки модулей.
          Шапка со значком «Закрыть» и низ с «Сохранить» не прокручиваются. -->
     <Border x:Name="SettingsPanel" Grid.ColumnSpan="2" ZIndex="9" Classes="overlay" IsVisible="{Binding Settings.IsOpen}">
       <Border x:Name="SettingsCard" Classes="card" MaxWidth="920" Margin="24" Padding="0"
@@ -429,12 +429,6 @@
                   </ComboBox.ItemTemplate>
                 </ComboBox>
 
-                <TextBlock Classes="heading" Text="{l:T settings.api_port}" />
-                <TextBox x:Name="ApiPortBox" MaxWidth="160" HorizontalAlignment="Left" Text="{Binding Settings.ApiPort}" />
-                <CheckBox x:Name="NetworkBox" Content="{l:T settings.network_access}" IsChecked="{Binding Settings.NetworkAccess}" />
-                <TextBlock FontSize="12" Classes="warn" TextWrapping="Wrap" Text="{l:T settings.network_warning}"
-                           IsVisible="{Binding Settings.NetworkAccess}" />
-                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.api_note}" />
               </StackPanel>
             </ScrollViewer>
             <ScrollViewer x:Name="SoundTab" IsVisible="{Binding Settings.IsSoundTab}">
@@ -638,6 +632,98 @@
                 </ItemsControl>
               </ScrollViewer>
             </DockPanel>
+            <!-- 7.1–7.4: «Подключения» — внешний API для IDE и агентов: адрес, порт, сеть, ключи программ -->
+            <ScrollViewer x:Name="ConnectionsTab" IsVisible="{Binding Settings.IsConnectionsTab}">
+              <StackPanel Spacing="10" Margin="28,8,28,12">
+                <TextBlock x:Name="ApiStatus" Classes="heading" TextWrapping="Wrap" Text="{Binding Settings.Connections.Status}" />
+                <Border Classes="inset" Padding="14,10" IsVisible="{Binding Settings.Connections.HasUrl}">
+                  <StackPanel Spacing="6">
+                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T connections.ide_note}" />
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                      <TextBlock VerticalAlignment="Center" Text="{l:T connections.openai_url}" />
+                      <SelectableTextBlock x:Name="OpenAiUrl" Grid.Column="1" VerticalAlignment="Center" Text="{Binding Settings.Connections.OpenAiUrl}" />
+                      <Button Grid.Column="2" Content="{l:T connections.copy}" Command="{Binding Settings.Connections.CopyUrlCommand}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                      <TextBlock VerticalAlignment="Center" Text="{l:T connections.base_url}" />
+                      <SelectableTextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Settings.Connections.BaseUrl}" />
+                    </Grid>
+                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Settings.Connections.Queue}" />
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Classes="heading" Text="{l:T settings.api_port}" />
+                <TextBox x:Name="ApiPortBox" MaxWidth="160" HorizontalAlignment="Left" Text="{Binding Settings.ApiPort}" />
+                <CheckBox x:Name="NetworkBox" Content="{l:T settings.network_access}" IsChecked="{Binding Settings.NetworkAccess}" />
+                <TextBlock FontSize="12" Classes="warn" TextWrapping="Wrap" Text="{l:T settings.network_warning}"
+                           IsVisible="{Binding Settings.NetworkAccess}" />
+                <StackPanel Spacing="4" IsVisible="{Binding Settings.NetworkAccess}">
+                  <TextBlock Text="{l:T connections.allow}" />
+                  <TextBox x:Name="NetworkAllowBox" Text="{Binding Settings.NetworkAllow}" />
+                  <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T connections.allow_note}" />
+                </StackPanel>
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.api_note}" />
+
+                <TextBlock Classes="heading" Margin="0,8,0,0" Text="{l:T connections.new_key}" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBox x:Name="NewKeyName" Watermark="{l:T connections.name_hint}" Text="{Binding Settings.Connections.NewName}" />
+                  <Button x:Name="CreateKeyButton" Grid.Column="1" Classes="accent" Content="{l:T connections.create}"
+                          Command="{Binding Settings.Connections.CreateCommand}" />
+                </Grid>
+                <ItemsControl x:Name="NewKeyRights" ItemsSource="{Binding Settings.Connections.NewPermissions}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:KeyRight">
+                      <CheckBox Margin="0,0,16,0" Content="{Binding Label}" IsChecked="{Binding Enabled}" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Border x:Name="NewKeyCard" Classes="inset" Padding="14,10" IsVisible="{Binding Settings.Connections.HasNewKey}">
+                  <StackPanel Spacing="6">
+                    <TextBlock Classes="warn" TextWrapping="Wrap" Text="{l:T connections.key_once}" />
+                    <SelectableTextBlock x:Name="NewKeyText" FontFamily="monospace" TextWrapping="Wrap" Text="{Binding Settings.Connections.NewKey}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Button Content="{l:T connections.copy}" Command="{Binding Settings.Connections.CopyKeyCommand}" />
+                      <Button x:Name="DismissKeyButton" Content="{l:T connections.done}" Command="{Binding Settings.Connections.DismissKeyCommand}" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Classes="heading" Margin="0,8,0,0" Text="{l:T connections.clients}" />
+                <TextBlock Classes="muted" Text="{l:T connections.no_clients}" IsVisible="{Binding !Settings.Connections.HasClients}" />
+                <ItemsControl x:Name="ClientList" ItemsSource="{Binding Settings.Connections.Clients}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ClientRow">
+                      <Border Classes="inset" Padding="14,10" Margin="0,0,0,8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                          <StackPanel Spacing="2">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                              <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                              <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding KeyHint}" />
+                              <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding State}" />
+                            </StackPanel>
+                            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Permissions}" />
+                            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Usage}" />
+                            <TextBlock Classes="caption" Text="{Binding LastSeen}" />
+                            <TextBlock Classes="caption" Text="{Binding Running}" IsVisible="{Binding HasRunning}" />
+                          </StackPanel>
+                          <Button Grid.Column="1" VerticalAlignment="Top" Content="{Binding RevokeLabel}"
+                                  Command="{Binding RevokeCommand}" IsVisible="{Binding IsActive}" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Settings.Connections.Error}"
+                           IsVisible="{Binding Settings.Connections.HasError}" />
+                <TextBlock TextWrapping="Wrap" Text="{Binding Settings.Connections.Message}"
+                           IsVisible="{Binding Settings.Connections.HasMessage}" />
+              </StackPanel>
+            </ScrollViewer>
             <!-- Вкладка модуля: модули добавляют свои настройки (этапы 6 и 9) -->
             <Border IsVisible="{Binding Settings.IsAgentTab}"><views:AgentSettingsView DataContext="{Binding Agent}"/></Border>
             <StackPanel x:Name="ModuleSettingsTab" Margin="28,8" Spacing="8" IsVisible="{Binding Settings.IsModuleTab}">

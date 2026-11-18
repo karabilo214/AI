@@ -23,6 +23,18 @@ public interface IChatApi
 
     Task<ServiceStatus> StatusAsync(CancellationToken cancel = default);
 
+    /// <summary>7.2: клиенты внешнего API со счётчиками, адрес и очередь.</summary>
+    Task<ConnectionsInfo> ConnectionsAsync(CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
+    /// <summary>7.2: новый ключ — показывается один раз.</summary>
+    Task<NewKeyResponse> CreateKeyAsync(string name, IReadOnlyList<string> permissions, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
+    /// <summary>7.2: отозвать ключ; <paramref name="cancelRunning"/> — остановить и идущие запросы.</summary>
+    Task<RevokeResponse> RevokeKeyAsync(string id, bool cancelRunning, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
     Task<IReadOnlyList<ModelInfo>> ModelsAsync(CancellationToken cancel = default);
 
     /// <summary>Просмотреть папку моделей из настроек и подключить найденные модели на месте.</summary>
@@ -240,6 +252,18 @@ public sealed class ChatApiClient : IChatApi, IDisposable
 
     public Task<SettingsInfo> SettingsAsync(CancellationToken cancel = default) =>
         GetAsync("settings", ApiJson.Default.SettingsInfo, cancel);
+
+    public Task<ConnectionsInfo> ConnectionsAsync(CancellationToken cancel = default) =>
+        GetAsync("connections", ApiJson.Default.ConnectionsInfo, cancel);
+
+    public Task<NewKeyResponse> CreateKeyAsync(
+        string name, IReadOnlyList<string> permissions, CancellationToken cancel = default) =>
+        PostAsync("connections/keys", new NewKeyRequest(name, permissions), ApiJson.Default.NewKeyRequest,
+            ApiJson.Default.NewKeyResponse, cancel);
+
+    public Task<RevokeResponse> RevokeKeyAsync(string id, bool cancelRunning, CancellationToken cancel = default) =>
+        PostAsync($"connections/keys/{Id(id)}/revoke", new RevokeRequest(cancelRunning),
+            ApiJson.Default.RevokeRequest, ApiJson.Default.RevokeResponse, cancel);
 
     public Task<SettingsInfo> SaveSettingsAsync(SettingsUpdate update, CancellationToken cancel = default) =>
         PostAsync("settings", update, ApiJson.Default.SettingsUpdate, ApiJson.Default.SettingsInfo, cancel);

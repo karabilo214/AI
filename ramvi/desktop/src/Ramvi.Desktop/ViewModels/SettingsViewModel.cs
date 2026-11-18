@@ -45,6 +45,7 @@ public sealed class SettingsViewModel : ObservableObject
     private LanguageOption? _language;
     private string _apiPort = "";
     private bool _networkAccess;
+    private string _networkAllow = "";
     private string _currentDataDir = "";
     private string? _error;
     private string? _message;
@@ -70,8 +71,10 @@ public sealed class SettingsViewModel : ObservableObject
         Func<Task>? openModels = null,
         Func<Task>? defaultChanged = null,
         Func<Task>? soundChanged = null,
-        Func<Task>? agentLoad = null)
+        Func<Task>? agentLoad = null,
+        Func<string, Task>? copy = null)
     {
+        Connections = new ConnectionsViewModel(api, copy);
         _soundChanged = soundChanged;
         _agentLoad = agentLoad;
         _api = api;
@@ -79,7 +82,11 @@ public sealed class SettingsViewModel : ObservableObject
         _models = models ?? [];
         _openModels = openModels;
         _defaultChanged = defaultChanged;
-        Tabs = [new("general", "settings.tab.general"), new("sound", "settings.tab.sound"), new("models", "settings.tab.models")];
+        Tabs =
+        [
+            new("general", "settings.tab.general"), new("sound", "settings.tab.sound"),
+            new("models", "settings.tab.models"), new("connections", "settings.tab.connections"),
+        ];
         _selectedTab = Tabs[0];
         // «Управлять моделями…» — та же панель, вкладка «Модели» (раньше — раздел бокового меню).
         ManageModelsCommand = new Command(() =>
@@ -132,12 +139,13 @@ public sealed class SettingsViewModel : ObservableObject
                 return;
             }
 
-            foreach (var name in new[] { nameof(IsGeneralTab), nameof(IsSoundTab), nameof(IsModelsTab), nameof(IsModuleTab), nameof(IsAgentTab), nameof(HasFooter) })
+            foreach (var name in new[] { nameof(IsGeneralTab), nameof(IsSoundTab), nameof(IsModelsTab), nameof(IsConnectionsTab), nameof(IsModuleTab), nameof(IsAgentTab), nameof(HasFooter) })
             {
                 Raise(name);
             }
 
             if (value.Id == "module:agent" && IsOpen && _agentLoad is not null) _ = _agentLoad();
+            if (value.Id == "connections" && IsOpen) _ = Connections.LoadAsync();
             if (value.Id == "models" && IsOpen && _openModels is not null)
             {
                 _ = _openModels(); // экран моделей перечитывает каталог и загрузки
@@ -151,11 +159,16 @@ public sealed class SettingsViewModel : ObservableObject
 
     public bool IsModelsTab => _selectedTab?.Id == "models";
 
+    /// <summary>7.1–7.4: внешний API — порт, сеть, разрешённые адреса, ключи программ.</summary>
+    public bool IsConnectionsTab => _selectedTab?.Id == "connections";
+
+    public ConnectionsViewModel Connections { get; }
+
     public bool IsModuleTab => _selectedTab?.Id.StartsWith("module:", StringComparison.Ordinal) == true && !IsAgentTab;
     public bool IsAgentTab => _selectedTab?.Id == "module:agent";
 
     /// <summary>«Сохранить» — у вкладок с полями; у «Модели» свои кнопки на карточках.</summary>
-    public bool HasFooter => IsGeneralTab || IsSoundTab;
+    public bool HasFooter => IsGeneralTab || IsSoundTab || IsConnectionsTab;
 
     /// <summary>Вкладка модуля (этапы 6 и 9): добавляется один раз по id.</summary>
     public void AddTab(string moduleId, string titleKey)
@@ -264,6 +277,13 @@ public sealed class SettingsViewModel : ObservableObject
         set => Set(ref _networkAccess, value);
     }
 
+    /// <summary>7.4: с каких адресов можно при включённой сети (CIDR через запятую).</summary>
+    public string NetworkAllow
+    {
+        get => _networkAllow;
+        set => Set(ref _networkAllow, value);
+    }
+
     /// <summary>Какая папка данных используется сейчас (может отличаться от сохранённой до перезапуска).</summary>
     public string DataDirNote => L.Format("settings.data_dir_note", ("path", _currentDataDir));
 
@@ -320,6 +340,11 @@ public sealed class SettingsViewModel : ObservableObject
         }
 
         SelectedTab = target;
+        if (target.Id == "connections")
+        {
+            _ = Connections.LoadAsync();
+        }
+
         try
         {
             var info = await _api().SettingsAsync().ConfigureAwait(true);
@@ -368,6 +393,7 @@ public sealed class SettingsViewModel : ObservableObject
         Languages = [.. Languages.Select(l => new LanguageOption(l.Code, L[$"settings.lang.{l.Code}"]))];
         base.Relocalize();
         Sound.Relocalize();
+        Connections.Relocalize();
         foreach (var t in Tabs)
         {
             t.Relocalize();
@@ -388,6 +414,7 @@ public sealed class SettingsViewModel : ObservableObject
         Language = Languages.FirstOrDefault(l => l.Code == info.Settings.Language);
         ApiPort = info.Settings.ApiPort.ToString(CultureInfo.InvariantCulture);
         NetworkAccess = info.Settings.NetworkAccess;
+        NetworkAllow = info.Settings.NetworkAllow;
         Theme = Themes.FirstOrDefault(t => t.Code == info.Settings.Theme) ?? Themes[0];
         Raise(nameof(DataDirNote));
         SaveCommand.Refresh();
@@ -414,7 +441,8 @@ public sealed class SettingsViewModel : ObservableObject
             Language: Language is { } language && language.Code != saved.Language ? language.Code : null,
             ApiPort: port != saved.ApiPort ? port : null,
             NetworkAccess: NetworkAccess != saved.NetworkAccess ? NetworkAccess : null,
-            Theme: Theme is { } theme && theme.Code != saved.Theme ? theme.Code : null);
+            Theme: Theme is { } theme && theme.Code != saved.Theme ? theme.Code : null,
+            NetworkAllow: NetworkAllow.Trim() != saved.NetworkAllow ? NetworkAllow.Trim() : null);
         var sound = Sound.Changes(saved);
         var api = Sound.ApiChanges(saved);
         update = update with
@@ -471,6 +499,16 @@ public sealed class SettingsViewModel : ObservableObject
             }
 
             Message = RestartNeeded ? L["settings.restart_needed"] : L["settings.saved"];
+            if (info.ApiError is { } apiError)
+            {
+                Message = null;
+                Error = L.Format(apiError, ("port", info.Settings.ApiPort)); // 7.4: порт занят
+            }
+
+            if (update.ApiPort is not null || update.NetworkAccess is not null || update.NetworkAllow is not null)
+            {
+                await Connections.LoadAsync().ConfigureAwait(true); // адрес и состояние API
+            }
         }
         catch (Exception error) when (error is ApiException or HttpRequestException)
         {

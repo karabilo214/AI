@@ -137,7 +137,7 @@ public sealed record AppSettings(
     string DataDir, string ModelsDir, string Language, int ApiPort, bool NetworkAccess, string Theme = "system",
     string VoiceDevice = "", string VoiceLanguage = "auto", string VoiceModel = "large-v3-turbo-q5_0",
     string VoiceBackend = "local", string VoiceApiUrl = "", string VoiceApiModel = "whisper-1",
-    bool VoiceAutoSend = true);
+    bool VoiceAutoSend = true, string NetworkAllow = "192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12");
 
 public sealed record SettingsFolders(string DataDir, string ModelsDir);
 
@@ -146,14 +146,38 @@ public sealed record SettingsInfo(
     SettingsFolders Resolved,
     string CurrentDataDir,
     IReadOnlyList<string> Languages,
-    IReadOnlyList<string>? RestartRequired = null);
+    IReadOnlyList<string>? RestartRequired = null,
+    string? ApiError = null);
 
 /// <summary>Только изменённые поля; null не отправляется.</summary>
 public sealed record SettingsUpdate(
     string? DataDir = null, string? ModelsDir = null, string? Language = null, int? ApiPort = null,
     bool? NetworkAccess = null, string? Theme = null, string? VoiceDevice = null, string? VoiceLanguage = null,
     string? VoiceModel = null, string? VoiceBackend = null, string? VoiceApiUrl = null,
-    string? VoiceApiModel = null, bool? VoiceAutoSend = null);
+    string? VoiceApiModel = null, bool? VoiceAutoSend = null, string? NetworkAllow = null);
+
+/// <summary>7.1–7.4: внешний API — адрес для программ на этом компьютере, порт, работает ли.</summary>
+public sealed record ApiState(string? Url, int Port, bool Running);
+
+/// <summary>7.3: очередь клиентов внешнего API.</summary>
+public sealed record QueueState(int MaxConcurrent, int PerClientQueue, int MaxClients, int ActiveClients);
+
+/// <summary>7.2: клиент внешнего API — без ключа: подсказка, права, счётчики.</summary>
+public sealed record ClientInfo(
+    string Id, string Name, IReadOnlyList<string> Permissions, double Created, double? LastSeen, string State,
+    double? Revoked, string KeyHint, long Requests, long PromptTokens, long CompletionTokens,
+    double BusySeconds, long Errors, int Running);
+
+public sealed record ConnectionsInfo(ApiState Api, IReadOnlyList<ClientInfo> Clients, QueueState? Queue = null);
+
+public sealed record NewKeyRequest(string Name, IReadOnlyList<string> Permissions);
+
+/// <summary>Ключ целиком — только в этом ответе.</summary>
+public sealed record NewKeyResponse(ClientInfo Client, string Key);
+
+public sealed record RevokeRequest(bool CancelRunning);
+
+public sealed record RevokeResponse(string Revoked, int Stopped);
 
 /// <summary>5.2: модель распознавания речи — скачана ли, размер, держится ли в памяти.</summary>
 public sealed record VoiceModelState(string Id, bool Installed, long Size, bool Loaded = false);
@@ -299,4 +323,9 @@ public sealed record UnloadResponse(bool Unloaded, EngineStatus Engine);
 [JsonSerializable(typeof(VoiceCheck))]
 [JsonSerializable(typeof(KeyRequest))]
 [JsonSerializable(typeof(ApiCheckRequest))]
+[JsonSerializable(typeof(ConnectionsInfo))]
+[JsonSerializable(typeof(NewKeyRequest))]
+[JsonSerializable(typeof(NewKeyResponse))]
+[JsonSerializable(typeof(RevokeRequest))]
+[JsonSerializable(typeof(RevokeResponse))]
 internal sealed partial class ApiJson : JsonSerializerContext;
