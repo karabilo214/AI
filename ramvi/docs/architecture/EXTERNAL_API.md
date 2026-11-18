@@ -43,7 +43,7 @@ python -m ramvi_service.app --headless --data-dir <папка данных> [--m
 | Счётчик | Откуда |
 |---|---|
 | `requests` | каждый запрос с действительным ключом |
-| `prompt_tokens`, `completion_tokens` | из ответа движка: OpenAI `usage.*_tokens`, Anthropic `input_tokens`/`output_tokens` (в том числе в потоке), Ollama `prompt_eval_count`/`eval_count` (`parse_usage`) |
+| `prompt_tokens`, `completion_tokens` | из ответа движка (`parse_usage`): OpenAI `usage.*_tokens`, Anthropic `input_tokens`/`output_tokens` (в том числе в потоке), Ollama `prompt_eval_count` и `total_output_tokens` (а не `eval_count` — это шаги декодирования без первого токена); если формат usage не несёт (поток OpenAI без `include_usage`) — счётчики этой генерации из `ramvi_metrics`. Сверено на настоящем движке — [EXAM7_API.md](../reports/EXAM7_API.md) |
 | `busy_seconds` | сколько модель работала на этого клиента (время в слоте очереди) |
 | `errors` | ответ движка с ошибкой или обрыв связи с движком |
 

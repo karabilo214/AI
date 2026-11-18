@@ -54,6 +54,23 @@ def test_parse_usage_in_all_formats() -> None:
     pretty = b'{\n  "usage": {\n    "prompt_tokens": 2,\n    "completion_tokens": 1\n  }\n}'
     assert parse_usage(pretty, pretty) == (2, 1)
     assert parse_usage(b"", b"not json") == (0, 0)
+    # Ollama от движка RAMVI: все токены ответа — total_output_tokens, а не eval_count.
+    ramvi_ollama = b'{"done":true,"prompt_eval_count":30,"eval_count":4,"total_output_tokens":5}'
+    assert parse_usage(b"", ramvi_ollama) == (30, 5)
+    # Служебные метрики движка в ответе не влияют на счёт.
+    with_metrics = (
+        b'{"usage":{"prompt_tokens":3,"completion_tokens":2},'
+        b'"ramvi_metrics":{"completion_tokens":999,"prompt_tokens":888}}'
+    )
+    assert parse_usage(with_metrics, with_metrics) == (3, 2)
+    # Поток OpenAI без include_usage: счёт — из метрик этой генерации.
+    stream_no_usage = (
+        b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],'
+        b'"ramvi_metrics":{"generation_id":"g1","input_tokens":30,"output_tokens":5}}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    assert parse_usage(b"", stream_no_usage) == (30, 5)
 
 
 def test_counters_are_kept_per_client(svc: tuple[UIServer, EngineManager]) -> None:

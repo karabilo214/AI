@@ -121,20 +121,29 @@ class ApiError(Exception):
         self.status, self.code, self.message, self.params = status, code, message, params
 
 
-def _numbers(value: Any, found: dict[str, int]) -> None:
+def _numbers(value: Any, found: dict[str, int], metrics: dict[str, int]) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in _USAGE_KEYS and isinstance(item, int) and not isinstance(item, bool):
+            if key == "ramvi_metrics" and isinstance(item, dict):
+                # Метрики одной генерации движка (generation_id): запасной источник,
+                # когда формат ответа не несёт usage (поток OpenAI без include_usage).
+                for name in ("input_tokens", "output_tokens"):
+                    number = item.get(name)
+                    if isinstance(number, int) and not isinstance(number, bool):
+                        metrics[name] = number
+            elif key in _USAGE_KEYS and isinstance(item, int) and not isinstance(item, bool):
                 found[key] = item
             else:
-                _numbers(item, found)
+                _numbers(item, found, metrics)
     elif isinstance(value, list):
         for item in value:
-            _numbers(item, found)
+            _numbers(item, found, metrics)
 
 
 _PROMPT = ("prompt_tokens", "input_tokens", "prompt_eval_count")
-_COMPLETION = ("completion_tokens", "output_tokens", "eval_count")
+# Ollama: eval_count — шаги декодирования без первого токена; все токены ответа —
+# total_output_tokens (если движок его прислал), как completion_tokens у OpenAI.
+_COMPLETION = ("completion_tokens", "output_tokens", "total_output_tokens", "eval_count")
 _USAGE_KEYS = frozenset(_PROMPT + _COMPLETION)
 
 
@@ -143,24 +152,28 @@ def parse_usage(head: bytes, tail: bytes) -> tuple[int, int]:
 
     OpenAI — `usage.prompt_tokens/completion_tokens`, Anthropic — `input_tokens`
     (в начале потока) и `output_tokens`, Ollama — `prompt_eval_count/eval_count`.
-    Берётся последнее значение каждого поля: в потоке итог приходит в конце."""
+    Берётся последнее значение каждого поля: в потоке итог приходит в конце. Если
+    формат usage не несёт, берутся счётчики этой генерации из `ramvi_metrics`."""
     found: dict[str, int] = {}
+    metrics: dict[str, int] = {}
     text = (head + b"\n" + tail).decode("utf-8", errors="replace")
     for line in text.splitlines():
         line = line.strip().removeprefix("data:").strip()
         if not line.startswith("{"):
             continue
         try:
-            _numbers(json.loads(line), found)
+            _numbers(json.loads(line), found, metrics)
         except ValueError:
             continue
     for whole in (head, tail):  # ответ одним JSON на несколько строк
         try:
-            _numbers(json.loads(whole.decode("utf-8", errors="replace").strip()), found)
+            _numbers(json.loads(whole.decode("utf-8", errors="replace").strip()), found, metrics)
         except ValueError:
             continue
-    prompt = max((found.get(k, 0) for k in _PROMPT), default=0)
-    completion = max((found.get(k, 0) for k in _COMPLETION), default=0)
+    prompt = max((found.get(k, 0) for k in _PROMPT), default=0) or metrics.get("input_tokens", 0)
+    completion = next((found[k] for k in _COMPLETION if k in found), None)
+    if completion is None:
+        completion = metrics.get("output_tokens", 0)
     return prompt, completion
 
 
