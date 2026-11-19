@@ -47,6 +47,8 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _networkAccess;
     private string _networkAllow = "";
     private string? _modelsDirWarning;
+    private readonly Func<Task<string?>> _pickFile;
+    private UpdateStatus? _update;
     private string _currentDataDir = "";
     private string? _error;
     private string? _message;
@@ -73,8 +75,12 @@ public sealed class SettingsViewModel : ObservableObject
         Func<Task>? defaultChanged = null,
         Func<Task>? soundChanged = null,
         Func<Task>? agentLoad = null,
-        Func<string, Task>? copy = null)
+        Func<string, Task>? copy = null,
+        Func<Task<string?>>? pickFile = null)
     {
+        _pickFile = pickFile ?? (() => Task.FromResult<string?>(null));
+        InstallUpdateCommand = new Command(InstallUpdateAsync);
+        RestartToUpdateCommand = new Command(() => _restart!(), () => _update?.Staged is not null);
         Connections = new ConnectionsViewModel(api, copy);
         _soundChanged = soundChanged;
         _agentLoad = agentLoad;
@@ -278,6 +284,51 @@ public sealed class SettingsViewModel : ObservableObject
         set => Set(ref _networkAccess, value);
     }
 
+    /// <summary>8.3: «Установить из файла…» — подготовить пакет обновления.</summary>
+    public Command InstallUpdateCommand { get; }
+
+    /// <summary>8.3: перезапуск применяет подготовленное обновление (неудачное — откатится).</summary>
+    public Command RestartToUpdateCommand { get; }
+
+    /// <summary>Обновления доступны (комплект с папкой приложения).</summary>
+    public bool HasUpdates => _update is not null;
+
+    public string UpdateText => _update switch
+    {
+        null => "",
+        { Staged: { } staged } => L.Format("settings.update_staged", ("version", staged), ("current", _update.Current)),
+        { RolledBack: { } back } => L.Format("settings.update_rolled_back", ("version", back), ("current", _update.Current)),
+        { Applied: { } applied, Health: "good" } => L.Format("settings.update_applied", ("version", applied)),
+        _ => L.Format("settings.update_current", ("version", _update.Current)),
+    };
+
+    private void ShowUpdate(UpdateStatus? status)
+    {
+        _update = status;
+        Raise(nameof(HasUpdates));
+        Raise(nameof(UpdateText));
+        RestartToUpdateCommand.Refresh();
+    }
+
+    private async Task InstallUpdateAsync()
+    {
+        Error = null;
+        Message = null;
+        if (await _pickFile().ConfigureAwait(true) is not { } path)
+        {
+            return;
+        }
+
+        try
+        {
+            ShowUpdate(await _api().StageUpdateAsync(path).ConfigureAwait(true));
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            Error = Text(error);
+        }
+    }
+
     /// <summary>8.2: папка моделей на сетевом или съёмном диске — загрузка дольше.</summary>
     public string? ModelsDirWarning
     {
@@ -368,6 +419,14 @@ public sealed class SettingsViewModel : ObservableObject
             await Sound.LoadAsync(info.Settings).ConfigureAwait(true);
             ShowEngine((await _api().StatusAsync().ConfigureAwait(true)).Engine);
             _savedDefault = (await _api().OnboardingAsync().ConfigureAwait(true)).DefaultModel;
+            try
+            {
+                ShowUpdate(await _api().UpdatesAsync().ConfigureAwait(true));
+            }
+            catch (Exception error) when (error is ApiException or NotSupportedException)
+            {
+                ShowUpdate(null); // без папки приложения обновлений нет
+            }
             Raise(nameof(Models));
             DefaultModel = _models.FirstOrDefault(m => m.Id == _savedDefault);
         }

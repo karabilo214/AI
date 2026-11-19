@@ -60,6 +60,7 @@ from ramvi_service.supervisor import RestartPolicy
 from ramvi_service.system_context import SystemContextAdapter
 from ramvi_service.task_profile import TaskProfile
 from ramvi_service.ui_api import UIServer
+from ramvi_service.updates import Updater
 from ramvi_service.voice.service import VoiceService
 
 TOKEN_ENV = "RAMVI_UI_TOKEN"
@@ -238,6 +239,8 @@ def build(
         ApiOptions.from_settings(current_settings()),
     )
     server.api.host = host
+    if root is not None:
+        server.updater = Updater(root, data_dir)  # 8.3: обновления комплекта
     # Закрывается в обратном порядке: сначала загрузки, потом база
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
     server.on_close.append(db.close)

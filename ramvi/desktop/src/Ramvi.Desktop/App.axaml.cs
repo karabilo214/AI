@@ -80,7 +80,8 @@ public sealed partial class App : Application, IDisposable
     private async Task<IChatApi> StartServiceAsync()
     {
         await StopServiceAsync().ConfigureAwait(true);
-        _service = await ServiceHost.StartAsync(ServiceOptions.FromEnvironment(), TimeSpan.FromSeconds(60))
+        // 8.3: подготовленное обновление применяется до старта, неудачное — откатывается.
+        _service = await ServiceHost.StartWithUpdatesAsync(ServiceOptions.FromEnvironment(), TimeSpan.FromSeconds(60))
             .ConfigureAwait(true);
         _api = new ChatApiClient(_service.Address, _service.Token);
         return _api;

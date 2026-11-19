@@ -35,6 +35,7 @@ from ramvi_service.model_library import ModelLibrary
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.recommend import rank
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
+from ramvi_service.updates import UpdateError
 from ramvi_service.voice.service import VoiceService
 
 MAX_BODY = 2 * 2**20
@@ -81,6 +82,7 @@ class UIServer:
         self.voice: VoiceService | None = None  # 5.2: голосовой ввод
         self.agent_ui: AgentDesktop | None = None
         self.api: Any = None  # 7.1: внешний API (ApiServer), запускается в main
+        self.updater: Any = None  # 8.3: Updater комплекта (только при папке приложения)
         self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
@@ -158,6 +160,8 @@ class UIServer:
         if method == "GET" and path == "/capabilities":
             host = None if self.sections is None else self.sections.host
             return describe(host, self.api)
+        if path == "/updates" or path.startswith("/updates/"):
+            return self._updates_route(method, path, body)
         if path == "/connections" or path.startswith("/connections/"):
             return self._connections_route(method, path, body)
         if method == "GET" and path == "/recommendations":
@@ -261,6 +265,21 @@ class UIServer:
             raise ChatError("api.not_found")
         action = {"pause": downloads.pause, "resume": downloads.resume, "cancel": downloads.cancel}
         return {"download": action[match.group(2)](match.group(1))}
+
+    def _updates_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
+        """8.3: состояние обновлений и подготовка из файла (рабочие файлы не меняются;
+        применяет оболочка при следующем запуске)."""
+        updater = self.updater
+        if updater is None:
+            raise ChatError("api.not_found")
+        try:
+            if method == "GET" and path == "/updates":
+                return updater.status()
+            if method == "POST" and path == "/updates/stage":
+                return {**updater.stage(Path(_required_str(body, "path"))), **updater.status()}
+        except UpdateError as error:
+            raise ChatError(error.code, **error.params) from None
+        raise ChatError("api.not_found")
 
     def _connections_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
         """7.2: клиенты внешнего API — список со счётчиками, новый ключ, отзыв."""

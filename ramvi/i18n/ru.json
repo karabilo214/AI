@@ -622,5 +622,13 @@
   "update.no_consent": "Проверка обновлений по сети выключена в настройках",
   "update.nothing_staged": "Нет подготовленного обновления",
   "update.apply_failed": "Обновление не применилось ({detail}) — прежняя версия возвращена",
-  "update.nothing_to_roll_back": "Откатывать нечего"
+  "update.nothing_to_roll_back": "Откатывать нечего",
+  "settings.updates": "Обновления",
+  "settings.update_current": "Установлена версия {version}",
+  "settings.update_staged": "Подготовлено обновление {version} (сейчас {current}). Оно применится при перезапуске",
+  "settings.update_applied": "Обновлено до версии {version}",
+  "settings.update_rolled_back": "Обновление {version} не запустилось — возвращена версия {current}. Чаты и модели не тронуты",
+  "settings.update_install": "Установить из файла…",
+  "settings.update_restart": "Перезапустить и обновить",
+  "settings.update_note": "Пакет проверяется по подписи RAMVI. Обновление не трогает чаты, модели и настройки; если новая версия не запустится, вернётся прежняя."
 }

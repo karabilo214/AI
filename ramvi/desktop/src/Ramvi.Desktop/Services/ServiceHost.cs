@@ -101,9 +101,9 @@ public sealed class ServiceHost : IAsyncDisposable
 
     public string Token { get; }
 
-    public static async Task<ServiceHost> StartAsync(ServiceOptions options, TimeSpan timeout)
+    /// <summary>Процесс встроенного Python с окружением сервиса (код RAMVI, без чужого PYTHONHOME).</summary>
+    private static ProcessStartInfo PythonInfo(ServiceOptions options, IEnumerable<string> args)
     {
-        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var info = new ProcessStartInfo(options.Python)
         {
             RedirectStandardInput = true,
@@ -113,19 +113,11 @@ public sealed class ServiceHost : IAsyncDisposable
             CreateNoWindow = true,
             WorkingDirectory = options.RamviRoot,
         };
-        foreach (var arg in ServiceArgs.Append(options.DataDir).Concat(options.ExtraArgs))
+        foreach (var arg in args)
         {
             info.ArgumentList.Add(arg);
         }
 
-        if (options.AppDir is { } appDir)
-        {
-            info.ArgumentList.Add("--app-dir");
-            info.ArgumentList.Add(appDir);
-        }
-
-        info.Environment["RAMVI_UI_TOKEN"] = token;
-        info.Environment["RAMVI_EXIT_WITH_PARENT"] = "1";
         info.Environment["PYTHONUTF8"] = "1";
         info.Environment["PYTHONPATH"] = string.Join(
             Path.PathSeparator,
@@ -135,6 +127,101 @@ public sealed class ServiceHost : IAsyncDisposable
         {
             info.Environment[name] = value;
         }
+
+        return info;
+    }
+
+    /// <summary>
+    /// 8.3: запуск с обновлением. Подготовленное обновление применяется до старта сервиса;
+    /// новая версия не стартовала — откат и запуск прежней; стартовала — отметка «хорошо».
+    /// <paramref name="run"/> — вызов `ramvi_service.updates` (подменяется в проверках).
+    /// </summary>
+    public static Task<ServiceHost> StartWithUpdatesAsync(ServiceOptions options, TimeSpan timeout) =>
+        WithUpdatesAsync(options, timeout, action => RunUpdaterAsync(options, action), StartAsync);
+
+    /// <summary>Логика запуска с обновлением отдельно от процессов — для проверок.</summary>
+    internal static async Task<T> WithUpdatesAsync<T>(
+        ServiceOptions options, TimeSpan timeout, Func<string, Task<JsonElement?>> run,
+        Func<ServiceOptions, TimeSpan, Task<T>> start)
+    {
+        if (options.AppDir is null)
+        {
+            return await start(options, timeout).ConfigureAwait(false);
+        }
+
+        var status = await run("status").ConfigureAwait(false);
+        var applied = false;
+        if (status is { } s && s.TryGetProperty("staged", out var staged) && staged.ValueKind == JsonValueKind.String)
+        {
+            var result = await run("apply").ConfigureAwait(false);
+            applied = result is { } r && r.TryGetProperty("applied", out _);
+        }
+        else if (status is { } p && p.TryGetProperty("health", out var health) && health.GetString() == "pending"
+                 && p.TryGetProperty("applied", out _))
+        {
+            applied = true; // прошлый запуск после обновления не дошёл до отметки
+        }
+
+        try
+        {
+            var host = await start(options, timeout).ConfigureAwait(false);
+            if (applied)
+            {
+                await run("mark-good").ConfigureAwait(false);
+            }
+
+            return host;
+        }
+        catch when (applied)
+        {
+            await run("rollback").ConfigureAwait(false);
+            return await start(options, timeout).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Вызвать `python -m ramvi_service.updates &lt;action&gt;`; ответ — JSON последней строки.</summary>
+    private static async Task<JsonElement?> RunUpdaterAsync(ServiceOptions options, string action)
+    {
+        if (options.AppDir is not { } appDir)
+        {
+            return null;
+        }
+
+        var info = PythonInfo(options, ["-P", "-m", "ramvi_service.updates", action, "--app-dir", appDir, "--data-dir", options.DataDir]);
+        using var process = Process.Start(info);
+        if (process is null)
+        {
+            return null;
+        }
+
+        using var wait = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+        try
+        {
+            var output = await process.StandardOutput.ReadToEndAsync(wait.Token).ConfigureAwait(false);
+            await process.WaitForExitAsync(wait.Token).ConfigureAwait(false);
+            var last = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+            return last is null ? null : JsonDocument.Parse(last).RootElement.Clone();
+        }
+        catch (Exception error) when (error is OperationCanceledException or JsonException)
+        {
+            Kill(process);
+            return null;
+        }
+    }
+
+    public static async Task<ServiceHost> StartAsync(ServiceOptions options, TimeSpan timeout)
+    {
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var args = ServiceArgs.Append(options.DataDir).Concat(options.ExtraArgs).ToList();
+        if (options.AppDir is { } appDir)
+        {
+            args.Add("--app-dir");
+            args.Add(appDir);
+        }
+
+        var info = PythonInfo(options, args);
+        info.Environment["RAMVI_UI_TOKEN"] = token;
+        info.Environment["RAMVI_EXIT_WITH_PARENT"] = "1";
         var process = Process.Start(info) ?? throw new InvalidOperationException("service did not start");
         var errors = new System.Text.StringBuilder();
         process.ErrorDataReceived += (_, e) =>

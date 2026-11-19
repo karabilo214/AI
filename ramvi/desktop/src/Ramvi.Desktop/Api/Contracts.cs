@@ -157,6 +157,13 @@ public sealed record SettingsUpdate(
     string? VoiceModel = null, string? VoiceBackend = null, string? VoiceApiUrl = null,
     string? VoiceApiModel = null, bool? VoiceAutoSend = null, string? NetworkAllow = null);
 
+/// <summary>8.3: обновления — текущая версия, подготовленная, итог прошлого обновления.</summary>
+public sealed record UpdateStatus(
+    string Current, string? Staged = null, string? Applied = null, string? RolledBack = null,
+    string? Health = null, string? Notes = null);
+
+public sealed record PathRequest(string Path);
+
 /// <summary>7.1–7.4: внешний API — адрес для программ на этом компьютере, порт, работает ли.</summary>
 public sealed record ApiState(string? Url, int Port, bool Running);
 
@@ -325,6 +332,8 @@ public sealed record UnloadResponse(bool Unloaded, EngineStatus Engine);
 [JsonSerializable(typeof(KeyRequest))]
 [JsonSerializable(typeof(ApiCheckRequest))]
 [JsonSerializable(typeof(ConnectionsInfo))]
+[JsonSerializable(typeof(UpdateStatus))]
+[JsonSerializable(typeof(PathRequest))]
 [JsonSerializable(typeof(NewKeyRequest))]
 [JsonSerializable(typeof(NewKeyResponse))]
 [JsonSerializable(typeof(RevokeRequest))]

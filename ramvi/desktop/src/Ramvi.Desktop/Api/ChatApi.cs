@@ -23,6 +23,13 @@ public interface IChatApi
 
     Task<ServiceStatus> StatusAsync(CancellationToken cancel = default);
 
+    /// <summary>8.3: состояние обновлений комплекта.</summary>
+    Task<UpdateStatus> UpdatesAsync(CancellationToken cancel = default) => throw new NotSupportedException();
+
+    /// <summary>8.3: подготовить обновление из файла (применит оболочка при перезапуске).</summary>
+    Task<UpdateStatus> StageUpdateAsync(string path, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
     /// <summary>7.2: клиенты внешнего API со счётчиками, адрес и очередь.</summary>
     Task<ConnectionsInfo> ConnectionsAsync(CancellationToken cancel = default) =>
         throw new NotSupportedException();
@@ -252,6 +259,12 @@ public sealed class ChatApiClient : IChatApi, IDisposable
 
     public Task<SettingsInfo> SettingsAsync(CancellationToken cancel = default) =>
         GetAsync("settings", ApiJson.Default.SettingsInfo, cancel);
+
+    public Task<UpdateStatus> UpdatesAsync(CancellationToken cancel = default) =>
+        GetAsync("updates", ApiJson.Default.UpdateStatus, cancel);
+
+    public Task<UpdateStatus> StageUpdateAsync(string path, CancellationToken cancel = default) =>
+        PostAsync("updates/stage", new PathRequest(path), ApiJson.Default.PathRequest, ApiJson.Default.UpdateStatus, cancel);
 
     public Task<ConnectionsInfo> ConnectionsAsync(CancellationToken cancel = default) =>
         GetAsync("connections", ApiJson.Default.ConnectionsInfo, cancel);

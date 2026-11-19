@@ -311,6 +311,21 @@ internal sealed class FakeChatApi : IChatApi
 
     public string? ModelsDirWarning { get; set; }
 
+    /// <summary>8.3: состояние обновлений; null — у сервиса нет обновлений (api.not_found).</summary>
+    public UpdateStatus? Update { get; set; }
+
+    public List<string> StagedPaths { get; } = [];
+
+    public Task<UpdateStatus> UpdatesAsync(CancellationToken cancel = default) =>
+        Update is { } update ? Task.FromResult(update) : Task.FromException<UpdateStatus>(new ApiException("api.not_found", null));
+
+    public Task<UpdateStatus> StageUpdateAsync(string path, CancellationToken cancel = default)
+    {
+        StagedPaths.Add(path);
+        Update = (Update ?? new UpdateStatus("0.8.0")) with { Staged = "0.9.0" };
+        return Task.FromResult(Update);
+    }
+
     private SettingsInfo Info(IReadOnlyList<string>? restart) =>
         new(AppSettings, new SettingsFolders("/app/" + AppSettings.DataDir, "/app/" + AppSettings.ModelsDir), "/app/data",
             ["ru", "en"], restart, ModelsDirWarning: ModelsDirWarning);

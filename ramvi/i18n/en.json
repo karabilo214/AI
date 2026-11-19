@@ -622,5 +622,13 @@
   "update.no_consent": "Online update checks are turned off in settings",
   "update.nothing_staged": "No update is prepared",
   "update.apply_failed": "The update failed ({detail}) — the previous version was restored",
-  "update.nothing_to_roll_back": "There is nothing to roll back"
+  "update.nothing_to_roll_back": "There is nothing to roll back",
+  "settings.updates": "Updates",
+  "settings.update_current": "Installed version {version}",
+  "settings.update_staged": "Update {version} is prepared (now {current}). It applies on restart",
+  "settings.update_applied": "Updated to version {version}",
+  "settings.update_rolled_back": "Update {version} did not start — version {current} was restored. Chats and models are untouched",
+  "settings.update_install": "Install from file…",
+  "settings.update_restart": "Restart and update",
+  "settings.update_note": "The package is checked against the RAMVI signature. Updates never touch chats, models or settings; if the new version does not start, the previous one comes back."
 }

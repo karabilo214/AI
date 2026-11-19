@@ -401,6 +401,18 @@
                         Command="{Binding Settings.OpenOnboardingCommand}" />
                 <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.onboarding_note}" />
 
+                <!-- 8.3: обновления из подписанного пакета; применяются при перезапуске, неудачное откатывается -->
+                <StackPanel Spacing="6" IsVisible="{Binding Settings.HasUpdates}">
+                  <TextBlock Classes="heading" Text="{l:T settings.updates}" />
+                  <TextBlock x:Name="UpdateText" TextWrapping="Wrap" Text="{Binding Settings.UpdateText}" />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="InstallUpdateButton" Content="{l:T settings.update_install}" Command="{Binding Settings.InstallUpdateCommand}" />
+                    <Button x:Name="RestartToUpdateButton" Classes="accent" Content="{l:T settings.update_restart}"
+                            Command="{Binding Settings.RestartToUpdateCommand}" />
+                  </StackPanel>
+                  <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.update_note}" />
+                </StackPanel>
+
                 <!-- 3.17: модель держится в памяти до выбора другой, выгрузки или выхода -->
                 <TextBlock Classes="heading" Text="{l:T settings.model}" />
                 <StackPanel Orientation="Horizontal" Spacing="10">

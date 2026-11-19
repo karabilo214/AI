@@ -322,3 +322,54 @@ def test_versions_and_cli(tmp_path: Path, app: Path, capsys: pytest.CaptureFixtu
     with pytest.raises(SystemExit):
         up.main(["apply", "--app-dir", str(app), "--data-dir", str(app / "data")])
     assert "update.nothing_staged" in capsys.readouterr().out
+
+
+def test_ui_routes_report_and_stage(tmp_path: Path, app: Path) -> None:
+    from ramvi_service.app import build
+    from test_chat import ENGINE, TOKEN, Client
+
+    server, engines = build(app / "data", TOKEN, engine_command=ENGINE, app_dir=app)
+    server.start()
+    try:
+        ui = Client(server.port)
+        assert ui.ok("GET", "/updates")["current"] == "0.8.0"
+        pkg = package(tmp_path, app)
+        status, error = ui.request("POST", "/updates/stage", {"path": str(pkg)})
+        assert status == 400 and error["error"]["code"] == "update.no_trusted_key"
+        server.updater.keys = (PUBLIC,)
+        staged = ui.ok("POST", "/updates/stage", {"path": str(pkg)})
+        assert staged["staged"] == "0.9.0" and staged["current"] == "0.8.0"
+        assert (app / "ramvi/service/core.py").read_text() == "old core"  # применит оболочка
+    finally:
+        server.close()
+        engines.stop()
+
+
+def test_cli_in_a_real_process(tmp_path: Path, app: Path) -> None:
+    """Так вызывает обновления оболочка: отдельный процесс, ответ — одна строка JSON."""
+    import subprocess
+
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join(str(ROOT / p) for p in ("service", "storage")),
+    }
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ramvi_service.updates",
+            "apply",
+            "--app-dir",
+            str(app),
+            "--data-dir",
+            str(app / "data"),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+    assert done.returncode == 2
+    assert (
+        json.loads(done.stdout.strip().splitlines()[-1])["error"]["code"] == "update.nothing_staged"
+    )
