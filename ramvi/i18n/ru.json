@@ -639,7 +639,7 @@
   "chat.stop_hint": "Остановить ответ (Esc)",
   "settings.close_hint": "Закрыть (Esc)",
   "storage.disk_full": "Нет места на диске: запись не сохранена, прежние данные целы. Освободите место на диске с папкой {path} и повторите.",
-  "character.preview_hint": "Предпросмотр персонажа. Эмоции можно менять во время движения. Подключение диалога с LLM — следующий шаг.",
+  "character.preview_hint": "Предпросмотр эмоций и движений персонажа.",
   "character.speech_hint": "Кивок и «нет»: 2×, остальное: 1×. Idle без моргания. Звук разговора и «нет» будет через TTS; сейчас озвучка не подключена.",
   "character.pack_error": "Не удалось открыть пакет персонажа. Остальные разделы продолжают работать.",
   "character.motion.idle": "Покой",
@@ -661,5 +661,13 @@
   "character.emotion.excited": "Восторг",
   "character.emotion.side_eye": "Косой взгляд",
   "engine.no_nvidia_driver": "Не найден драйвер NVIDIA. Для работы RAMVI нужна видеокарта NVIDIA и драйвер с поддержкой CUDA {detail} или новее. Установите драйвер GeForce с сайта NVIDIA: https://www.nvidia.com/drivers (CUDA Toolkit ставить не нужно)",
-  "engine.driver_cuda_old": "Драйвер NVIDIA поддерживает только CUDA {detail}, а для RAMVI нужна CUDA 13.2 или новее. Обновите драйвер GeForce с сайта NVIDIA: https://www.nvidia.com/drivers (CUDA Toolkit ставить не нужно)"
+  "engine.driver_cuda_old": "Драйвер NVIDIA поддерживает только CUDA {detail}, а для RAMVI нужна CUDA 13.2 или новее. Обновите драйвер GeForce с сайта NVIDIA: https://www.nvidia.com/drivers (CUDA Toolkit ставить не нужно)",
+  "character.request_error": "Не удалось выполнить запрос Character.",
+  "character.reply_error": "Ответ прерван из-за ошибки. Можно повторить запрос.",
+  "character.owner": "Вы",
+  "character.send": "Отправить",
+  "character.stop": "Стоп",
+  "character.input": "Напишите персонажу…",
+  "character.model": "Модель",
+  "character.profile": "Профиль"
 }

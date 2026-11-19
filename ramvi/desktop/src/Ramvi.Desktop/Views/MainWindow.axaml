@@ -110,7 +110,10 @@
     </Border>
 
     <Border x:Name="CharacterPanel" Grid.Column="1" Classes="card" Margin="8,4,16,16" IsVisible="{Binding Sections.IsCharacterSelected}">
-      <views:CharacterView DataContext="{Binding Sections.Current}"/>
+      <Grid ColumnDefinitions="2*,3*">
+       <views:CharacterView DataContext="{Binding Sections.Current}"/>
+       <views:CharacterDialogueView Grid.Column="1" DataContext="{Binding Character}"/>
+      </Grid>
     </Border>
 
     <!-- Диалог -->

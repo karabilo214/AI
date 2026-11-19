@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
@@ -49,6 +50,9 @@ public sealed class CharacterTests
     {
         Localizer.Current = Localizer.Load("ru");
         var api = new FakeChatApi();
+        api.ModuleHandler = (_, _, _) => Task.FromResult(JsonDocument.Parse("""
+            {"character":{"model":"model-a","draft":"","profile_id":"friendly"},"profiles":[{"id":"friendly","name":"Friendly"}],"history":[{"user":"Привет! Как идёт работа?","assistant":"Привет! Текстовый диалог готов к проверке."}],"job":null}
+            """).RootElement.Clone());
         api.Sections.Add(new SectionInfo("character", "section.character", "character", 30, "character", "character", "available", null));
         using var model = new MainViewModel(api);
         var window = new MainWindow { DataContext = model };

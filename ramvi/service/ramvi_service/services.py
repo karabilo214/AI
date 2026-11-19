@@ -304,6 +304,15 @@ class ScopedServices:
             self.llm.retain(self.owner)
         return self.llm, request, rights
 
+    @handler("llm.capabilities", permission="llm")
+    def _llm_capabilities(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from dataclasses import asdict
+
+        return {
+            "available": self.llm is not None,
+            "capabilities": asdict(self.llm.provider.capabilities) if self.llm else {},
+        }
+
     @handler("llm.complete", permission="llm", active=True)
     def _llm_complete(self, payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(payload.get("request"), dict) and payload["request"].get("stream"):

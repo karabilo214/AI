@@ -18,6 +18,9 @@ public sealed class ApiException(string code, IReadOnlyDictionary<string, JsonEl
 
 public interface IChatApi
 {
+    Task<JsonElement> ModuleCommandAsync(string section, string command, JsonElement body, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
     Task<JsonElement> AgentAsync(string path, JsonElement? body = null, CancellationToken cancel = default) =>
         throw new NotSupportedException();
 
@@ -349,6 +352,9 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     public Task<VoiceCheck> CheckVoiceApiAsync(string? url, string? model, CancellationToken cancel = default) =>
         PostAsync("voice/api/check", new ApiCheckRequest(url, model), ApiJson.Default.ApiCheckRequest,
             ApiJson.Default.VoiceCheck, cancel);
+
+    public Task<JsonElement> ModuleCommandAsync(string section, string command, JsonElement body, CancellationToken cancel = default) =>
+        PostAsync($"sections/{Id(section)}/commands/{Id(command)}", body, ApiJson.Default.JsonElement, ApiJson.Default.JsonElement, cancel);
 
     public Task<JsonElement> AgentAsync(string path, JsonElement? body = null, CancellationToken cancel = default) =>
         body is { } payload

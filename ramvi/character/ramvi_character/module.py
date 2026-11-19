@@ -1,9 +1,11 @@
 """Character lifecycle and text state; devices/providers are optional later adapters."""
 
 import copy
+import json
 from typing import Any
 
 from ramvi_character.context import Budget, ContextOrchestrator, text
+from ramvi_character.dialogue import Dialogue
 from ramvi_character.emotions import EmotionalState
 from ramvi_character.initiative import InitiativeGate
 from ramvi_character.pack import load_pack, presentation
@@ -15,6 +17,7 @@ class CharacterModule:
         self._personality = Personality()
         self._emotions = EmotionalState()
         self._initiative = InitiativeGate()
+        self._dialogue = Dialogue(self)
         self._scope = "uninitialized"
         self._task = ""
         self._state = "new"
@@ -52,6 +55,7 @@ class CharacterModule:
         self._initiative, self._task, self._scope = initiative, task, scope
         self._presentation = None
         self._pack = None
+        self._dialogue = Dialogue(self, context.get("services"))
         # Text activation does not import/load animation, STT, TTS or an LLM.
         self._state = "initialized"
         return self.status()
@@ -61,12 +65,14 @@ class CharacterModule:
         return self.status()
 
     def deactivate(self) -> None:
+        self._dialogue.cancel(wait=True)
         self._initiative.end()
         self._presentation = None
         self._pack = None
         self._state = "inactive"
 
     def suspend(self) -> None:
+        self._dialogue.cancel(wait=True)
         self._initiative.end()
         self._presentation = None
         self._pack = None
@@ -81,6 +87,7 @@ class CharacterModule:
         self._state = "disposed"
 
     def checkpoint(self) -> dict[str, Any]:
+        self._dialogue.cancel(wait=True)
         # No sound, animation queue or unfinished response resumes after a restart.
         return {
             "schema": "ramvi.character.state/3",
@@ -106,7 +113,7 @@ class CharacterModule:
             "task": self._task,
             "initiative": self._initiative.status(),
             "devices_open": False,
-            "provider_connected": False,
+            "provider_connected": self._dialogue.connected,
         }
 
     def _require_active(self) -> None:
@@ -115,6 +122,7 @@ class CharacterModule:
 
     def set_task(self, task: str) -> dict[str, Any]:
         self._require_active()
+        self._dialogue.cancel()
         self._task = text(task, 4096)
         return self.status()
 
@@ -170,6 +178,7 @@ class CharacterModule:
 
     def select_profile(self, profile_id: str, version: str | None = None) -> dict[str, Any]:
         self._require_active()
+        self._dialogue.cancel()
         self._personality.select(profile_id, version)
         return self.status()
 
@@ -180,12 +189,14 @@ class CharacterModule:
 
     def set_preferences(self, traits: dict[str, float]) -> dict[str, Any]:
         self._require_active()
+        self._dialogue.cancel()
         self._personality.preferences(traits)
         return self.status()
 
     def set_boundary(self, name: str, allowed: bool) -> dict[str, Any]:
         # This extension is for explicit owner controls, never an LLM tool.
         self._require_active()
+        self._dialogue.cancel()
         self._personality.boundary(name, allowed)
         return self.status()
 
@@ -198,6 +209,7 @@ class CharacterModule:
         certainty: float = 1,
     ) -> dict[str, Any]:
         self._require_active()
+        self._dialogue.cancel()
         self._emotions.react(
             event, strength=strength, relevance=relevance, novelty=novelty, certainty=certainty
         )
@@ -205,11 +217,13 @@ class CharacterModule:
 
     def appraise(self, changes: dict[str, float]) -> dict[str, Any]:
         self._require_active()
+        self._dialogue.cancel()
         self._emotions.influence(changes)
         return self.status()
 
     def add_emotion(self, definition: dict[str, Any]) -> dict[str, Any]:
         self._require_active()
+        self._dialogue.cancel()
         self._emotions.add(definition)
         return self.status()
 
@@ -220,8 +234,56 @@ class CharacterModule:
             raise ValueError("invalid character draft")
         if model is not None and (not isinstance(model, str) or not model or len(model) > 255):
             raise ValueError("invalid model selection")
+        if model != self._model:
+            self._dialogue.cancel()
         self._draft, self._model = draft, model
         return self.status()
+
+    def dialogue(
+        self, operation: str = "status", arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Declared UI command; expected owner errors do not crash the module worker."""
+        try:
+            self._require_active()
+            args = arguments or {}
+            if operation == "start":
+                model = args.get("model", self._model)
+                if not isinstance(model, str):
+                    raise ValueError("select a model")
+                self.configure("", model)
+                return self._dialogue.start(args["text"], model)
+            if operation == "cancel":
+                self._dialogue.cancel()
+            elif operation == "configure":
+                self.configure(args.get("draft", self._draft), args.get("model", self._model))
+            elif operation == "profile":
+                self.select_profile(args["id"])
+            elif operation == "boundary":
+                self.set_boundary(args["name"], args["allowed"])
+            elif operation not in {"status", "poll"}:
+                raise ValueError("unknown dialogue operation")
+            result = self._dialogue.view(args.get("response_id"), args.get("cursor", 0))
+            if operation == "poll":
+                return {"job": result["job"]}
+            result["character"] = {
+                "draft": self._draft,
+                "model": self._model,
+                "profile_id": self._personality.view()["base"]["id"],
+            }
+            result["profiles"] = [
+                {"id": p["id"], "name": p["name"]} for p in self.profiles()["profiles"]
+            ]
+            if result["job"]:
+                result["job"]["events"] = []
+                result["job"]["cursor"] = 0
+            # History and owner draft are separately bounded; keep one RPC below 64 KiB.
+            while (
+                len(json.dumps(result, ensure_ascii=False).encode()) > 60_000 and result["history"]
+            ):
+                result["history"].pop(0)
+            return result
+        except (ValueError, TypeError, KeyError, RuntimeError) as error:
+            return {"error": type(error).__name__, "code": "character.request_error"}
 
     def present(self, emotion: str, animation: str = "idle") -> dict[str, Any]:
         if self._state != "active":

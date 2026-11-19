@@ -25,10 +25,19 @@ class ProcessModuleWorker:
             str(service.parent.parent),
         ]
         if os.environ.get("PYTHONPATH"):
-            paths.append(os.environ["PYTHONPATH"])
+            paths.extend(os.environ["PYTHONPATH"].split(os.pathsep))
         env = {**os.environ, "PYTHONPATH": os.pathsep.join(paths), "PYTHONUTF8": "1"}
         self.process = ProcessSupervisor(
-            [sys.executable, "-P", "-m", "ramvi_service.modules.worker", entrypoint],
+            [
+                sys.executable,
+                "-P",
+                "-c",
+                "import sys,runpy; sys.path[:0]=sys.argv[2:]; "
+                "sys.argv=['ramvi_service.modules.worker',sys.argv[1]]; "
+                "runpy.run_module('ramvi_service.modules.worker',run_name='__main__')",
+                entrypoint,
+                *paths,
+            ],
             env=env,
             timeout=timeout,
         )

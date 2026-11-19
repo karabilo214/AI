@@ -141,7 +141,7 @@ class UIServer:
             texts = self.sections.texts() if self.sections is not None else {}
             return {"modules": texts}  # 3.14: переводы модулей; ядро — в каталоге оболочки
         if path == "/sections" or path.startswith("/sections/"):
-            return self._sections_route(method, path)
+            return self._sections_route(method, path, body)
         if path == "/settings":
             if self.config is None:
                 raise ChatError("api.not_found")
@@ -409,13 +409,18 @@ class UIServer:
             item["compat"] = self.fit.for_file(stored.path, item["id"], item["id"])
         return models
 
-    def _sections_route(self, method: str, path: str) -> Any:
+    def _sections_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
         """3.11: разделы интерфейса; модуль загружается при первом открытии раздела."""
         registry = self.sections
         if registry is None:
             raise ChatError("api.not_found")
         if method == "GET" and path == "/sections":
             return {"sections": registry.list()}
+        command = re.fullmatch(
+            r"/sections/([a-z][a-z0-9_]{0,63})/commands/([a-z][a-z0-9_]{0,63})", path
+        )
+        if method == "POST" and command:
+            return registry.command(command.group(1), command.group(2), body)
         match = re.fullmatch(r"/sections/([a-z][a-z0-9_]{0,63})/open", path)
         if method == "POST" and match:
             return {"section": registry.open(match.group(1))}

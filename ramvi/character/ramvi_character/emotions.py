@@ -53,6 +53,9 @@ class EmotionalState:
         if saved is not None:
             self._restore(saved)
 
+    def identifiers(self) -> list[str]:
+        return list(self._definitions)
+
     def add(self, value: dict[str, Any]) -> None:
         item = definition(value)
         if item["id"] in self._definitions or len(self._custom) >= 16:

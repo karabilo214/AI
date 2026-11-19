@@ -254,9 +254,13 @@ class ContextOrchestrator:
         scope: str,
         counter: Counter | None = None,
         memory_source: Callable[[str, int], list[dict[str, Any]]] | None = None,
+        system_prompt: str | None = None,
     ) -> None:
         self.scope, self.counter = text(scope, 255), counter or byte_counter()
         self._retrieve = memory_source
+        self.system_prompt = (
+            system_prompt if system_prompt is not None else SYSTEM + "\n" + ANALYSIS_FORMAT
+        )
         if not scope:
             raise ValueError("memory scope must be explicit")
 
@@ -277,7 +281,7 @@ class ContextOrchestrator:
             raise ValueError("task and current input must be explicit")
         revision = integer(personality["policy_revision"], 0, 1_000_000_000_000)
         sections = {
-            "system": SYSTEM + "\n" + ANALYSIS_FORMAT,
+            "system": self.system_prompt,
             "personality": encode(
                 {
                     "section": "personality",

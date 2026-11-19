@@ -197,3 +197,31 @@ def test_sections_over_http_and_chat_unaffected(tmp_path: Path) -> None:
         assert server.sections is not None
         server.sections.host.close()
         engines.stop()
+
+
+def test_ui_commands_are_explicit_allowlist_not_arbitrary_worker_methods(
+    registry: SectionRegistry,
+) -> None:
+    registry.discover(Path(__file__).resolve().parents[1] / "modules")
+    registry.open("character")
+    assert "character" in registry.command("character", "dialogue", {"operation": "status"})
+    for section, command in [
+        ("character", "configure"),
+        ("character", "dispose"),
+        ("chat", "dialogue"),
+        ("agent", "dialogue"),
+    ]:
+        with pytest.raises(ChatError):
+            registry.command(section, command, {})
+    assert registry.host.status("character")["character"]["state"] == "active"
+
+
+@pytest.mark.parametrize(
+    "commands", [["dispose"], ["_private"], ["dialogue/extra"], "dialogue", [True]]
+)
+def test_invalid_ui_command_declaration_rejected(registry: SectionRegistry, commands: Any) -> None:
+    item = manifest("example")
+    from dataclasses import replace
+
+    with pytest.raises(ValueError):
+        registry.install(replace(item, ui={**(item.ui or {}), "commands": commands}))

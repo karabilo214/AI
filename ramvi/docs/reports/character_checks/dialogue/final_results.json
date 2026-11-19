@@ -1,0 +1,261 @@
+[
+  {
+    "id": "solvable_control",
+    "runtime_sha256": "e347f08a4528c9ab3cf8615fc4bc060f635bb13e829b18ea42cd0eab2a1e4ebd",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "4",
+    "expected": "4",
+    "accepted": true,
+    "elapsed_s": 25.328,
+    "events": [
+      {
+        "response_id": "5aef823357894def8686df91369754b0",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "5aef823357894def8686df91369754b0",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "4",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "5aef823357894def8686df91369754b0",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "fresh_copy_0",
+    "runtime_sha256": "e347f08a4528c9ab3cf8615fc4bc060f635bb13e829b18ea42cd0eab2a1e4ebd",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "МАЯК-101903",
+    "expected": "МАЯК-101903",
+    "accepted": true,
+    "elapsed_s": 7.0,
+    "events": [
+      {
+        "response_id": "fd2e47a540a14b5ea28ff15b052be37f",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "fd2e47a540a14b5ea28ff15b052be37f",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "МАЯК-101903",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "fd2e47a540a14b5ea28ff15b052be37f",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "fresh_copy_1",
+    "runtime_sha256": "e347f08a4528c9ab3cf8615fc4bc060f635bb13e829b18ea42cd0eab2a1e4ebd",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "МАЯК-102234",
+    "expected": "МАЯК-102234",
+    "accepted": true,
+    "elapsed_s": 7.641,
+    "events": [
+      {
+        "response_id": "2b630137efef4827a672022e056c98b9",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "2b630137efef4827a672022e056c98b9",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "МАЯК-102234",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "2b630137efef4827a672022e056c98b9",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "fresh_copy_2",
+    "runtime_sha256": "e347f08a4528c9ab3cf8615fc4bc060f635bb13e829b18ea42cd0eab2a1e4ebd",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "МАЯК-102565",
+    "expected": "МАЯК-102565",
+    "accepted": true,
+    "elapsed_s": 8.391,
+    "events": [
+      {
+        "response_id": "45c8cf84e68c49cfb483d86c121f7231",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "45c8cf84e68c49cfb483d86c121f7231",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "МАЯК-102565",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "45c8cf84e68c49cfb483d86c121f7231",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "remember",
+    "runtime_sha256": "e347f08a4528c9ab3cf8615fc4bc060f635bb13e829b18ea42cd0eab2a1e4ebd",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "ЛИСТ-731",
+    "expected": "ЛИСТ-731",
+    "accepted": true,
+    "elapsed_s": 9.125,
+    "events": [
+      {
+        "response_id": "0e975fbc90c345b889ac3f9263edc719",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "0e975fbc90c345b889ac3f9263edc719",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "ЛИСТ-731",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "0e975fbc90c345b889ac3f9263edc719",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "different_model_remembers",
+    "runtime_sha256": "e347f08a4528c9ab3cf8615fc4bc060f635bb13e829b18ea42cd0eab2a1e4ebd",
+    "model": "qwen3:14b",
+    "state": "completed",
+    "fallback": false,
+    "text": "ЛИСТ-731",
+    "expected": "ЛИСТ-731",
+    "accepted": true,
+    "elapsed_s": 81.047,
+    "events": [
+      {
+        "response_id": "fac49193014f423ca9d81a3c2892b815",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "fac49193014f423ca9d81a3c2892b815",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "ЛИСТ-731",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "fac49193014f423ca9d81a3c2892b815",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "switch_back",
+    "runtime_sha256": "e347f08a4528c9ab3cf8615fc4bc060f635bb13e829b18ea42cd0eab2a1e4ebd",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "ВЕТЕР-900731",
+    "expected": "ВЕТЕР-900731",
+    "accepted": true,
+    "elapsed_s": 31.609,
+    "events": [
+      {
+        "response_id": "dbb98462b1e74c128689cd7f3e83de65",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "dbb98462b1e74c128689cd7f3e83de65",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "ВЕТЕР-900731",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "dbb98462b1e74c128689cd7f3e83de65",
+        "memory_candidates": []
+      }
+    ]
+  }
+]

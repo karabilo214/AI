@@ -1,6 +1,6 @@
 {
   "module_id": "character",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "entrypoint": "ramvi_character.module:create",
   "ui": {
     "section": {
@@ -8,6 +8,13 @@
       "title_key": "section.character",
       "icon": "character",
       "order": 30
-    }
-  }
+    },
+    "commands": [
+      "dialogue"
+    ]
+  },
+  "permissions": [
+    "data",
+    "llm"
+  ]
 }

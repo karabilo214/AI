@@ -113,6 +113,7 @@ class SectionRegistry:
     def __init__(self, host: ModuleHost) -> None:
         self.host = host
         self._sections: dict[str, Section] = {s.id: s for s in CORE}
+        self._commands: dict[str, tuple[str, ...]] = {}
         self.problems: list[dict[str, str]] = []  # модули, которые не удалось установить
         self._texts: dict[str, dict[str, dict[str, str]]] = {}  # модуль -> язык -> ключ -> текст
 
@@ -125,6 +126,27 @@ class SectionRegistry:
         """Зарегистрировать модуль в Host (с его SQL-миграциями, 3.12, и переводами, 3.14);
         процесс не запускается."""
         section = section_of(manifest)
+        commands = (manifest.ui or {}).get("commands", [])
+        forbidden = {
+            "initialize",
+            "activate",
+            "deactivate",
+            "suspend",
+            "resume",
+            "dispose",
+            "checkpoint",
+        }
+        if (
+            not isinstance(commands, list)
+            or len(commands) > 16
+            or any(
+                not isinstance(c, str)
+                or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", c)
+                or c in forbidden
+                for c in commands
+            )
+        ):
+            raise ValueError("invalid ui.commands")
         if section is not None and section.id in self._sections:
             raise ValueError(f"section {section.id} already exists")
         if texts:
@@ -132,9 +154,20 @@ class SectionRegistry:
         self.host.register(manifest, approved_permissions=manifest.permissions, sql_migrations=sql)
         if section is not None:
             self._sections[section.id] = section
+            self._commands[section.id] = tuple(commands)
         if texts:
             self._texts[manifest.module_id] = texts
         return section
+
+    def command(self, section_id: str, command: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        section = self._sections.get(section_id)
+        if (
+            section is None
+            or section.module_id is None
+            or command not in self._commands.get(section_id, ())
+        ):
+            raise ChatError("api.not_found")
+        return self.host.invoke(section.module_id, command, arguments)
 
     def texts(self) -> dict[str, dict[str, str]]:
         """Переводы установленных модулей: язык -> ключ -> текст."""
@@ -173,6 +206,7 @@ class SectionRegistry:
         """Убрать раздел удалённого модуля."""
         self._sections = {k: v for k, v in self._sections.items() if v.module_id != module_id}
         self._texts.pop(module_id, None)
+        self._commands.pop(module_id, None)
 
     def list(self) -> list[dict[str, Any]]:
         sections = sorted(self._sections.values(), key=lambda s: (s.order, s.id))

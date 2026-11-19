@@ -1,0 +1,19 @@
+{
+  "cancelled": {
+    "id": "3a77f55d40634ed49060201bd274933b",
+    "state": "cancelled",
+    "error": null,
+    "fallback": false,
+    "events": [],
+    "cursor": 0
+  },
+  "restored": {
+    "draft": "",
+    "model": "qwen3:8b",
+    "profile_id": "friendly"
+  },
+  "model": "qwen3:8b",
+  "devices_open": false,
+  "presentation": null,
+  "teasing": false
+}

@@ -639,7 +639,7 @@
   "chat.stop_hint": "Stop the answer (Esc)",
   "settings.close_hint": "Close (Esc)",
   "storage.disk_full": "The disk is full: nothing was saved, earlier data is intact. Free up space on the disk with the folder {path} and try again.",
-  "character.preview_hint": "Character preview. Emotions can change during movement. LLM dialogue integration is the next step.",
+  "character.preview_hint": "Preview the character’s expressions and gestures.",
   "character.speech_hint": "Nod and no: 2×, all others: 1×. Idle has no blinking. Talk and no will use TTS; speech is not connected yet.",
   "character.pack_error": "Could not open the character pack. Other sections remain available.",
   "character.motion.idle": "Idle",
@@ -661,5 +661,13 @@
   "character.emotion.excited": "Excited",
   "character.emotion.side_eye": "Side eye",
   "engine.no_nvidia_driver": "No NVIDIA driver found. RAMVI needs an NVIDIA GPU and a driver that supports CUDA {detail} or newer. Install the GeForce driver from NVIDIA: https://www.nvidia.com/drivers (no CUDA Toolkit needed)",
-  "engine.driver_cuda_old": "The NVIDIA driver supports only CUDA {detail}, but RAMVI needs CUDA 13.2 or newer. Update the GeForce driver from NVIDIA: https://www.nvidia.com/drivers (no CUDA Toolkit needed)"
+  "engine.driver_cuda_old": "The NVIDIA driver supports only CUDA {detail}, but RAMVI needs CUDA 13.2 or newer. Update the GeForce driver from NVIDIA: https://www.nvidia.com/drivers (no CUDA Toolkit needed)",
+  "character.request_error": "Character request failed.",
+  "character.reply_error": "The reply stopped because of an error. You can try again.",
+  "character.owner": "You",
+  "character.send": "Send",
+  "character.stop": "Stop",
+  "character.input": "Write to the character…",
+  "character.model": "Model",
+  "character.profile": "Profile"
 }

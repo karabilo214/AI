@@ -1,0 +1,362 @@
+[
+  {
+    "id": "solvable_control",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "4",
+    "expected": "4",
+    "accepted": true,
+    "elapsed_s": 29.844,
+    "events": [
+      {
+        "response_id": "3e445ef12d9d440a91f20d46b2c438c5",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "3e445ef12d9d440a91f20d46b2c438c5",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "4",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "3e445ef12d9d440a91f20d46b2c438c5",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "fresh_sum_0",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "180015",
+    "expected": "800056",
+    "accepted": false,
+    "elapsed_s": 7.157,
+    "events": [
+      {
+        "response_id": "45834f172d5b42e4a1a2ae565f74874a",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "45834f172d5b42e4a1a2ae565f74874a",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "180015",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "45834f172d5b42e4a1a2ae565f74874a",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "fresh_sum_1",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "800422",
+    "expected": "800422",
+    "accepted": true,
+    "elapsed_s": 7.922,
+    "events": [
+      {
+        "response_id": "b6280e670db44bc5b4767c8f2d52051b",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "b6280e670db44bc5b4767c8f2d52051b",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "800422",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "b6280e670db44bc5b4767c8f2d52051b",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "fresh_sum_2",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "800788",
+    "expected": "800788",
+    "accepted": true,
+    "elapsed_s": 8.844,
+    "events": [
+      {
+        "response_id": "790bc5a404864cedb7a657acc4e729be",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "790bc5a404864cedb7a657acc4e729be",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "800788",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "790bc5a404864cedb7a657acc4e729be",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "fresh_copy_0",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "МАЯК-100129",
+    "expected": "МАЯК-100129",
+    "accepted": true,
+    "elapsed_s": 9.422,
+    "events": [
+      {
+        "response_id": "278843db4778480f80cd64022a7fbeb8",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "278843db4778480f80cd64022a7fbeb8",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "МАЯК-100129",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "278843db4778480f80cd64022a7fbeb8",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "fresh_copy_1",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "МАЯК-100356",
+    "expected": "МАЯК-100356",
+    "accepted": true,
+    "elapsed_s": 10.25,
+    "events": [
+      {
+        "response_id": "b5924790ac964167bd59eb9da9419ea6",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "b5924790ac964167bd59eb9da9419ea6",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "МАЯК-100356",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "b5924790ac964167bd59eb9da9419ea6",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "fresh_copy_2",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "МАЯК-100583",
+    "expected": "МАЯК-100583",
+    "accepted": true,
+    "elapsed_s": 10.922,
+    "events": [
+      {
+        "response_id": "26a0680561144eb3a3d381d088c9de2b",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "26a0680561144eb3a3d381d088c9de2b",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "МАЯК-100583",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "26a0680561144eb3a3d381d088c9de2b",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "remember",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "ЛИСТ-731",
+    "expected": "ЛИСТ-731",
+    "accepted": true,
+    "elapsed_s": 11.75,
+    "events": [
+      {
+        "response_id": "923bde75a3af46fdabd4e967decaa0f2",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "923bde75a3af46fdabd4e967decaa0f2",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "ЛИСТ-731",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "923bde75a3af46fdabd4e967decaa0f2",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "different_model_remembers",
+    "model": "qwen3:14b",
+    "state": "completed",
+    "fallback": false,
+    "text": "ЛИСТ-731",
+    "expected": "ЛИСТ-731",
+    "accepted": true,
+    "elapsed_s": 94.75,
+    "events": [
+      {
+        "response_id": "aad1efbc17cc4e3f97c24aa269248845",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "aad1efbc17cc4e3f97c24aa269248845",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "ЛИСТ-731",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "aad1efbc17cc4e3f97c24aa269248845",
+        "memory_candidates": []
+      }
+    ]
+  },
+  {
+    "id": "switch_back",
+    "model": "qwen3:8b",
+    "state": "completed",
+    "fallback": false,
+    "text": "800614",
+    "expected": "800614",
+    "accepted": true,
+    "elapsed_s": 37.344,
+    "events": [
+      {
+        "response_id": "a54d29636656428fa150b247aaac4f9d",
+        "type": "start",
+        "schema": "ramvi.character.response/1",
+        "intent": "answer",
+        "emotion": "neutral",
+        "intensity": 0.2
+      },
+      {
+        "response_id": "a54d29636656428fa150b247aaac4f9d",
+        "type": "segment",
+        "id": "s1",
+        "seq": 1,
+        "text": "800614",
+        "emotion": "neutral",
+        "intensity": 0.2,
+        "voice_style": "neutral",
+        "animation": "none"
+      },
+      {
+        "type": "end",
+        "response_id": "a54d29636656428fa150b247aaac4f9d",
+        "memory_candidates": []
+      }
+    ]
+  }
+]

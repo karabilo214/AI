@@ -70,7 +70,8 @@ public sealed class SectionsViewModel : ObservableObject
     private ModuleSectionViewModel? _current;
 
     private readonly Func<Task>? _openAgent;
-    public SectionsViewModel(Func<IChatApi> api, Func<Task>? openAgent = null) { _api = api; _openAgent = openAgent; }
+    private readonly Func<Task>? _openCharacter;
+    public SectionsViewModel(Func<IChatApi> api, Func<Task>? openAgent = null, Func<Task>? openCharacter = null) { _api = api; _openAgent = openAgent; _openCharacter = openCharacter; }
 
     public ObservableCollection<SectionItem> Items { get; } = [];
 
@@ -159,6 +160,7 @@ public sealed class SectionsViewModel : ObservableObject
 
         view.Refresh();
         if (item.View == "agent" && _openAgent is not null) await _openAgent().ConfigureAwait(true);
+        if (item.View == "character" && item.Info.State == "active" && _openCharacter is not null) await _openCharacter().ConfigureAwait(true);
     }
 
     public override void Relocalize()

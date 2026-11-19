@@ -75,7 +75,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _connect = connect;
         _loadPoll = loadPoll ?? TimeSpan.FromMilliseconds(300);
         Agent = new AgentViewModel(() => _api, pickFolder ?? (_ => Task.FromResult<string?>(null)), Models, pickFiles);
-        Sections = new SectionsViewModel(() => _api, Agent.LoadAsync);
+        Character = new CharacterViewModel(() => _api, Models);
+        Sections = new SectionsViewModel(() => _api, Agent.LoadAsync, Character.LoadAsync);
         ModelsScreen = new ModelsViewModel(() => _api, ReloadModelListAsync);
         _pickFolder = pickFolder;
         _chooseDataDir = chooseDataDir;
@@ -157,7 +158,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private IChatApi _api => _connected ?? throw new InvalidOperationException("the service is not connected");
 
-    public void Dispose() { _streamCancel?.Cancel(); Agent.Dispose(); }
+    public void Dispose() { _streamCancel?.Cancel(); Agent.Dispose(); Character.Dispose(); }
 
     public ObservableCollection<ChatItemViewModel> Chats { get; } = [];
 
@@ -208,6 +209,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Экран настроек (3.7).</summary>
     public SettingsViewModel Settings { get; }
     public AgentViewModel Agent { get; }
+    public CharacterViewModel Character { get; }
 
     /// <summary>5.2: кнопка микрофона у поля ввода.</summary>
     public VoiceViewModel Voice { get; }
