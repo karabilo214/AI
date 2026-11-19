@@ -15,6 +15,7 @@ from ramvi_storage.migrations import Migration
 
 from ramvi_service.context import ContextProvider, GrantStore
 from ramvi_service.contracts.modules import Authority, Manifest, Owner
+from ramvi_service.contracts.speech import SPEAKER
 from ramvi_service.contracts.voice import MICROPHONE
 from ramvi_service.events import EventBus
 from ramvi_service.module_data import DB_FILE, ModuleDatabase, export_namespace
@@ -83,8 +84,11 @@ class ModuleHost:
         )
         if agent is not None and agent.grants is not self.grants:
             raise ValueError("Agent uses a different GrantStore")
-        self.resources = ResourceBroker(self.authority, capacity or {"cpu_slots": 1, MICROPHONE: 1})
+        self.resources = ResourceBroker(
+            self.authority, capacity or {"cpu_slots": 1, MICROPHONE: 1, SPEAKER: 1}
+        )
         self.agent = agent
+        self.speech: Any = None
         self.voice: Any = None  # 5.6: VoiceService, подключает app.build
         self.events = EventBus(self.authority)
         self.llm, self.context = llm, context
@@ -270,6 +274,7 @@ class ModuleHost:
             timeout=self.timeout,
             database=entry.database,
             voice=self.voice,
+            speech=self.speech,
             agent=self.agent,
         )
         entry.owner, entry.services = owner, scope

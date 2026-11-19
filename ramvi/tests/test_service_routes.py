@@ -45,6 +45,12 @@ METHODS = {
     "agent.events",
     "agent.cancel",
     "agent.forget",
+    "speech.catalog",
+    "speech.configure",
+    "speech.key",
+    "speech.start",
+    "speech.status",
+    "speech.cancel",
     "voice.capabilities",
     "voice.listen.start",
     "voice.listen.stop",
@@ -146,3 +152,22 @@ def test_registration_requires_permission_and_unique_name(
         handler("x.y", permission="")
     with pytest.raises(ValueError, match="already registered"):
         handler("settings.get", permission="settings")(lambda _scope, _payload: {})
+
+
+def test_stop_denies_new_speech_before_releasing_and_releases_after_inflight(
+    tmp_path: Path,
+) -> None:
+    services_scope, grants = scope(tmp_path)
+    grants.allow(services_scope.owner, "speech")
+    calls = []
+
+    class Speech:
+        def release(self, owner: Any) -> None:
+            assert not services_scope.active
+            with pytest.raises(PermissionError, match="scope stopped"):
+                services_scope.call("speech.start", {})
+            calls.append(owner)
+
+    services_scope.speech = Speech()
+    services_scope.stop()
+    assert calls == [services_scope.owner, services_scope.owner]

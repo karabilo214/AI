@@ -126,7 +126,8 @@ def build(
         db, llm, default_model=lambda: engines.model_id or onboarding.default_model()
     )
     control = ModelControl(engines, llm, chat.stop_all)
-    host = ModuleHost(data_dir, llm=llm)
+    shared_secrets = (voice_options or {}).get("secrets") or os_secrets(data_dir)
+    host = ModuleHost(data_dir, llm=llm, secrets=shared_secrets)
     host.agent = AgentGateway(host.authority, host.grants)
     host.context = ContextProvider(host.authority, host.grants, SystemContextAdapter())
     sections = SectionRegistry(host)
@@ -209,9 +210,12 @@ def build(
         resources=host.resources,
         owner=voice_owner,
         # 5.7: ключ стороннего API — в хранилище ОС (в проверках подставляется своё)
-        **{"secrets": os_secrets(data_dir), **(voice_options or {})},
+        **{"secrets": shared_secrets, **(voice_options or {})},
     )
     host.voice = server.voice
+    from ramvi_service.speech.service import SpeechService
+
+    host.speech = SpeechService(host.resources, server.voice)
     server.agent_ui = AgentDesktop(
         data_dir,
         AgentRuns(db),
@@ -252,6 +256,7 @@ def build(
     server.on_close.append(host.agent.close)
     server.on_close.append(host.close)
     server.on_close.append(server.agent_ui.close)
+    server.on_close.append(host.speech.close)
     server.on_close.append(server.voice.close)  # первым: запись и процесс распознавания
     return server, engines
 

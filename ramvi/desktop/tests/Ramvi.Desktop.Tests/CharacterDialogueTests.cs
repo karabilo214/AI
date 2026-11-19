@@ -21,7 +21,7 @@ public sealed class CharacterDialogueTests
         api.ModuleHandler = (section, command, body) =>
         {
             Assert.Equal("character", section);
-            if (command == "voice") return Task.FromResult(Json("{\"available\":false}"));
+            if (command is "voice" or "speech") return Task.FromResult(Json("{\"available\":false}"));
             Assert.Equal("dialogue", command);
             var operation = body.GetProperty("operation").GetString()!; calls.Add(operation);
             return Task.FromResult(operation switch

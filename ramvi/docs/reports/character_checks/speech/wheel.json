@@ -1,0 +1,8 @@
+{
+  "outside_checkout": true,
+  "source_is_installed": true,
+  "catalog_schema": "ramvi.speech.providers/1",
+  "ps1_bundled": true,
+  "voices": 128,
+  "audio_bytes": 63904
+}

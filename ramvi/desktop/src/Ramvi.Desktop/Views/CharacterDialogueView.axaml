@@ -16,6 +16,27 @@
     <ScrollViewer IsVisible="{Binding HasPartial}" MaxHeight="72"><TextBlock Text="{Binding Partial}" TextWrapping="Wrap" Classes="muted"/></ScrollViewer>
     <TextBlock IsVisible="{Binding HasError}" Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
    </StackPanel>
+   <Expander x:Name="SpeechSettings" Header="{l:T character.speech_title}" DataContext="{Binding Speech}" x:DataType="vm:CharacterSpeechViewModel" HorizontalAlignment="Stretch">
+    <ScrollViewer MaxHeight="250">
+     <StackPanel Spacing="8" Margin="0,8,0,0">
+      <CheckBox Content="{l:T character.speech_enable}" IsChecked="{Binding Enabled}"/>
+      <TextBlock Text="{l:T character.speech_ai}" Classes="muted" TextWrapping="Wrap"/>
+      <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding Provider}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:SpeechProvider"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+      <ComboBox ItemsSource="{Binding Voices}" SelectedItem="{Binding Voice}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:SpeechVoice"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+      <StackPanel IsVisible="{Binding IsExternal}" Spacing="8">
+       <CheckBox Content="{l:T character.speech_remote}" IsChecked="{Binding RemoteText}"/>
+       <TextBox Text="{Binding Key}" PasswordChar="●" PlaceholderText="{l:T character.speech_key}"/>
+       <Button Content="{l:T character.speech_save_key}" Command="{Binding KeyCommand}"/>
+      </StackPanel>
+      <TextBlock Text="{Binding Price}" TextWrapping="Wrap" Classes="muted"/>
+      <SelectableTextBlock Text="{Binding Source}" TextWrapping="Wrap" Classes="muted"/>
+      <WrapPanel><Button Content="{l:T character.speech_save}" Command="{Binding SaveCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.speech_preview}" Command="{Binding PreviewCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.stop}" Command="{Binding StopCommand}" Margin="0,0,8,8"/></WrapPanel>
+      <TextBlock Text="{Binding Status}" TextWrapping="Wrap"/>
+      <TextBlock Text="{Binding Fallback}" TextWrapping="Wrap" Classes="muted"/>
+      <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
+     </StackPanel>
+    </ScrollViewer>
+   </Expander>
   </StackPanel>
   <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8">
    <TextBox Text="{Binding Draft}" PlaceholderText="{l:T character.input}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" MaxHeight="180"/>

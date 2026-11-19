@@ -85,6 +85,7 @@ class Dialogue:
             return result
 
     def cancel(self, wait: bool = False) -> None:
+        self.owner._speech.cancel()
         with self.lock:
             self.cancelled.set()
             stream_id = self.stream_id
@@ -110,6 +111,7 @@ class Dialogue:
                 raise RuntimeError("previous response is still stopping")
             self.cancelled = threading.Event()
             identifier = uuid.uuid4().hex
+            self.owner._speech.begin(identifier)
             self.job = {
                 "id": identifier,
                 "state": "running",
@@ -148,6 +150,8 @@ class Dialogue:
             for record in records:
                 if record["type"] != "end":
                     self.job["events"].append({"response_id": identifier, **record})
+                    if record["type"] == "segment":
+                        self.owner._speech.offer(identifier, record)
 
     def _request(self, request: dict[str, Any], streaming: bool) -> Iterator[str]:
         if not streaming:

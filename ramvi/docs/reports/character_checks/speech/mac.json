@@ -1,0 +1,94 @@
+{
+  "voice_count": 128,
+  "synthesis": [
+    {
+      "voice": "Milena",
+      "sha256": "0274c28ea1172a3c4fdc1f3099f06bd1ea3cb7953bd6c13777f917d419a5887a",
+      "non_silent": true,
+      "rate": 16000,
+      "audio_seconds": 4.064
+    },
+    {
+      "voice": "Samantha",
+      "sha256": "e03a9aad0b3ac66cdb1d4666aaeaac91d04d54b0af7a8e43fd052d4326b0f4f6",
+      "non_silent": true,
+      "rate": 16000,
+      "audio_seconds": 3.622
+    },
+    {
+      "voice": "Milena",
+      "sha256": "6d20ae249e55ed9a3fb4f7be4edc28461366a4b0382c866dd57cf55e75d47b08",
+      "non_silent": true,
+      "rate": 16000,
+      "audio_seconds": 2.601
+    }
+  ],
+  "playback": {
+    "id": "d288a07d0ccf450cb82b8e95b48dbc0d",
+    "state": "completed",
+    "response_id": "preview",
+    "segment_id": "preview",
+    "error": null,
+    "metadata": {
+      "provider": "system",
+      "model": "os-installed",
+      "voice": "Milena",
+      "requested_emotion": "joy",
+      "emotion_control": "provider_default",
+      "fallback": true,
+      "streaming": false,
+      "timing": "none",
+      "pricing": {
+        "kind": "no_api_fee",
+        "source": "os-installed",
+        "checked_on": "2026-11-19"
+      },
+      "alignment": null
+    },
+    "bytes": 54986,
+    "rate": 16000,
+    "submitted_audio_s": 1.7183125,
+    "settled": true
+  },
+  "cancellation": [
+    {
+      "state": "cancelled",
+      "settled": true
+    },
+    {
+      "state": "cancelled",
+      "settled": true
+    },
+    {
+      "state": "cancelled",
+      "settled": true
+    }
+  ],
+  "playback_cancel": {
+    "id": "ce181248a5fa4f068dc5f8ed0dd0009a",
+    "state": "cancelled",
+    "response_id": "preview",
+    "segment_id": "preview",
+    "error": null,
+    "metadata": {
+      "provider": "system",
+      "model": "os-installed",
+      "voice": "Milena",
+      "requested_emotion": "neutral",
+      "emotion_control": "provider_default",
+      "fallback": false,
+      "streaming": false,
+      "timing": "none",
+      "pricing": {
+        "kind": "no_api_fee",
+        "source": "os-installed",
+        "checked_on": "2026-11-19"
+      }
+    },
+    "bytes": 16384,
+    "rate": 16000,
+    "submitted_audio_s": 0.0,
+    "settled": true
+  },
+  "leases": 0
+}

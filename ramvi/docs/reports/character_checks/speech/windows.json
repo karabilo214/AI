@@ -1,0 +1,89 @@
+{
+  "voices": [
+    {
+      "name": "Microsoft Irina Desktop",
+      "id": "Microsoft Irina Desktop",
+      "languages": [
+        "ru"
+      ]
+    },
+    {
+      "name": "Microsoft Zira Desktop",
+      "id": "Microsoft Zira Desktop",
+      "languages": [
+        "en"
+      ]
+    }
+  ],
+  "synthesis": [
+    {
+      "voice": "Microsoft Irina Desktop",
+      "rate": 16000,
+      "audio_seconds": 5.455
+    },
+    {
+      "voice": "Microsoft Zira Desktop",
+      "rate": 16000,
+      "audio_seconds": 5.71
+    },
+    {
+      "voice": "Microsoft Irina Desktop",
+      "rate": 16000,
+      "audio_seconds": 4.005
+    }
+  ],
+  "playback": {
+    "id": "06a4e384c2a748a580c8b909fce02e63",
+    "state": "completed",
+    "response_id": "preview",
+    "segment_id": "preview",
+    "error": null,
+    "metadata": {
+      "provider": "system",
+      "model": "os-installed",
+      "voice": "Microsoft Irina Desktop",
+      "requested_emotion": "joy",
+      "emotion_control": "provider_default",
+      "fallback": true,
+      "streaming": false,
+      "timing": "none",
+      "pricing": {
+        "kind": "no_api_fee",
+        "source": "os-installed",
+        "checked_on": "2026-11-19"
+      },
+      "alignment": null
+    },
+    "bytes": 93600,
+    "rate": 16000,
+    "submitted_audio_s": 2.925,
+    "settled": true
+  },
+  "cancel": {
+    "id": "185efc849d11414b8549e7ed64fc4db9",
+    "state": "cancelled",
+    "response_id": "preview",
+    "segment_id": "preview",
+    "error": null,
+    "metadata": {
+      "provider": "system",
+      "model": "os-installed",
+      "voice": "Microsoft Irina Desktop",
+      "requested_emotion": "neutral",
+      "emotion_control": "provider_default",
+      "fallback": false,
+      "streaming": false,
+      "timing": "none",
+      "pricing": {
+        "kind": "no_api_fee",
+        "source": "os-installed",
+        "checked_on": "2026-11-19"
+      }
+    },
+    "bytes": 0,
+    "rate": null,
+    "submitted_audio_s": 0.0,
+    "settled": true
+  },
+  "leases": 0
+}

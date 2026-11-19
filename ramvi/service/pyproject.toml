@@ -19,4 +19,4 @@ include = ["ramvi_service*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-ramvi_service = ["voice/assets/*"]
+ramvi_service = ["voice/assets/*", "speech/*.ps1", "speech/*.json"]

@@ -1,0 +1,144 @@
+{
+  "schema": "ramvi.speech.providers/1",
+  "checked_on": "2026-11-19",
+  "providers": [
+    {
+      "id": "system",
+      "name": "System",
+      "model": "os-installed",
+      "external": false,
+      "languages": [
+        "installed_voices"
+      ],
+      "emotion_control": "none",
+      "streaming": false,
+      "timecodes": "none",
+      "cancel": "owned_process_tree",
+      "voices": [],
+      "pricing": {
+        "kind": "no_api_fee",
+        "source": "os-installed",
+        "checked_on": "2026-11-19"
+      }
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "external": true,
+      "languages": [
+        "ru",
+        "en",
+        "auto"
+      ],
+      "emotion_control": "prompt",
+      "streaming": true,
+      "timecodes": "none",
+      "cancel": "connection_close",
+      "voices": [
+        "alloy",
+        "ash",
+        "ballad",
+        "coral",
+        "echo",
+        "fable",
+        "nova",
+        "onyx",
+        "sage",
+        "shimmer",
+        "verse",
+        "marin",
+        "cedar"
+      ],
+      "pricing": {
+        "kind": "published_not_invoice",
+        "currency": "USD",
+        "text_input_per_million_tokens": 0.6,
+        "audio_output_per_million_tokens": 12,
+        "source": "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts",
+        "checked_on": "2026-11-19"
+      }
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "model": "gemini-3.8-flash-tts",
+      "external": true,
+      "languages": [
+        "ru",
+        "en",
+        "auto"
+      ],
+      "emotion_control": "prompt",
+      "streaming": false,
+      "timecodes": "none",
+      "cancel": "connection_close",
+      "voices": [
+        "Zephyr",
+        "Puck",
+        "Charon",
+        "Kore",
+        "Fenrir",
+        "Leda",
+        "Orus",
+        "Aoede",
+        "Callirrhoe",
+        "Autonoe",
+        "Enceladus",
+        "Iapetus",
+        "Umbriel",
+        "Algieba",
+        "Despina",
+        "Erinome",
+        "Algenib",
+        "Rasalgethi",
+        "Laomedeia",
+        "Achernar",
+        "Alnilam",
+        "Schedar",
+        "Gacrux",
+        "Pulcherrima",
+        "Achird",
+        "Zubenelgenubi",
+        "Vindemiatrix",
+        "Sadachbia",
+        "Sadaltager",
+        "Sulafat"
+      ],
+      "pricing": {
+        "kind": "published_not_invoice",
+        "currency": "USD",
+        "text_input_per_million_tokens": 0.5,
+        "audio_output_per_million_tokens": 9,
+        "valid_through": "2026-12-31",
+        "source": "https://aistudio.google.com/docs/pricing#gemini-3.8-flash-tts",
+        "checked_on": "2026-11-19"
+      }
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "model": "eleven_multilingual_v2",
+      "external": true,
+      "languages": [
+        "ru",
+        "en",
+        "auto"
+      ],
+      "emotion_control": "none",
+      "streaming": false,
+      "timecodes": "characters",
+      "cancel": "connection_close",
+      "voices": [
+        "JBFqnCBsd6RMkjVDRZzb"
+      ],
+      "pricing": {
+        "kind": "plan_dependent",
+        "currency": "USD",
+        "published_from_per_1000_characters": 0.08,
+        "source": "https://elevenlabs.io/pricing/api",
+        "checked_on": "2026-11-19"
+      }
+    }
+  ]
+}

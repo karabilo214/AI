@@ -105,9 +105,11 @@ class ScopedServices:
         timeout: float = 30,
         database: Any = None,
         voice: Any = None,
+        speech: Any = None,
         agent: Any = None,
     ) -> None:
         self.agent = agent  # 6.10: общий Agent Gateway или None
+        self.speech = speech
         self.voice = voice  # 5.6: VoiceService (захват и распознавание) или None
         self.database = database  # 3.12: своя база модуля (ModuleDatabase) или None
         self.owner, self.authority, self.grants, self.data, self.secrets = (
@@ -520,6 +522,35 @@ class ScopedServices:
         self._agent_gateway().forget(self.owner, payload["task_id"])
         return {"ok": True}
 
+    def _speech_service(self) -> Any:
+        if self.speech is None:
+            raise NotImplementedError("speech output is not connected")
+        return self.speech
+
+    @handler("speech.catalog", permission="speech")
+    def _speech_catalog(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._speech_service().catalog(self.data))
+
+    @handler("speech.configure", permission="speech", active=True)
+    def _speech_configure(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._speech_service().configure(self.owner, self.data, payload["settings"]))
+
+    @handler("speech.key", permission="speech", active=True)
+    def _speech_key(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._speech_service().key(self.secrets, payload["provider"], payload["value"]))
+
+    @handler("speech.start", permission="speech", active=True)
+    def _speech_start(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._speech_service().start(self.owner, self.data, self.secrets, payload))
+
+    @handler("speech.status", permission="speech", active=True)
+    def _speech_status(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._speech_service().status(self.owner, payload.get("job_id")))
+
+    @handler("speech.cancel", permission="speech")
+    def _speech_cancel(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._speech_service().cancel(self.owner, payload.get("job_id")))
+
     # --- 5.6: голос для модулей (Character и др.) ---------------------------------------
 
     def _voice_service(self) -> Any:
@@ -599,6 +630,8 @@ class ScopedServices:
             self._cancel.set()
             streams = list(self._streams.values())
             self._streams.clear()
+        if self.speech is not None:
+            self.speech.release(self.owner)
         for stream in streams:
             stream.cancel.set()
             with stream.condition:
@@ -624,6 +657,9 @@ class ScopedServices:
                 stream.thread.join(max(0.0, deadline - time.monotonic()))
                 if stream.thread.is_alive():
                     raise TimeoutError("model stream did not stop")
+        # An in-flight start may have passed its active check before stop.
+        if self.speech is not None:
+            self.speech.release(self.owner)
         # Запрос мог получить аренду непосредственно перед установкой cancel.
         self.resources.release_owner(self.owner)
 

@@ -22,12 +22,14 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         _token = _lifetime.Token;
         _api = api; Models = models;
         Voice = new CharacterVoiceViewModel((operation, args) => ModuleCallAsync("voice", operation, args), () => Model is not null, FollowVoiceReply);
+        Speech = new CharacterSpeechViewModel((operation, args) => ModuleCallAsync("speech", operation, args));
         Send = new Command(SendAsync, () => !Busy && !string.IsNullOrWhiteSpace(Draft) && Model is not null);
         Stop = new Command(StopAsync, () => Busy);
     }
     public ObservableCollection<ModelInfo> Models { get; }
     public ObservableCollection<CharacterProfile> Profiles { get; } = [];
     public CharacterVoiceViewModel Voice { get; }
+    public CharacterSpeechViewModel Speech { get; }
     public Command Send { get; }
     public Command Stop { get; }
     public string Draft { get => _draft; set { if (Set(ref _draft, value)) Send.Refresh(); } }
@@ -80,6 +82,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
             }
             Error = "";
             await Voice.LoadAsync().ConfigureAwait(true);
+            await Speech.LoadAsync().ConfigureAwait(true);
         }
         catch (Exception e) when (Handled(e)) { Error = Localizer.Current["character.request_error"]; }
     }
@@ -155,7 +158,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         catch (Exception e) when (Handled(e)) { Error = Localizer.Current["character.request_error"]; }
     }
     private static bool Handled(Exception e) => e is ApiException or HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException or OperationCanceledException or NotSupportedException;
-    public override void Relocalize() { base.Relocalize(); Voice.Relocalize(); }
-    public void Dispose() { if (_disposed) return; _disposed = true; Voice.Dispose(); _lifetime.Cancel(); _lifetime.Dispose(); }
+    public override void Relocalize() { base.Relocalize(); Voice.Relocalize(); Speech.Relocalize(); }
+    public void Dispose() { if (_disposed) return; _disposed = true; Voice.Dispose(); Speech.Dispose(); _lifetime.Cancel(); _lifetime.Dispose(); }
 }
 public sealed record CharacterProfile(string Id, string Name);

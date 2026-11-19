@@ -10,6 +10,7 @@ from ramvi_character.emotions import EmotionalState
 from ramvi_character.initiative import InitiativeGate
 from ramvi_character.pack import load_pack, presentation
 from ramvi_character.personality import Personality
+from ramvi_character.speech import SpeechOutput
 from ramvi_character.voice import VoiceConversation
 
 
@@ -18,6 +19,7 @@ class CharacterModule:
         self._personality = Personality()
         self._emotions = EmotionalState()
         self._initiative = InitiativeGate()
+        self._speech = SpeechOutput()
         self._dialogue = Dialogue(self)
         self._voice = VoiceConversation(self)
         self._scope = "uninitialized"
@@ -57,6 +59,7 @@ class CharacterModule:
         self._initiative, self._task, self._scope = initiative, task, scope
         self._presentation = None
         self._pack = None
+        self._speech = SpeechOutput(context.get("services"))
         self._dialogue = Dialogue(self, context.get("services"))
         self._voice = VoiceConversation(self, context.get("services"))
         # Text activation does not import/load animation, STT, TTS or an LLM.
@@ -68,6 +71,7 @@ class CharacterModule:
         return self.status()
 
     def deactivate(self) -> None:
+        self._speech.close()
         self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         self._initiative.end()
@@ -76,6 +80,7 @@ class CharacterModule:
         self._state = "inactive"
 
     def suspend(self) -> None:
+        self._speech.close()
         self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         self._initiative.end()
@@ -92,6 +97,7 @@ class CharacterModule:
         self._state = "disposed"
 
     def checkpoint(self) -> dict[str, Any]:
+        self._speech.close()
         self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         # No sound, animation queue or unfinished response resumes after a restart.
@@ -119,8 +125,10 @@ class CharacterModule:
             "task": self._task,
             "initiative": self._initiative.status(),
             "devices_open": self._voice.state
-            in {"listening", "hearing", "recognizing", "stopping"},
-            "provider_connected": self._dialogue.connected,
+            in {"listening", "hearing", "recognizing", "stopping"}
+            or self._speech.state == "playing",
+            "provider_connected": self._dialogue.connected
+            or self._speech.state in {"synthesizing", "playing"},
         }
 
     def _require_active(self) -> None:
@@ -314,6 +322,35 @@ class CharacterModule:
             return self._voice.view()
         except (ValueError, TypeError, KeyError, RuntimeError) as error:
             return {"error": type(error).__name__, "code": "character.voice_error"}
+
+    def speech(
+        self, operation: str = "status", arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        try:
+            self._require_active()
+            args = arguments or {}
+            if not isinstance(args, dict):
+                raise ValueError("invalid speech arguments")
+            if operation == "catalog":
+                return self._speech.catalog()
+            if operation == "configure":
+                return self._speech.configure(args["settings"])
+            if operation == "resume":
+                return self._speech.arm()
+            if operation == "stop":
+                return self._speech.cancel(pause=True)
+            if operation == "key":
+                if self._speech.services is None:
+                    raise RuntimeError("speech is unavailable")
+                return dict(self._speech.services.call("speech.key", args))
+            if operation == "preview":
+                return self._speech.preview()
+            if operation != "status":
+                raise ValueError("unknown speech operation")
+            self._speech.touch()
+            return self._speech.view()
+        except (ValueError, TypeError, KeyError, RuntimeError, OSError) as error:
+            return {"error": type(error).__name__, "code": "speech.failed"}
 
     def present(self, emotion: str, animation: str = "idle") -> dict[str, Any]:
         if self._state != "active":
