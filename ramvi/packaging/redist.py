@@ -333,6 +333,40 @@ def nuget_packages(shell: Path) -> list[tuple[str, str]]:
     return sorted(result)
 
 
+MIT_TEXT = """MIT License
+
+{copyright}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
+
+def _nuspec_field(folder: Path, name: str) -> str:
+    spec = next(folder.glob("*.nuspec"), None)
+    if spec is None:
+        return ""
+    for element in ET.parse(spec).getroot().iter():
+        if element.tag.rsplit("}", 1)[-1] == name and (element.text or "").strip():
+            return element.text.strip()
+    return ""
+
+
 def _nuspec_license(folder: Path) -> str:
     spec = next(folder.glob("*.nuspec"), None)
     if spec is None:
@@ -433,6 +467,16 @@ def write_licenses(
             for path in texts:
                 shutil.copy2(path, target / path.name)
         license_ = _nuspec_license(package) if package.is_dir() else ""
+        if not texts and license_ == "MIT":
+            # Лицензия задана только выражением MIT: текст MIT с правообладателем из .nuspec.
+            holder = _nuspec_field(package, "copyright") or _nuspec_field(package, "authors")
+            line = holder if holder.lower().startswith("copyright") else f"Copyright (c) {holder}"
+            target = folder / "dotnet" / f"{name}-{version}"
+            target.mkdir(parents=True, exist_ok=True)
+            (target / "LICENSE-MIT.txt").write_text(
+                MIT_TEXT.format(copyright=line), encoding="utf-8"
+            )
+            texts = [target / "LICENSE-MIT.txt"]
         dotnet.append(
             {"package": f"{name} {version}", "license": license_, "texts": str(len(texts))}
         )

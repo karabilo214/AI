@@ -333,7 +333,8 @@ def test_licenses_folder_has_terms_and_texts(tmp_path: Path) -> None:
     avalonia = nuget / "avalonia" / "12.1.6"
     avalonia.mkdir(parents=True)
     (avalonia / "avalonia.nuspec").write_text(
-        '<package><metadata><license type="expression">MIT</license></metadata></package>'
+        '<package><metadata><license type="expression">MIT</license>'
+        "<copyright>Copyright 2013-2026 © The AvaloniaUI Project</copyright></metadata></package>"
     )
     runtime = nuget / "microsoft.netcore.app.runtime.win-x64" / "10.0.1"
     runtime.mkdir(parents=True)
@@ -352,6 +353,11 @@ def test_licenses_folder_has_terms_and_texts(tmp_path: Path) -> None:
         / "THIRD-PARTY-NOTICES.TXT"
     ).is_file()
     assert {d["package"]: d["license"] for d in result["dotnet"]}["Avalonia 12.1.6"] == "MIT"
+    mit = (out / "licenses" / "dotnet" / "Avalonia-12.1.6" / "LICENSE-MIT.txt").read_text(
+        encoding="utf-8"
+    )
+    assert mit.startswith("MIT License\n\nCopyright 2013-2026 © The AvaloniaUI Project\n")
+    assert "THE SOFTWARE IS PROVIDED" in mit
     if dists:
         assert list((out / "licenses" / "python-packages").glob("jsonschema-*/COPYING"))
 
