@@ -1,0 +1,70 @@
+﻿file,description_ru,duration_s,tags
+character/apology.wav,Извинение: виноватый нисходящий мотив,0.59,react
+character/beep_answer.wav,Утвердительный роботизированный ответ,0.51,"voice,answer"
+character/beep_no.wav,Отрицание: низкие сигналы,0.43,"voice,no"
+character/beep_question.wav,Вопросительный роботизированный сигнал,0.43,"voice,question"
+character/chuckle_01.wav,Мультяшный электронный смешок,0.52,laugh
+character/chuckle_02.wav,Медленный тихий электронный смешок,0.843,laugh
+character/giggle.wav,Весёлое короткое хихиканье,0.42,laugh
+character/hiccup.wav,Мультяшная электронная икота,0.33,react
+character/sigh.wav,Вздох мультяшного робота,0.72,sigh
+character/sleep_mumble.wav,Сонное электронное бормотание без слов,0.95,"sleep,mumble"
+character/talk_long_01.wav,Длинная псевдоречевая реплика,1.858,"talk,long"
+character/talk_medium_01.wav,Средняя псевдоречевая реплика,0.854,"talk,medium"
+character/talk_medium_02.wav,Средняя низкая псевдоречевая реплика,1.1,"talk,medium"
+character/talk_short_01.wav,Короткая псевдоречевая реплика,0.24,"talk,short"
+character/talk_short_02.wav,Короткая низкая псевдоречевая реплика,0.3,"talk,short"
+character/thinking_hum.wav,Задумчивое роботизированное мычание,0.68,"thinking,hum"
+character/wake_up.wav,Просыпание персонажа,0.63,wake
+emotions/angry.wav,Злость: резкое электронное ворчание,0.42,angry
+emotions/calm.wav,Спокойствие: мягкий двойной тон,0.83,calm
+emotions/confused.wav,Непонимание: неуверенный мотив,0.58,confused
+emotions/curious.wav,Любопытство: короткий восходящий вопрос,0.45,curious
+emotions/displeased.wav,Недовольство: два нисходящих тона,0.57,negative
+emotions/embarrassed.wav,Смущение: два неловких сигнала,0.38,embarrassed
+emotions/excited.wav,Восторг: быстрая растущая трель,0.63,excited
+emotions/happy_01.wav,Радость: три восходящих мультяшных тона,0.69,"happy,positive"
+emotions/happy_02.wav,Радость: двойной звонкий возглас,0.36,happy
+emotions/proud.wav,Гордость: маленькая победная мелодия,0.86,proud
+emotions/sad.wav,Грусть: плавный нисходящий мотив,0.62,sad
+emotions/sleepy.wav,Сонливость: медленный мягкий спад,0.88,sleepy
+emotions/surprised_01.wav,Удивление: резкий скачок высоты,0.63,surprised
+emotions/surprised_02.wav,Удивление: протяжное «о?» без речи,0.4,surprised
+emotions/thinking_01.wav,Размышление: три вопросительных звука,0.7,thinking
+emotions/thinking_02.wav,Размышление: тихий задумчивый сигнал,0.79,thinking
+motion/appear_01.wav,Появление персонажа,0.6,appear
+motion/appear_02.wav,Волшебное появление персонажа,0.56,appear
+motion/blink_01.wav,Мягкое моргание,0.08,blink
+motion/blink_02.wav,Тихое моргание,0.055,blink
+motion/bob.wav,Лёгкое подпрыгивание в idle,0.33,"idle,movement"
+motion/disappear.wav,Исчезновение персонажа,0.55,disappear
+motion/double_blink.wav,Двойное моргание,0.285,blink
+motion/idle_chime.wav,Редкий тихий idle-сигнал,0.79,idle
+motion/land.wav,Мягкое приземление,0.16,"movement,land"
+motion/move_down.wav,Спуск персонажа,0.29,movement
+motion/move_left.wav,Движение влево,0.21,movement
+motion/move_right.wav,Движение вправо,0.21,movement
+motion/move_up.wav,Подъём персонажа,0.27,movement
+motion/nod.wav,Кивок,0.32,nod
+motion/shake_head.wav,Покачивание головой,0.405,shake
+motion/turn.wav,Поворот персонажа,0.2,"movement,turn"
+ui/click_crisp.wav,Чёткий щелчок кнопки,0.05,"click,button"
+ui/click_soft.wav,Мягкий щелчок кнопки,0.048,"click,button"
+ui/close_panel.wav,Закрытие окна или панели,0.24,"window,close"
+ui/confirm_01.wav,Подтверждение: два позитивных тона,0.58,"success,confirm"
+ui/confirm_02.wav,Подтверждение: тройной сигнал,0.53,"success,confirm"
+ui/error_01.wav,Ошибка: нисходящий двойной сигнал,0.47,error
+ui/error_02.wav,Ошибка: повторяющийся низкий тон,0.56,error
+ui/hover.wav,Наведение курсора,0.065,hover
+ui/loading_tick.wav,Тихий индикатор обработки,0.09,loading
+ui/message_received.wav,Получено сообщение,0.48,message
+ui/notification_soft.wav,Мягкое уведомление,0.67,notification
+ui/notification_urgent.wav,Срочное уведомление,0.5,notification
+ui/open_panel.wav,Открытие окна или панели,0.26,"window,open"
+ui/send_message.wav,Отправлено сообщение,0.17,message
+ui/start_task.wav,Запуск задания,0.58,"task,start"
+ui/task_complete.wav,Успешное завершение задания,0.63,"task,success"
+ui/task_failed.wav,Неудачное завершение задания,0.59,"task,error"
+ui/toggle_off.wav,Переключатель выключен,0.265,toggle
+ui/toggle_on.wav,Переключатель включён,0.26,toggle
+ui/warning.wav,Предупреждение: два коротких сигнала,0.4,warning

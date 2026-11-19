@@ -1,0 +1,15 @@
+{
+  "schema":"ramvi.character.emotions/1",
+  "version":"1.0.0",
+  "states":[
+    {"id":"joy","expression":"cheerful","half_life_s":90,"events":{"success":0.6,"support":0.2}},
+    {"id":"confidence","expression":"confident","half_life_s":150,"events":{"success":0.25}},
+    {"id":"interest","expression":"thinking","half_life_s":120,"events":{"uncertainty":0.3,"discovery":0.5}},
+    {"id":"surprise","expression":"surprise","half_life_s":25,"events":{"discovery":0.35,"uncertainty":0.15}},
+    {"id":"sadness","expression":"sad","half_life_s":180,"events":{"setback":0.2}},
+    {"id":"frustration","expression":"angry","half_life_s":75,"events":{"setback":0.45,"support":-0.25}},
+    {"id":"anger","expression":"angry","half_life_s":60,"events":{"conflict":0.4,"support":-0.2}},
+    {"id":"calm","expression":"neutral","half_life_s":150,"events":{"support":0.35,"resolution":0.4}},
+    {"id":"sleepiness","expression":"sleepy","half_life_s":180,"events":{"fatigue":0.4}}
+  ]
+}

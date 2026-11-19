@@ -42,6 +42,8 @@ public sealed class ModuleSectionViewModel(SectionItem item) : ObservableObject
         ? null
         : Localizer.Current.Format("section.error", ("detail", Item.Info.Error));
 
+    public bool CanPresent => Item.Info.State == "active";
+
     public bool HasError => !string.IsNullOrEmpty(Item.Info.Error);
 
     public string Placeholder => Localizer.Current[$"section.placeholder.{Item.View}"];
@@ -51,6 +53,7 @@ public sealed class ModuleSectionViewModel(SectionItem item) : ObservableObject
         Raise(nameof(State));
         Raise(nameof(Error));
         Raise(nameof(HasError));
+        Raise(nameof(CanPresent));
     }
 }
 
@@ -78,7 +81,8 @@ public sealed class SectionsViewModel : ObservableObject
     /// <summary>Открыт раздел модуля (Agent, Character).</summary>
     public bool IsModuleSelected => !IsChatSelected;
     public bool IsAgentSelected => _selected?.View == "agent";
-    public bool IsPlaceholderSelected => IsModuleSelected && !IsAgentSelected;
+    public bool IsCharacterSelected => _selected?.View == "character";
+    public bool IsPlaceholderSelected => IsModuleSelected && !IsAgentSelected && !IsCharacterSelected;
 
     /// <summary>Вид открытого раздела модуля (null, когда открыт чат).</summary>
     public ModuleSectionViewModel? Current
@@ -100,6 +104,7 @@ public sealed class SectionsViewModel : ObservableObject
                 Raise(nameof(IsChatSelected));
                 Raise(nameof(IsModuleSelected));
                 Raise(nameof(IsAgentSelected));
+                Raise(nameof(IsCharacterSelected));
                 Raise(nameof(IsPlaceholderSelected));
                 _ = OpenAsync(value);
             }
@@ -122,6 +127,9 @@ public sealed class SectionsViewModel : ObservableObject
         Raise(nameof(Selected));
         Raise(nameof(IsChatSelected));
         Raise(nameof(IsModuleSelected));
+        Raise(nameof(IsAgentSelected));
+        Raise(nameof(IsCharacterSelected));
+        Raise(nameof(IsPlaceholderSelected));
     }
 
     private async Task OpenAsync(SectionItem item)

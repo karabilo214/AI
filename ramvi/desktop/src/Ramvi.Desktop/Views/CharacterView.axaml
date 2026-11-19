@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:l="using:Ramvi.Desktop.Localization" xmlns:vm="using:Ramvi.Desktop.ViewModels"
+ xmlns:c="using:Ramvi.Desktop.Character" x:Class="Ramvi.Desktop.Views.CharacterView" x:DataType="vm:ModuleSectionViewModel">
+ <Grid RowDefinitions="Auto,*,Auto" Margin="24" RowSpacing="12">
+  <StackPanel Spacing="8">
+   <TextBlock Classes="title" Text="{l:T section.character}"/>
+   <TextBlock Text="{Binding State}" Classes="muted"/>
+   <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap"/>
+   <TextBlock x:Name="CharacterError" Classes="error" TextWrapping="Wrap"/>
+   <TextBlock Text="{l:T character.preview_hint}" Classes="muted" TextWrapping="Wrap"/>
+  </StackPanel>
+  <c:CharacterCanvas Grid.Row="1" x:Name="CharacterSurface" MinHeight="120"/>
+  <StackPanel Grid.Row="2" Spacing="12" IsEnabled="{Binding CanPresent}">
+   <ComboBox x:Name="CharacterEmotion" HorizontalAlignment="Stretch"/>
+   <WrapPanel>
+    <Button x:Name="CharacterIdle" Content="{l:T character.motion.idle}" Margin="0,0,8,8"/>
+    <Button x:Name="CharacterBlink" Content="{l:T character.motion.blink}" Margin="0,0,8,8"/>
+    <Button x:Name="CharacterTalk" Content="{l:T character.motion.talk}" Margin="0,0,8,8"/>
+    <Button x:Name="CharacterNod" Content="{l:T character.motion.nod}" Margin="0,0,8,8"/>
+    <Button x:Name="CharacterShake" Content="{l:T character.motion.shake}" Margin="0,0,8,8"/>
+   </WrapPanel>
+   <TextBlock Text="{l:T character.speech_hint}" Classes="muted" TextWrapping="Wrap"/>
+  </StackPanel>
+ </Grid>
+</UserControl>

@@ -1,0 +1,13 @@
+{
+  "module_id": "character",
+  "version": "0.2.0",
+  "entrypoint": "ramvi_character.module:create",
+  "ui": {
+    "section": {
+      "view": "character",
+      "title_key": "section.character",
+      "icon": "character",
+      "order": 30
+    }
+  }
+}

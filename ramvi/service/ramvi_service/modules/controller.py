@@ -18,7 +18,12 @@ class ProcessModuleWorker:
 
         service = Path(__file__).resolve().parents[2]
         engine = service.parent / "engine"
-        paths = [str(service), str(engine), str(service.parent.parent)]
+        paths = [
+            str(service),
+            str(engine),
+            str(service.parent / "character"),
+            str(service.parent.parent),
+        ]
         if os.environ.get("PYTHONPATH"):
             paths.append(os.environ["PYTHONPATH"])
         env = {**os.environ, "PYTHONPATH": os.pathsep.join(paths), "PYTHONUTF8": "1"}

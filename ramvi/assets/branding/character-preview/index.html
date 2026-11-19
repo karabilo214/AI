@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RAMVI · Мастерская персонажа</title>
+<link rel="stylesheet" href="preview.css">
+<script defer src="catalog.js"></script><script defer src="preview.js"></script>
+</head>
+<body>
+<header><a class="brand" href="../README.md">RAMVI<span>CHARACTER LAB</span></a><span class="badge">Локальный предпросмотр · 1.0</span></header>
+<main>
+<section class="intro"><div><p class="eyebrow">ИЗ КАДРОВ — В ХАРАКТЕР</p><h1>Знакомьтесь, RAMVI.</h1><p class="muted">Мимика, движение и короткие реакции. Собираем поведение персонажа перед подключением к диалогу.</p></div><p id="catalog-status" class="catalog-status" role="status">Загрузка ресурсов…</p></section>
+<div class="workspace">
+<section class="viewer" aria-label="Предпросмотр персонажа">
+<div class="stage-head"><span class="live-dot"></span><strong id="state-label">Спокойствие</strong><span id="frame-label" class="muted"></span></div>
+<div id="stage" class="stage" data-background="dark"><canvas id="character" width="768" height="768" role="img" aria-label="Персонаж RAMVI"></canvas><span class="stage-caption">RAMVI / 2D CHARACTER</span></div>
+<div class="transport"><button id="pause" class="round" aria-label="Приостановить">Ⅱ</button><input id="timeline" type="range" min="0" max="11" value="0" aria-label="Кадр анимации"><span id="time-label">1 / 12</span><span id="speed" aria-label="Фиксированная скорость">1×</span></div>
+<div class="view-options"><label>Фон <select id="background"><option value="dark">Тёмный</option><option value="light">Светлый</option><option value="checker">Прозрачность</option></select></label><label>Размер <input id="size" type="range" min="45" max="100" value="85" aria-label="Размер персонажа"></label><label class="check"><input id="auto-blink" type="checkbox"> Отдельное автоморгание</label></div>
+<p id="notice" class="notice" role="status" aria-live="polite">Звуки включаются только по вашему действию.</p>
+</section>
+<aside class="controls">
+<section class="panel"><div class="section-title"><h2>Движение</h2><span>05</span></div><div id="motions" class="motion-grid"></div><p class="hint">Кивок, моргание и «нет» — один раз, затем возврат. Разговор — цикл до остановки. Кивок и «нет» — 2×, остальные — 1×.</p><label class="check"><input id="reaction-sound" type="checkbox"> Сопровождать движения звуком</label></section>
+<section class="panel"><div class="section-title"><h2>Собрать лицо</h2><button id="reset-face" class="text-button">Сбросить</button></div><div class="two-col"><label>Глаза<select id="eyes"></select></label><label>Рот<select id="mouth"></select></label></div><button id="apply-face" class="wide">Показать сочетание</button><p class="hint">Слои можно комбинировать независимо от готовых эмоций.</p></section>
+<section class="panel sound-panel"><div class="section-title"><h2>Звуковая палитра</h2><span id="sound-count"></span></div><div class="two-col"><label>Категория<select id="sound-category"><option value="emotions">Эмоции</option><option value="character">Реакции персонажа</option><option value="motion">Движения</option><option value="ui">Интерфейс</option></select></label><label>Громкость <span id="volume-label">35%</span><input id="volume" type="range" min="0" max="100" value="35"></label></div><label class="sound-choice">Звук<select id="sound"></select></label><p id="sound-description" class="hint"></p><div class="sound-actions"><button id="play-sound" class="primary">▷ Послушать</button><button id="stop-sound">Остановить</button></div><p class="hint">Разговор и «нет» озвучиваются через TTS: их звуки из пакета исключены. Моргание и idle по умолчанию беззвучны.</p></section>
+</aside>
+</div>
+<section class="expressions-section"><div class="section-title"><div><p class="eyebrow">ЭМОЦИОНАЛЬНАЯ ПАЛИТРА</p><h2>Одно лицо, разные настроения.</h2></div><span>13 выражений</span></div><div id="expressions" class="expressions"></div></section>
+<section class="turn-section panel"><div><h2>Повороты</h2><p class="hint">Стилизованная деформация фронтального изображения. Полноценных боковых ракурсов в этом пакете нет.</p></div><div id="turns" class="turns"></div></section>
+<footer><span>Работает без модели, микрофона и сети.</span><span>Пакет отдельно от логики Character · предварительная сборка 9.11</span></footer>
+</main>
+</body></html>

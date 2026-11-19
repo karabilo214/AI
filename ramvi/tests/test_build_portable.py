@@ -64,6 +64,10 @@ def test_layout_closure_and_manifest(tmp_path: Path, inputs: tuple[Path, Path, P
         assert (out / "ramvi" / part / "__init__.py").is_file()
     assert (out / "ramvi" / "service" / "ramvi_service" / "app.py").is_file()
     assert (out / "modules/agent/manifest.json").is_file()
+    assert (out / "modules/character/manifest.json").is_file()
+    assert (out / "ramvi/character/ramvi_character/assets/pack.json").is_file()
+    pth = next((out / "runtime/python").glob("python*._pth")).read_text()
+    assert "ramvi\\character" in pth
     assert (out / "ramvi/service/ramvi_service/system_context.py").is_file()
     assert (out / "ramvi/service/ramvi_service/native/windows_context.ps1").is_file()
     assert not list((out / "ramvi").rglob("__pycache__")) and not list(
@@ -78,9 +82,10 @@ def test_layout_closure_and_manifest(tmp_path: Path, inputs: tuple[Path, Path, P
         "..\\..\\ramvi\\service",
         "..\\..\\ramvi\\engine",
         "..\\..\\ramvi\\storage",
+        "..\\..\\ramvi\\character",
         "import site",
     ]
-    for line in pth[4:7]:  # пути из ._pth указывают на скопированный код
+    for line in pth[4:8]:  # пути из ._pth указывают на скопированный код
         assert (out / "runtime" / "python" / Path(*line.split("\\"))).resolve().is_dir()
     site = out / "runtime" / "python" / "Lib" / "site-packages"
     # Замыкание jsonschema: его зависимости тоже скопированы, с dist-info.

@@ -32,7 +32,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CODE = ("service/ramvi_service", "engine/ramvi_engine", "storage/ramvi_storage")
+CODE = (
+    "service/ramvi_service",
+    "engine/ramvi_engine",
+    "storage/ramvi_storage",
+    "character/ramvi_character",
+)
 SKIP = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "build", "*.egg-info")
 # Прямые зависимости движка (engine/pyproject.toml), triton для ядер на GPU и голос (5.2).
 ROOTS = (

@@ -109,6 +109,10 @@
       <views:AgentView DataContext="{Binding Agent}"/>
     </Border>
 
+    <Border x:Name="CharacterPanel" Grid.Column="1" Classes="card" Margin="8,4,16,16" IsVisible="{Binding Sections.IsCharacterSelected}">
+      <views:CharacterView DataContext="{Binding Sections.Current}"/>
+    </Border>
+
     <!-- Диалог -->
     <DockPanel x:Name="ChatPanel" Grid.Column="1" Margin="8,4,16,16" IsVisible="{Binding Sections.IsChatSelected}">
       <!-- Верхняя полоса: модель; справа значки «Очистить» и «Удалить» с подсказками -->

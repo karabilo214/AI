@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools==84.2.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ramvi-character"
+version = "0.2.0"
+description = "Optional RAMVI Character lifecycle and presentation pack"
+requires-python = ">=3.12"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ramvi_character*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+ramvi_character = ["definitions/*.json", "assets/*.json", "assets/**/*.png", "assets/**/*.wav"]
