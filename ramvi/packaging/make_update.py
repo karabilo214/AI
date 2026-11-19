@@ -7,7 +7,7 @@
 Закрытый ключ хранится только у того, кто выпускает обновления, и никогда не кладётся
 в репозиторий. Открытый ключ (печатается при keygen) вписывается в
 `ramvi_service.updates.TRUSTED_KEYS`. В пакет попадают только разрешённые части
-комплекта (`ramvi/`, `runtime/`, `modules/`, `RAMVI.exe`, `BUILD.json`, `LICENSE`, `THIRD_PARTY_NOTICES.txt`);
+комплекта (`ramvi/`, `runtime/`, `modules/`, `licenses/`, `RAMVI.exe`, `BUILD.json`, `LICENSE`, `THIRD_PARTY_NOTICES.txt`);
 с `--previous` — только изменившиеся файлы и список удалённых.
 """
 

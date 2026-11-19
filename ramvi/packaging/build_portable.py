@@ -22,7 +22,6 @@ import argparse
 import hashlib
 import importlib.metadata as md
 import json
-import os
 import re
 import shutil
 import sys
@@ -30,6 +29,9 @@ import time
 import zipfile
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import redist  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CODE = (
@@ -167,36 +169,10 @@ def copy_dev_files(base: Path, target: Path) -> list[str]:
     return copied
 
 
-# 8.1 (PORT-02): библиотеки Microsoft Visual C++ 2015–2022 (x64) рядом с python.exe.
-# Без них на чистой Windows torch не загружает c10.dll (найдено в Windows Sandbox);
-# Microsoft разрешает распространять эти файлы вместе с приложением.
-VC_RUNTIME = (
-    "msvcp140.dll",
-    "msvcp140_1.dll",
-    "msvcp140_2.dll",
-    "msvcp140_atomic_wait.dll",
-    "msvcp140_codecvt_ids.dll",
-    "vcruntime140.dll",
-    "vcruntime140_1.dll",
-    "vcruntime140_threads.dll",
-    "concrt140.dll",
-    "vcomp140.dll",
-)
-
-
-def copy_vc_runtime(system32: Path, target: Path) -> list[str]:
-    """Положить библиотеки Visual C++ рядом с python.exe; нет хотя бы одной — сборка
-    останавливается: неполный комплект не должен уйти пользователю."""
-    missing = [name for name in VC_RUNTIME if not (system32 / name).is_file()]
-    if missing:
-        raise SystemExit(
-            "нет библиотек Visual C++ для комплекта: "
-            + ", ".join(missing)
-            + " — установите Visual C++ Redistributable x64 на машине сборки"
-        )
-    for name in VC_RUNTIME:
-        shutil.copy2(system32 / name, target / name)
-    return list(VC_RUNTIME)
+# 8.1 (PORT-02): библиотеки Microsoft Visual C++ рядом с python.exe (без них на чистой Windows
+# torch не загружает c10.dll). 8.7: берутся только из каталога VC\Redist установленной Visual
+# Studio / Build Tools, с проверкой подписи и без изменений — см. redist.py.
+VC_RUNTIME = redist.VC_RUNTIME
 
 
 # 8.7: что не нужно движку из пакета torch (CUDA 13, Windows). Найдено по таблицам импорта DLL
@@ -250,14 +226,14 @@ NOTICES = "THIRD_PARTY_NOTICES.txt"
 FIXED_NOTICES = (
     ("Python (встроенный, python.org)", "PSF-2.0", "runtime/python/LICENSE.txt"),
     (
-        "Microsoft Visual C++ 2015–2022 Redistributable (DLL рядом с python.exe)",
-        "Microsoft Software License Terms: распространяемые файлы Visual C++",
+        "Microsoft Visual C++ Runtime (DLL рядом с python.exe, из VC\\Redist Visual Studio)",
+        "лицензия Visual Studio, Distributable Code — условия в licenses/THIRD_PARTY_TERMS.txt",
         "https://visualstudio.microsoft.com/license-terms/",
     ),
     (
-        "NVIDIA CUDA и cuDNN (библиотеки выполнения в составе пакета torch)",
-        "NVIDIA CUDA Toolkit EULA (приложение A — распространяемые файлы), NVIDIA cuDNN SLA",
-        "https://docs.nvidia.com/cuda/eula/",
+        "NVIDIA CUDA 13.2 и cuDNN 9 (torch/lib, triton/backends/nvidia)",
+        f"{redist.CUDA_EULA}; {redist.CUDNN_SLA} — условия в licenses/THIRD_PARTY_TERMS.txt",
+        redist.CUDA_EULA_URL,
     ),
     (
         ".NET, Avalonia, SkiaSharp, HarfBuzzSharp (оболочка RAMVI.exe)",
@@ -293,7 +269,7 @@ def third_party_notices(dists: dict[str, md.Distribution]) -> str:
         "RAMVI — сторонние компоненты и их лицензии",
         "Third-party components of the RAMVI portable bundle and their licenses",
         "",
-        "RAMVI: MIT (файл LICENSE рядом).",
+        "RAMVI: MIT (файл LICENSE рядом). Тексты лицензий — папка licenses/.",
         "",
         "Не из pip / not from pip:",
     ]
@@ -370,6 +346,8 @@ def build(
     roots: tuple[str, ...] = ROOTS,
     source: Path = ROOT,
     trim: bool = False,
+    vs_license: str | None = None,
+    internal: bool = False,
 ) -> dict[str, Any]:
     if out.exists():
         raise SystemExit(f"папка уже существует: {out} (комплект собирается в новую папку)")
@@ -389,9 +367,12 @@ def build(
         if sys.platform == "win32"
         else []
     )
+    vc_runtime: dict[str, Any] | None = None
     if sys.platform == "win32":
-        system32 = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
-        copy_vc_runtime(system32, out / "runtime" / "python")
+        vs = redist.find_visual_studio(vs_license or "")
+        folder = redist.vc_redist_dir(Path(vs["path"]))
+        files = redist.copy_vc_runtime(folder, out / "runtime" / "python")
+        vc_runtime = {"visual_studio": vs, "redist": folder.name, "files": files}
     packages: dict[str, str] = {}
     copied = size = 0
     dists = closure(roots)
@@ -400,6 +381,8 @@ def build(
         packages[key] = dist.version
         copied, size = copied + count, size + bytes_
     trimmed = trim_site(site) if trim else None
+    nvidia = redist.check_nvidia(site, internal=internal)
+    licenses = redist.write_licenses(out, dists, shell)
     # 8.7: лицензия RAMVI и сводка сторонних компонентов — в корне комплекта.
     if (source / "LICENSE").is_file():
         shutil.copy2(source / "LICENSE", out / "LICENSE")
@@ -411,6 +394,7 @@ def build(
         raise SystemExit(f"в {tokenizer} нет файлов токенизатора")
     for name in taken:
         shutil.copy2(tokenizer / name, tokens / name)
+    redist.assert_no_models(out)
     total = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
     manifest = {
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -426,6 +410,11 @@ def build(
         "total_bytes": total,
         "sizes": sizes(out),
         "trimmed": trimmed,
+        # 8.7: внутренняя сборка (с нераспространяемыми файлами) — только для своих проверок.
+        "internal": internal,
+        "vc_runtime": vc_runtime,
+        "nvidia": nvidia,
+        "licenses": licenses,
         "seconds": round(time.time() - started, 1),
     }
     (out / "BUILD.json").write_text(
@@ -450,10 +439,30 @@ def main() -> None:
         "--trim", action="store_true", help="убрать ненужные движку библиотеки torch (8.7)"
     )
     parser.add_argument("--zip", type=Path, help="собрать также ZIP для раздачи (8.7)")
+    parser.add_argument(
+        "--vs-license",
+        choices=sorted(redist.VS_LICENSES),
+        help="основание лицензии Visual Studio / Build Tools для распространения VC++ (8.7)",
+    )
+    parser.add_argument(
+        "--internal",
+        action="store_true",
+        help="внутренняя сборка для своих проверок: оставить нераспространяемые файлы (не для раздачи)",
+    )
     args = parser.parse_args()
-    manifest = build(args.out, args.shell, args.python_embed, args.tokenizer, trim=args.trim)
+    manifest = build(
+        args.out,
+        args.shell,
+        args.python_embed,
+        args.tokenizer,
+        trim=args.trim,
+        vs_license=args.vs_license,
+        internal=args.internal,
+    )
     print(json.dumps({k: v for k, v in manifest.items() if k != "packages"}, ensure_ascii=False))
     print(f"пакетов: {len(manifest['packages'])}")
+    if args.zip and manifest["internal"]:
+        raise SystemExit("внутренняя сборка не упаковывается для раздачи")
     if args.zip:
         print(f"zip: {args.zip} {make_zip(args.out, args.zip)} байт")
 
