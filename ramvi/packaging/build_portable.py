@@ -194,6 +194,13 @@ def copy_vc_runtime(system32: Path, target: Path) -> list[str]:
     return list(VC_RUNTIME)
 
 
+def product_version() -> str:
+    """Версия продукта из `ramvi_service.__version__` (8.3: с ней сравниваются обновления)."""
+    text = (ROOT / "service" / "ramvi_service" / "__init__.py").read_text(encoding="utf-8")
+    match = re.search(r'__version__ = "([0-9.]+)"', text)
+    return match.group(1) if match else "0.0.0"
+
+
 def code_digest(folder: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(p for p in folder.rglob("*") if p.is_file()):
@@ -247,6 +254,7 @@ def build(
     total = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
     manifest = {
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "version": product_version(),
         "python_embed": embed.name,
         "source_python": sys.version.split()[0],
         "packages": packages,

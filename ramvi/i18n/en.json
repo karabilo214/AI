@@ -608,5 +608,19 @@
   "settings.models_dir_network": "The models folder is on a network drive: it works, but loading a model takes noticeably longer, and a lost connection stops the load.",
   "settings.models_dir_removable": "The models folder is on a removable drive (USB stick, external disk): it works, but loading may be slower; do not unplug the drive while a model is loaded.",
   "system.backend_vcredist": "The backend did not load: Microsoft Visual C++ system libraries are missing. The RAMVI bundle is incomplete — download it again; installing the Visual C++ Redistributable x64 helps for now",
-  "system.driver_working": "The NVIDIA driver works: CUDA {cuda} is available"
+  "system.driver_working": "The NVIDIA driver works: CUDA {cuda} is available",
+  "update.bad_version": "Wrong update version: {version}",
+  "update.bad_path": "The update package has an invalid path: {path}",
+  "update.forbidden_path": "The update package tries to change something it may not: {path}. Updates never touch data, models or settings",
+  "update.no_trusted_key": "No key to verify updates: updates cannot be installed yet",
+  "update.bad_signature": "The update signature is invalid — the package is not from RAMVI or is damaged. Nothing was changed",
+  "update.bad_manifest": "The update description is damaged ({detail})",
+  "update.bad_archive": "The file is not a RAMVI update package",
+  "update.not_newer": "Version {version} is not newer than the installed {current}",
+  "update.missing_file": "The update package lacks the file {path}",
+  "update.bad_file": "The file {path} in the update package is damaged (checksum mismatch). Nothing was changed",
+  "update.no_consent": "Online update checks are turned off in settings",
+  "update.nothing_staged": "No update is prepared",
+  "update.apply_failed": "The update failed ({detail}) — the previous version was restored",
+  "update.nothing_to_roll_back": "There is nothing to roll back"
 }
