@@ -66,8 +66,8 @@ def test_layout_closure_and_manifest(tmp_path: Path, inputs: tuple[Path, Path, P
     assert (out / "modules/agent/manifest.json").is_file()
     assert (out / "modules/character/manifest.json").is_file()
     assert (out / "ramvi/character/ramvi_character/assets/pack.json").is_file()
-    pth = next((out / "runtime/python").glob("python*._pth")).read_text()
-    assert "ramvi\\character" in pth
+    pth_text = next((out / "runtime/python").glob("python*._pth")).read_text()
+    assert "ramvi\\character" in pth_text
     assert (out / "ramvi/service/ramvi_service/system_context.py").is_file()
     assert (out / "ramvi/service/ramvi_service/native/windows_context.ps1").is_file()
     assert not list((out / "ramvi").rglob("__pycache__")) and not list(
@@ -99,6 +99,11 @@ def test_layout_closure_and_manifest(tmp_path: Path, inputs: tuple[Path, Path, P
     saved = json.loads((out / "BUILD.json").read_text(encoding="utf-8"))
     assert saved["packages"]["jsonschema"] == manifest["packages"]["jsonschema"]
     assert saved["total_bytes"] > 0 and len(saved["code_sha256"]) == 64
+    # 8.7: лицензия RAMVI, сводка сторонних лицензий, размеры частей; обрезка — только по флагу
+    assert (out / "LICENSE").read_text(encoding="utf-8").startswith("MIT License")
+    notices = (out / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
+    assert "jsonschema" in notices and "MIT" in notices and "NVIDIA CUDA" in notices
+    assert saved["sizes"]["code"] > 0 and saved["trimmed"] is None
 
 
 @needs_jsonschema
@@ -185,3 +190,42 @@ def test_vc_runtime_is_copied_next_to_python(tmp_path: Path) -> None:
     (system32 / "msvcp140.dll").unlink()
     with pytest.raises(SystemExit, match="msvcp140.dll"):
         bp.copy_vc_runtime(system32, tmp_path / "other")
+
+
+def test_trim_removes_only_listed_torch_parts(tmp_path: Path) -> None:
+    """8.7: уходят подбиблиотеки cuDNN, заголовки и .lib torch; нужное движку остаётся."""
+    site = tmp_path / "site-packages"
+    keep = [
+        "torch/lib/cudnn64_9.dll",  # её импортируют torch_cuda и torch_python
+        "torch/lib/torch_cuda.dll",
+        "torch/lib/cublas64_13.dll",
+        "triton/backends/nvidia/lib/x64/cuda.lib",  # Triton собирает свой модуль
+        "triton/backends/nvidia/include/cuda.h",
+    ]
+    gone = [
+        "torch/lib/cudnn_engines_precompiled64_9.dll",
+        "torch/lib/cusolverMg64_12.dll",
+        "torch/lib/torch_cpu.lib",
+        "torch/include/ATen/ATen.h",
+        "torchgen/model.py",
+    ]
+    for name in keep + gone:
+        (site / name).parent.mkdir(parents=True, exist_ok=True)
+        (site / name).write_bytes(b"x" * 10)
+    result = bp.trim_site(site)
+    assert all((site / name).exists() for name in keep)
+    assert not any((site / name).exists() for name in gone)
+    assert result["freed_bytes"] == 10 * len(gone)
+    assert "torch/include/" in result["removed"] and "torch/lib/torch_cpu.lib" in result["removed"]
+    assert bp.trim_site(site)["freed_bytes"] == 0  # повторно — нечего удалять
+
+
+def test_zip_contains_folder_and_reports_size(tmp_path: Path) -> None:
+    folder = tmp_path / "RAMVI"
+    (folder / "runtime").mkdir(parents=True)
+    (folder / "RAMVI.exe").write_bytes(b"exe" * 1000)
+    (folder / "runtime" / "a.txt").write_text("привет", encoding="utf-8")
+    size = bp.make_zip(folder, tmp_path / "RAMVI.zip")
+    assert size == (tmp_path / "RAMVI.zip").stat().st_size and size < 3000
+    with zipfile.ZipFile(tmp_path / "RAMVI.zip") as archive:
+        assert sorted(archive.namelist()) == ["RAMVI/RAMVI.exe", "RAMVI/runtime/a.txt"]

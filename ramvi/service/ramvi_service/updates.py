@@ -7,7 +7,7 @@
 1. **Проверка** — подпись одним из доверенных ключей выпуска (`TRUSTED_KEYS`; закрытый
    ключ есть только у машины сборки), версия новее текущей, пути — только внутри
    разрешённых частей комплекта (`ramvi/`, `runtime/`, `modules/`, `RAMVI.exe`,
-   `BUILD.json`, `LICENSE`). Данные, модели, `settings.json` и сама папка `updates`
+   `BUILD.json`, `LICENSE`, `THIRD_PARTY_NOTICES.txt`). Данные, модели, `settings.json` и сама папка `updates`
    пакету недоступны — неудачное обновление не может удалить историю чатов и модели.
 2. **Подготовка** (`stage`) — распаковка в `updates/staging/<версия>` со сверкой SHA-256 и
    размера каждого файла; рабочие файлы приложения не трогаются.
@@ -47,7 +47,7 @@ TRUSTED_KEYS: tuple[str, ...] = (
     "15d704139a14739f953f61ef2c6e58647efae41c92b8a4c22a50fcd68fd019be",  # выпуск RAMVI, 2026-11-19
 )
 ALLOWED_DIRS = ("ramvi", "runtime", "modules")
-ALLOWED_FILES = ("RAMVI.exe", "BUILD.json", "LICENSE")
+ALLOWED_FILES = ("RAMVI.exe", "BUILD.json", "LICENSE", "THIRD_PARTY_NOTICES.txt")
 MAX_MANIFEST = 8 * 1024 * 1024
 MAX_FILES = 100_000
 MAX_TOTAL = 16 * 1024**3
