@@ -34,6 +34,7 @@ METHODS = {
     "events.unsubscribe",
     "resources.acquire",
     "resources.release",
+    "llm.capabilities",
     "llm.complete",
     "llm.stream",
     "llm.read",
@@ -48,6 +49,10 @@ METHODS = {
     "voice.listen.start",
     "voice.listen.stop",
     "voice.listen.cancel",
+    "voice.session.start",
+    "voice.session.read",
+    "voice.session.cancel",
+    "voice.session.playback",
 }
 # Право, которое ожидается для вызова с PAYLOAD.
 EXPECTED = {method: (method.split(".")[0], "*") for method in METHODS}

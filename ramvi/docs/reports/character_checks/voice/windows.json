@@ -1,0 +1,57 @@
+{
+  "vad_start_s": 0.547,
+  "silence_speech": false,
+  "input_device_count": 2,
+  "microphone": {
+    "state_before_stop": "listening",
+    "state_after_stop": "idle",
+    "leases_after_stop": 0
+  },
+  "recorded_audio": {
+    "events": [
+      {
+        "seq": 1,
+        "session_id": "fd0f054c36cc40c4bf30f8f1ecd807ea",
+        "type": "session_started"
+      },
+      {
+        "seq": 2,
+        "session_id": "fd0f054c36cc40c4bf30f8f1ecd807ea",
+        "type": "speech_start",
+        "utterance_id": "c8154d8fb90840cb9cf1f3b2171bc67f"
+      },
+      {
+        "seq": 3,
+        "session_id": "fd0f054c36cc40c4bf30f8f1ecd807ea",
+        "type": "speech_end",
+        "utterance_id": "c8154d8fb90840cb9cf1f3b2171bc67f"
+      },
+      {
+        "seq": 4,
+        "session_id": "fd0f054c36cc40c4bf30f8f1ecd807ea",
+        "type": "partial",
+        "utterance_id": "c8154d8fb90840cb9cf1f3b2171bc67f",
+        "text": "Мой код 103137 and safe.",
+        "language": "ru",
+        "languages": [
+          "ru"
+        ],
+        "provisional": true
+      },
+      {
+        "seq": 5,
+        "session_id": "fd0f054c36cc40c4bf30f8f1ecd807ea",
+        "type": "final",
+        "utterance_id": "c8154d8fb90840cb9cf1f3b2171bc67f",
+        "text": "Мой код 103137 and say hello in English.",
+        "language": "ru",
+        "languages": [
+          "ru"
+        ],
+        "provisional": false
+      }
+    ],
+    "error": null
+  },
+  "file_stream_closed": true
+}

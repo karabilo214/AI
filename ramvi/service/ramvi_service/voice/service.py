@@ -38,7 +38,9 @@ from ramvi_service.voice.models import (
 )
 from ramvi_service.voice.remote import RemoteTranscriber, host_of
 from ramvi_service.voice.server import WhisperServer
+from ramvi_service.voice.session import Detector, VoiceSession
 from ramvi_service.voice.stt import Transcriber, WhisperProcess, default_threads
+from ramvi_service.voice.vad import VADProcess
 
 MIN_SECONDS = 0.3
 SECRET_NS, SECRET_KEY = "voice", "api_key"
@@ -98,6 +100,7 @@ class VoiceService:
         ] = RemoteTranscriber,
         max_seconds: float = 120.0,
         idle_seconds: float = 300.0,
+        make_detector: Callable[[Path], Detector] = VADProcess,
     ) -> None:
         self.models_dir, self.settings = models_dir, settings
         self.microphone = microphone or SoundDeviceMicrophone()
@@ -117,7 +120,10 @@ class VoiceService:
         self._active: tuple[str, SttModel] | None = None  # где распознаётся текущая запись
         self._last: dict[str, Any] | None = None
         self.max_seconds, self.idle_seconds = max_seconds, idle_seconds
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self.make_detector = make_detector
+        self._session: VoiceSession | None = None
+        self._session_owner: Owner | None = None
         self._state = "idle"
         self._recorder: Recorder | None = None
         self._limit = False
@@ -321,8 +327,95 @@ class VoiceService:
             extra={
                 "model": self.model().id,
                 "installed": installed(self.model(), self.models_dir()),
+                "session": {
+                    "supported": True,
+                    "partial": True,
+                    "vad": "silero",
+                    "echo_mode": "half_duplex_gate",
+                    "barge_in_during_playback": False,
+                },
+                "remote_host": host_of(self.settings().voice_api_url)
+                if self._api_enabled()
+                else None,
             },
         )
+
+    def start_session(
+        self, device: str | None = None, *, owner: Owner | None = None, language: str = "auto"
+    ) -> dict[str, Any]:
+        if language not in LANGUAGES:
+            raise ValueError("unsupported session language")
+        with self._lock:
+            if self._state != "idle":
+                raise ChatError("voice.busy")
+            vad = Path(__file__).parent / "assets" / "silero_v5.1.2.onnx"
+            if not vad.is_file():
+                raise ChatError("voice.model_missing", model=VAD.id)
+            backend, model = self._choose()
+            self._acquire_microphone(owner)
+            session = None
+            try:
+                recognizer = self._get_transcriber(backend, model)
+                session = VoiceSession(
+                    self.microphone,
+                    self.make_detector(vad),
+                    recognizer,
+                    on_close=lambda: self._session_closed(session),
+                    language=language,
+                )
+                # Session owns its recognizer; a later Chat recording gets a fresh one.
+                self._transcriber = None
+                self._transcriber_key = None
+                self._session, self._session_owner = session, owner
+                self._state, self._recording_owner = "session", owner
+                self._active = backend, model
+                self._cancel_idle()
+                session.start(device or self.settings().voice_device or None)
+            except BaseException:
+                if session:
+                    session.stop()
+                else:
+                    self._release_microphone()
+                raise
+            return session.read()
+
+    def _session_closed(self, session: VoiceSession | None) -> None:
+        with self._lock:
+            if self._session is session:
+                self._state, self._recording_owner, self._active = "idle", None, None
+                self._release_microphone()
+
+    def _owned_session(self, owner: Owner | None, capture_id: str | None) -> VoiceSession:
+        session = self._session
+        if session is None or (owner is not None and owner != self._session_owner):
+            raise ChatError("voice.not_owner")
+        if capture_id is not None and capture_id != session.id:
+            raise ChatError("voice.not_owner")
+        return session
+
+    def read_session(
+        self, *, owner: Owner | None = None, capture_id: str | None = None, cursor: int = 0
+    ) -> dict[str, Any]:
+        with self._lock:
+            session = self._owned_session(owner, capture_id)
+        return session.read(cursor)
+
+    def cancel_session(
+        self, *, owner: Owner | None = None, capture_id: str | None = None
+    ) -> dict[str, Any]:
+        with self._lock:
+            session = self._owned_session(owner, capture_id)
+        session.stop()
+        session.join()
+        return session.read()
+
+    def session_playback(
+        self, active: bool, *, owner: Owner | None = None, capture_id: str | None = None
+    ) -> dict[str, Any]:
+        with self._lock:
+            session = self._owned_session(owner, capture_id)
+        session.playback(active)
+        return session.read()
 
     def _acquire_microphone(self, owner: Owner | None) -> None:
         who = owner or self.owner
@@ -444,6 +537,14 @@ class VoiceService:
 
     def cancel(self, owner: Owner | None = None) -> dict[str, Any]:
         """Прекратить запись без распознавания или прервать идущее распознавание."""
+        with self._lock:
+            session = self._session if self._state == "session" else None
+            if session:
+                self._check_owner(owner)
+        if session:
+            session.stop()
+            session.join()
+            return self.status()
         recorder = transcriber = None
         cancelled = False
         with self._lock:

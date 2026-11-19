@@ -1,0 +1,7 @@
+{
+  "gpu": "0 MiB",
+  "voice_worker_processes": 0,
+  "marker": false,
+  "own_tasks": 0,
+  "own_processes": 0
+}

@@ -43,6 +43,10 @@ NOT_KEYS = frozenset(
         "voice.listen.start",
         "voice.listen.stop",
         "voice.listen.cancel",
+        "voice.session.start",
+        "voice.session.read",
+        "voice.session.cancel",
+        "voice.session.playback",
     }
 )
 

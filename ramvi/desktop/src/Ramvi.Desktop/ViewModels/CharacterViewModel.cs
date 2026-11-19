@@ -21,11 +21,13 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     {
         _token = _lifetime.Token;
         _api = api; Models = models;
+        Voice = new CharacterVoiceViewModel((operation, args) => ModuleCallAsync("voice", operation, args), () => Model is not null, FollowVoiceReply);
         Send = new Command(SendAsync, () => !Busy && !string.IsNullOrWhiteSpace(Draft) && Model is not null);
         Stop = new Command(StopAsync, () => Busy);
     }
     public ObservableCollection<ModelInfo> Models { get; }
     public ObservableCollection<CharacterProfile> Profiles { get; } = [];
+    public CharacterVoiceViewModel Voice { get; }
     public Command Send { get; }
     public Command Stop { get; }
     public string Draft { get => _draft; set { if (Set(ref _draft, value)) Send.Refresh(); } }
@@ -35,18 +37,20 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     public ModelInfo? Model
     {
         get => _model;
-        set { if (Set(ref _model, value)) { Send.Refresh(); if (!_loading) { _ignoreEvents = true; _ = ConfigureAsync(); } } }
+        set { if (Set(ref _model, value)) { Send.Refresh(); Voice.Refresh(); if (!_loading) { _ignoreEvents = true; _ = ConfigureAsync(); } } }
     }
     public CharacterProfile? Profile
     {
         get => _profile;
         set { if (Set(ref _profile, value) && !_loading && value is not null) _ = SelectProfileAsync(value.Id); }
     }
-    private async Task<JsonElement> CallAsync(string operation, JsonObject? arguments = null)
+    private Task<JsonElement> CallAsync(string operation, JsonObject? arguments = null) => ModuleCallAsync("dialogue", operation, arguments);
+    private async Task<JsonElement> ModuleCallAsync(string command, string operation, JsonObject? arguments = null)
     {
         using var document = JsonDocument.Parse(new JsonObject { ["operation"] = operation, ["arguments"] = arguments ?? new JsonObject() }.ToJsonString());
         var body = document.RootElement.Clone();
-        var result = await _api().ModuleCommandAsync("character", "dialogue", body, _token).ConfigureAwait(true);
+        if (command == "voice" && operation == "start") await ConfigureAsync().ConfigureAwait(true);
+        var result = await _api().ModuleCommandAsync("character", command, body, _token).ConfigureAwait(true);
         if (result.TryGetProperty("error", out _)) throw new InvalidOperationException("Character request failed");
         return result;
     }
@@ -75,6 +79,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
                 _ = PollAsync(_responseId!);
             }
             Error = "";
+            await Voice.LoadAsync().ConfigureAwait(true);
         }
         catch (Exception e) when (Handled(e)) { Error = Localizer.Current["character.request_error"]; }
     }
@@ -98,15 +103,16 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     {
         Busy = true; _ignoreEvents = false; Error = "";
         var input = Draft;
+        string? sentId = null;
         try
         {
             var result = await CallAsync("start", new JsonObject { ["text"] = input, ["model"] = Model!.Id }).ConfigureAwait(true);
-            _responseId = result.GetProperty("response_id").GetString(); Draft = "";
+            _responseId = result.GetProperty("response_id").GetString(); sentId = _responseId; Draft = "";
             Transcript += (Transcript.Length == 0 ? "" : "\n\n") + Localizer.Current["character.owner"] + ": " + input + "\nRAMVI: ";
             await PollAsync(_responseId!).ConfigureAwait(true);
         }
         catch (Exception e) when (Handled(e)) { Error = Localizer.Current["character.request_error"]; }
-        finally { Busy = false; }
+        finally { if (sentId is null || _responseId == sentId) Busy = false; }
     }
     private async Task PollAsync(string id)
     {
@@ -116,6 +122,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
             while (!_lifetime.IsCancellationRequested && _responseId == id)
             {
                 var result = await CallAsync("poll", new JsonObject { ["response_id"] = id, ["cursor"] = cursor }).ConfigureAwait(true);
+                if (_responseId != id) break;
                 var job = result.GetProperty("job");
                 if (job.ValueKind != JsonValueKind.Object) break;
                 foreach (var record in job.GetProperty("events").EnumerateArray())
@@ -134,6 +141,13 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         catch (Exception e) when (Handled(e)) { if (!_lifetime.IsCancellationRequested) Error = Localizer.Current["character.request_error"]; }
         finally { if (_responseId == id) Busy = false; }
     }
+    private void FollowVoiceReply(JsonElement reply)
+    {
+        var id = reply.GetProperty("response_id").GetString()!;
+        _responseId = id; _ignoreEvents = false; Busy = true;
+        Transcript += (Transcript.Length == 0 ? "" : "\n\n") + Localizer.Current["character.owner"] + ": " + reply.GetProperty("text").GetString() + "\nRAMVI: ";
+        _ = PollAsync(id);
+    }
     private async Task StopAsync()
     {
         _ignoreEvents = true;
@@ -141,6 +155,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         catch (Exception e) when (Handled(e)) { Error = Localizer.Current["character.request_error"]; }
     }
     private static bool Handled(Exception e) => e is ApiException or HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException or OperationCanceledException or NotSupportedException;
-    public void Dispose() { if (_disposed) return; _disposed = true; _lifetime.Cancel(); _lifetime.Dispose(); }
+    public override void Relocalize() { base.Relocalize(); Voice.Relocalize(); }
+    public void Dispose() { if (_disposed) return; _disposed = true; Voice.Dispose(); _lifetime.Cancel(); _lifetime.Dispose(); }
 }
 public sealed record CharacterProfile(string Id, string Name);

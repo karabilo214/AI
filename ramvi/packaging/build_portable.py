@@ -55,6 +55,7 @@ ROOTS = (
     # 5.2 (ADR-0004): голосовой ввод — запись звука (PortAudio) и whisper.cpp, только CPU
     "sounddevice",
     "pywhispercpp",
+    "onnxruntime",  # continuous session VAD on CPU; independent of Engine/torch
 )
 TOKENIZER_FILES = (
     "tokenizer.json",

@@ -669,5 +669,17 @@
   "character.stop": "Stop",
   "character.input": "Write to the character…",
   "character.model": "Model",
-  "character.profile": "Profile"
+  "character.profile": "Profile",
+  "character.voice_start": "Start voice session",
+  "character.voice_stop": "End voice session",
+  "character.voice_error": "Voice session stopped. Check the microphone and Sound settings.",
+  "voice.session_overflow": "Voice session stopped: audio processing could not keep up.",
+  "character.voice_state.inactive": "Microphone off",
+  "character.voice_state.starting": "Starting microphone…",
+  "character.voice_state.listening": "Listening",
+  "character.voice_state.hearing": "You are speaking",
+  "character.voice_state.recognizing": "Transcribing…",
+  "character.voice_state.stopping": "Stopping microphone…",
+  "character.voice_state.error": "Voice session error",
+  "character.voice_hint": "The microphone runs only during the session. After a pause, your utterance is sent to the character."
 }

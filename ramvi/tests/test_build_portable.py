@@ -412,3 +412,21 @@ def test_record_with_wheel_data_paths_is_copied(tmp_path: Path) -> None:
     count, _ = bp.copy_distribution(dist, target)
     assert (target / "whisper-abc.dll").read_bytes() == b"dll"
     assert (target / "pkg" / "__init__.py").is_file() and count == 3
+
+
+def test_only_pinned_runtime_vad_is_allowed_not_arbitrary_model(tmp_path: Path) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "service/ramvi_service/voice/assets/silero_v5.1.2.onnx"
+    )
+    target = tmp_path / "ramvi/service/ramvi_service/voice/assets/silero_v5.1.2.onnx"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(source.read_bytes())
+    redist_mod.assert_no_models(tmp_path)
+    target.write_bytes(b"x" * source.stat().st_size)
+    with pytest.raises(SystemExit, match="silero_v5.1.2"):
+        redist_mod.assert_no_models(tmp_path)
+    target.unlink()
+    (target.parent / "another.onnx").write_bytes(source.read_bytes())
+    with pytest.raises(SystemExit, match="another.onnx"):
+        redist_mod.assert_no_models(tmp_path)

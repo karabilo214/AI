@@ -547,6 +547,43 @@ class ScopedServices:
     def _voice_cancel(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {"state": self._voice_service().cancel(owner=self.owner)["state"]}
 
+    @handler("voice.session.start", permission="voice", active=True)
+    def _voice_session_start(self, payload: dict[str, Any]) -> dict[str, Any]:
+        device = payload.get("device")
+        if device is not None and not isinstance(device, str):
+            raise ValueError("device must be a string")
+        return dict(
+            self._voice_service().start_session(
+                device, owner=self.owner, language=payload.get("language", "auto")
+            )
+        )
+
+    @handler("voice.session.read", permission="voice", active=True)
+    def _voice_session_read(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(
+            self._voice_service().read_session(
+                owner=self.owner,
+                capture_id=payload.get("capture_id"),
+                cursor=payload.get("cursor", 0),
+            )
+        )
+
+    @handler("voice.session.cancel", permission="voice")
+    def _voice_session_cancel(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(
+            self._voice_service().cancel_session(
+                owner=self.owner, capture_id=payload.get("capture_id")
+            )
+        )
+
+    @handler("voice.session.playback", permission="voice", active=True)
+    def _voice_session_playback(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(
+            self._voice_service().session_playback(
+                payload["active"], owner=self.owner, capture_id=payload.get("capture_id")
+            )
+        )
+
     def _voice_release(self) -> None:
         """Остановленный модуль не держит микрофон: его запись отменяется."""
         if self.voice is not None:

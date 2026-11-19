@@ -10,6 +10,7 @@ from ramvi_character.emotions import EmotionalState
 from ramvi_character.initiative import InitiativeGate
 from ramvi_character.pack import load_pack, presentation
 from ramvi_character.personality import Personality
+from ramvi_character.voice import VoiceConversation
 
 
 class CharacterModule:
@@ -18,6 +19,7 @@ class CharacterModule:
         self._emotions = EmotionalState()
         self._initiative = InitiativeGate()
         self._dialogue = Dialogue(self)
+        self._voice = VoiceConversation(self)
         self._scope = "uninitialized"
         self._task = ""
         self._state = "new"
@@ -56,6 +58,7 @@ class CharacterModule:
         self._presentation = None
         self._pack = None
         self._dialogue = Dialogue(self, context.get("services"))
+        self._voice = VoiceConversation(self, context.get("services"))
         # Text activation does not import/load animation, STT, TTS or an LLM.
         self._state = "initialized"
         return self.status()
@@ -65,6 +68,7 @@ class CharacterModule:
         return self.status()
 
     def deactivate(self) -> None:
+        self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         self._initiative.end()
         self._presentation = None
@@ -72,6 +76,7 @@ class CharacterModule:
         self._state = "inactive"
 
     def suspend(self) -> None:
+        self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         self._initiative.end()
         self._presentation = None
@@ -87,6 +92,7 @@ class CharacterModule:
         self._state = "disposed"
 
     def checkpoint(self) -> dict[str, Any]:
+        self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         # No sound, animation queue or unfinished response resumes after a restart.
         return {
@@ -112,7 +118,8 @@ class CharacterModule:
             "emotional_state": self._emotions.view(),
             "task": self._task,
             "initiative": self._initiative.status(),
-            "devices_open": False,
+            "devices_open": self._voice.state
+            in {"listening", "hearing", "recognizing", "stopping"},
             "provider_connected": self._dialogue.connected,
         }
 
@@ -284,6 +291,29 @@ class CharacterModule:
             return result
         except (ValueError, TypeError, KeyError, RuntimeError) as error:
             return {"error": type(error).__name__, "code": "character.request_error"}
+
+    def voice(
+        self, operation: str = "status", arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        try:
+            self._require_active()
+            args = arguments or {}
+            if not isinstance(args, dict):
+                raise ValueError("invalid voice arguments")
+            if operation == "capabilities":
+                return self._voice.capabilities()
+            if operation == "start":
+                if "model" in args:
+                    self.configure(self._draft, args["model"])
+                return self._voice.start()
+            if operation == "stop":
+                return self._voice.end()
+            if operation != "status":
+                raise ValueError("unknown voice operation")
+            self._voice.touch()
+            return self._voice.view()
+        except (ValueError, TypeError, KeyError, RuntimeError) as error:
+            return {"error": type(error).__name__, "code": "character.voice_error"}
 
     def present(self, emotion: str, animation: str = "idle") -> dict[str, Any]:
         if self._state != "active":

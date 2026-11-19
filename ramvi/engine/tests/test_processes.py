@@ -296,3 +296,28 @@ def test_windows_gate_bypasses_virtual_environment_redirector(
     command = _windows_bootstrap_command(["venv-redirector", "-m", "ramvi_engine"])
     assert command[0] == "base-python"
     assert command[-3:] == ["venv-redirector", "-m", "ramvi_engine"]
+
+
+def test_reaped_root_with_inaccessible_stale_group_still_closes_rpc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("POSIX group cleanup")
+    import signal
+
+    worker = ProcessSupervisor([sys.executable, "-c", "pass"])
+    worker.start()
+    assert worker._process is not None
+    process = worker._process
+    process.wait(timeout=3)
+
+    def inaccessible_group(pid: int, sig: int) -> None:
+        assert pid == process.pid
+        if sig == signal.SIGKILL:
+            raise PermissionError("stale group is inaccessible")
+
+    monkeypatch.setattr(os, "killpg", inaccessible_group)
+    assert worker.stop()["state"] == "stopped"
+    assert process.stdout is not None and process.stdout.closed
+    assert process.stderr is not None and process.stderr.closed
+    assert process.stdin is not None and process.stdin.closed

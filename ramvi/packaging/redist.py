@@ -10,7 +10,8 @@
   удаляются. ptxas.exe (Triton) тоже не распространяется: ядра собирает драйвер NVIDIA
   (engine/ramvi_engine/kernels/driver_jit.py; проверено — ответ побайтно тот же, скорость та же).
   Механизм «блокирующих» файлов оставлен для будущих находок (`internal` их пропускает).
-- Модели в комплект не входят: модель и предсказатель пользователь скачивает сам.
+- LLM/STT-модели и предсказатель пользователь скачивает сам. Служебный Silero VAD
+  входит как фиксированный ресурс с MIT-лицензией; исключение только по пути и SHA-256.
 - Тексты лицензий собираются в папку `licenses/`.
 """
 
@@ -259,12 +260,24 @@ MODEL_PATTERNS = ("*.gguf", "*.safetensors", "ggml-*.bin", "*.pt", "*.pth", "*.o
 MODEL_MIN_BYTES = 2**20  # *.pth — это и служебные файлы путей Python (distutils-precedence.pth)
 
 
+RUNTIME_MODELS = {
+    "ramvi/service/ramvi_service/voice/assets/silero_v5.1.2.onnx": "2623a2953f6ff3d2c1e61740c6cdb7168133479b267dfef114a4a3cc5bdd788f",
+}
+
+
 def assert_no_models(out: Path) -> None:
-    """В релиз не входит ни одна модель: основную и предсказатель пользователь скачивает сам."""
+    """Нет пользовательских весов; только фиксированный служебный VAD по пути и хешу."""
     found = [
         p.relative_to(out).as_posix()
         for p in out.rglob("*")
-        if p.is_file() and _match(p.name, MODEL_PATTERNS) and p.stat().st_size >= MODEL_MIN_BYTES
+        if p.is_file()
+        and _match(p.name, MODEL_PATTERNS)
+        and p.stat().st_size >= MODEL_MIN_BYTES
+        and not (
+            p.relative_to(out).as_posix() in RUNTIME_MODELS
+            and hashlib.sha256(p.read_bytes()).hexdigest()
+            == RUNTIME_MODELS[p.relative_to(out).as_posix()]
+        )
     ]
     if (out / "models").exists():
         found.append("models/")
@@ -328,9 +341,9 @@ def _nuspec_license(folder: Path) -> str:
     for element in root.iter():
         tag = element.tag.rsplit("}", 1)[-1]
         if tag == "license" and (element.text or "").strip():
-            return element.text.strip()
+            return (element.text or "").strip()
         if tag == "licenseUrl" and (element.text or "").strip():
-            return element.text.strip()
+            return (element.text or "").strip()
     return ""
 
 

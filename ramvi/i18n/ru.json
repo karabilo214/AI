@@ -669,5 +669,17 @@
   "character.stop": "Стоп",
   "character.input": "Напишите персонажу…",
   "character.model": "Модель",
-  "character.profile": "Профиль"
+  "character.profile": "Профиль",
+  "character.voice_start": "Начать голосовую сессию",
+  "character.voice_stop": "Завершить голосовую сессию",
+  "character.voice_error": "Голосовая сессия остановлена. Проверьте микрофон и раздел «Звук» в настройках.",
+  "voice.session_overflow": "Голосовая сессия остановлена: обработка не успевает за звуком.",
+  "character.voice_state.inactive": "Микрофон выключен",
+  "character.voice_state.starting": "Включение микрофона…",
+  "character.voice_state.listening": "Слушаю",
+  "character.voice_state.hearing": "Вы говорите",
+  "character.voice_state.recognizing": "Распознавание…",
+  "character.voice_state.stopping": "Остановка микрофона…",
+  "character.voice_state.error": "Ошибка голосовой сессии",
+  "character.voice_hint": "Микрофон работает только во время сессии. После паузы фраза отправляется персонажу."
 }

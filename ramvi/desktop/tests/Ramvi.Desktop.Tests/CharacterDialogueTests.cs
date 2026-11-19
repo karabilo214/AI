@@ -20,7 +20,9 @@ public sealed class CharacterDialogueTests
         var api = new FakeChatApi();
         api.ModuleHandler = (section, command, body) =>
         {
-            Assert.Equal("character", section); Assert.Equal("dialogue", command);
+            Assert.Equal("character", section);
+            if (command == "voice") return Task.FromResult(Json("{\"available\":false}"));
+            Assert.Equal("dialogue", command);
             var operation = body.GetProperty("operation").GetString()!; calls.Add(operation);
             return Task.FromResult(operation switch
             {

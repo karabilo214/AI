@@ -397,11 +397,12 @@ class ProcessSupervisor:
                 else:
                     p.kill()
                 p.wait(timeout=budget)
-            # Root may have already exited but descendants still own its process group.
+            # Root has been reaped. Descendants may still own its process group;
+            # an inaccessible stale group must not prevent closing RPC pipes/threads.
             if sys.platform != "win32":
                 try:
                     os.killpg(p.pid, signal.SIGKILL)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
                     pass
             self._reader_stop.set()
             for thread in self._threads:

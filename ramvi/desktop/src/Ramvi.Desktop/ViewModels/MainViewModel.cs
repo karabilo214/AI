@@ -106,7 +106,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Voice = new VoiceViewModel(() => _api, InsertVoiceText, e => { if (Sections.IsAgentSelected) Agent.VoiceError(e); else ShowError(e); }, () => IsConnected, send: SendVoiceTextAsync);
         Agent.Voice = Voice;
         Voice.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(VoiceViewModel.IsRecording) && Voice.IsRecording) _voiceForAgent = Sections.IsAgentSelected; };
-        Sections.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(SectionsViewModel.IsChatSelected) && Voice.IsRecording) _ = Voice.CancelCommand.RunAsync(); };
+        Sections.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SectionsViewModel.IsChatSelected) && Voice.IsRecording) _ = Voice.CancelCommand.RunAsync();
+            if (e.PropertyName == nameof(SectionsViewModel.IsCharacterSelected) && !Sections.IsCharacterSelected) _ = Character.Voice.StopAsync();
+        };
         NewChatCommand = new Command(NewChatAsync, () => !IsGenerating && IsConnected);
         SendCommand = new Command(SendAsync, CanSend);
         StopCommand = new Command(StopAsync, () => IsGenerating);
@@ -808,6 +812,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         Sections.Relocalize();
         Agent.Relocalize();
+        Character.Relocalize();
         ModelsScreen.Relocalize();
         Settings.Relocalize();
         Onboarding.Relocalize();

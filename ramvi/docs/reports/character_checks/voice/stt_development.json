@@ -1,0 +1,65 @@
+[
+  {
+    "id": "10221250944584729444.wav",
+    "reference": "О первых случаях заболевания в этом сезоне было сообщено в июле.",
+    "text": "О первых случаях заболевания в этом сезоне было сообщено в июле.",
+    "language": "ru",
+    "audio_s": 4.8,
+    "proc_s": 5.96,
+    "elapsed_s": 7.399
+  },
+  {
+    "id": "10818189739456345343.wav",
+    "reference": "Еще три бомбы взорвались возле правительственных зданий в течение двух часов.",
+    "text": "Еще три бомбы взорвались возле правительственных зданий в течение двух часов.",
+    "language": "ru",
+    "audio_s": 6.24,
+    "proc_s": 5.92,
+    "elapsed_s": 5.921
+  },
+  {
+    "id": "11037520222095225046.wav",
+    "reference": "В зависимости от содержания жидкости, карри может быть \"сухим\" или \"мокрым\".",
+    "text": "В зависимости от содержания жидкости, кари может быть сухим или мокрым.",
+    "language": "ru",
+    "audio_s": 6.54,
+    "proc_s": 5.92,
+    "elapsed_s": 5.925
+  },
+  {
+    "id": "10010138729160973689.wav",
+    "reference": "When you call someone who is thousands of miles away, you are using a satellite.",
+    "text": "When you call someone who is thousands of miles away, you are using a satellite.",
+    "language": "en",
+    "audio_s": 6.54,
+    "proc_s": 5.87,
+    "elapsed_s": 5.873
+  },
+  {
+    "id": "10098964113747380446.wav",
+    "reference": "Then, Lakkha Singh took the lead in singing the bhajans.",
+    "text": "Then Laka sing to the lead and singing the passions.",
+    "language": "en",
+    "audio_s": 4.14,
+    "proc_s": 5.96,
+    "elapsed_s": 5.962
+  },
+  {
+    "id": "10146705666908229607.wav",
+    "reference": "The major religion in Moldova is Orthodox Christian.",
+    "text": "The major religion in Moldova is Orthodox Christian.",
+    "language": "en",
+    "audio_s": 4.92,
+    "proc_s": 6.23,
+    "elapsed_s": 6.231
+  },
+  {
+    "id": "mixed_ru_en",
+    "reference": "О первых случаях заболевания в этом сезоне было сообщено в июле. When you call someone who is thousands of miles away, you are using a satellite.",
+    "text": "О первых случаях заболевания в этом сезоне было сообщено в июле.",
+    "language": "ru",
+    "audio_s": 11.54,
+    "proc_s": 5.97,
+    "elapsed_s": 5.97
+  }
+]
