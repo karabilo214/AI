@@ -19,6 +19,7 @@
 """
 
 import argparse
+import csv
 import hashlib
 import importlib.metadata as md
 import json
@@ -113,17 +114,37 @@ def closure(roots: tuple[str, ...]) -> dict[str, md.Distribution]:
     return dict(sorted(found.items()))
 
 
+def _record(dist: md.Distribution) -> list[md.PackagePath]:
+    """Все пути из RECORD. `dist.files` в Python 3.12 молча выбрасывает отсутствующие на диске
+    пути — так терялись DLL pywhispercpp, записанные как `<пакет>.data/platlib/x.dll` (8.7)."""
+    text = dist.read_text("RECORD")
+    if text is None:
+        return list(dist.files or [])
+    return [md.PackagePath(row[0]) for row in csv.reader(text.splitlines()) if row and row[0]]
+
+
 def copy_distribution(dist: md.Distribution, site: Path) -> tuple[int, int]:
     """Файлы пакета внутри site-packages (скрипты из ../Scripts не нужны)."""
     files = count = size = 0
-    for item in dist.files or []:
+    for item in _record(dist):
         files += 1
         if item.parts and item.parts[0] == "..":
             continue
+        parts = item.parts
         source = Path(str(dist.locate_file(item)))
+        if (
+            not source.is_file()
+            and len(parts) > 2
+            and parts[0].endswith(".data")
+            and parts[1] in ("platlib", "purelib")
+        ):
+            # 8.7: RECORD с путями из колеса (`<пакет>.data/platlib/x.dll`), а файл установлен
+            # в корень site-packages — так у pywhispercpp; без этого его DLL терялись.
+            parts = parts[2:]
+            source = Path(str(dist.locate_file(Path(*parts))))
         if not source.is_file():
             continue
-        target = site / Path(*item.parts)
+        target = site / Path(*parts)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         count += 1
@@ -196,7 +217,7 @@ TRIM_FILES = (
     "torch/lib/cufftw64_12.dll",
     "torch/lib/nvperf_host.dll",
 )
-TRIM_DIRS = ("torch/include", "torch/share", "torchgen")
+TRIM_DIRS = ("torch/include", "torch/share")  # torchgen не трогать: его импортирует import torch
 TRIM_GLOBS = ("torch/lib/*.lib",)
 
 
@@ -295,7 +316,7 @@ def third_party_notices(dists: dict[str, md.Distribution]) -> str:
 def make_zip(folder: Path, target: Path) -> int:
     """8.7: архив для раздачи (папка RAMVI внутри), deflate; вернуть размер архива."""
     with zipfile.ZipFile(
-        target, "w", zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True
+        target, "w", zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True, strict_timestamps=False
     ) as archive:
         for path in sorted(p for p in folder.rglob("*") if p.is_file()):
             archive.write(path, Path(folder.name) / path.relative_to(folder))
@@ -348,6 +369,7 @@ def build(
     trim: bool = False,
     vs_license: str | None = None,
     internal: bool = False,
+    nuget: Path | None = None,
 ) -> dict[str, Any]:
     if out.exists():
         raise SystemExit(f"папка уже существует: {out} (комплект собирается в новую папку)")
@@ -382,7 +404,7 @@ def build(
         copied, size = copied + count, size + bytes_
     trimmed = trim_site(site) if trim else None
     nvidia = redist.check_nvidia(site, internal=internal)
-    licenses = redist.write_licenses(out, dists, shell)
+    licenses = redist.write_licenses(out, dists, shell, nuget)
     # 8.7: лицензия RAMVI и сводка сторонних компонентов — в корне комплекта.
     if (source / "LICENSE").is_file():
         shutil.copy2(source / "LICENSE", out / "LICENSE")
@@ -449,6 +471,11 @@ def main() -> None:
         action="store_true",
         help="внутренняя сборка для своих проверок: оставить нераспространяемые файлы (не для раздачи)",
     )
+    parser.add_argument(
+        "--nuget",
+        type=Path,
+        help="папка пакетов NuGet для текстов лицензий оболочки (по умолчанию ~/.nuget/packages)",
+    )
     args = parser.parse_args()
     manifest = build(
         args.out,
@@ -458,6 +485,7 @@ def main() -> None:
         trim=args.trim,
         vs_license=args.vs_license,
         internal=args.internal,
+        nuget=args.nuget,
     )
     print(json.dumps({k: v for k, v in manifest.items() if k != "packages"}, ensure_ascii=False))
     print(f"пакетов: {len(manifest['packages'])}")

@@ -18,9 +18,13 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(sys.argv[0]).resolve().parent
-BUNDLE = Path(os.environ["USERPROFILE"]) / "Desktop" / "RAMVI"
+BUNDLE = Path(
+    os.environ.get("RAMVI_BUNDLE") or Path(os.environ["USERPROFILE"]) / "Desktop" / "RAMVI"
+)
 SPEECH = Path(r"C:\anm\voice_test\data\fleurs\ru_ru")
 GUARD_LOG = HERE / "guard.log"
+# Модели речи: в релизе их нет (пользователь скачивает сам) — берём уже скачанные.
+STT = Path(os.environ.get("RAMVI_STT_MODELS") or BUNDLE / "models" / "stt")
 TOKEN = "offline-exam-" + "x" * 24
 RESULTS: dict[str, Any] = {"started": time.strftime("%Y-%m-%d %H:%M:%S")}
 
@@ -163,7 +167,7 @@ def main() -> None:
     app_dir.mkdir(parents=True)
     (app_dir / "settings.json").write_text(
         json.dumps(
-            {"data_dir": str(data), "models_dir": str(BUNDLE / "models"), "voice_language": "ru"}
+            {"data_dir": str(data), "models_dir": str(work / "models"), "voice_language": "ru"}
         ),
         encoding="utf-8",
     )
@@ -178,7 +182,7 @@ def main() -> None:
             "mklink",
             "/J",
             str(app_dir / "models" / "stt"),
-            str(BUNDLE / "models" / "stt"),
+            str(STT),
         ],
         check=True,
         capture_output=True,

@@ -298,10 +298,17 @@ def test_release_contains_no_models(tmp_path: Path) -> None:
     out = tmp_path / "RAMVI"
     (out / "runtime" / "tokenizers" / "Qwen3-8B").mkdir(parents=True)
     (out / "runtime" / "tokenizers" / "Qwen3-8B" / "tokenizer.json").write_text("{}")
+    site = out / "runtime" / "python" / "Lib" / "site-packages"
+    site.mkdir(parents=True)
+    (site / "distutils-precedence.pth").write_text("import os")  # служебный файл Python
     redist_mod.assert_no_models(out)
+    (out / "runtime" / "big.gguf").write_bytes(b"x" * 2**20)
+    with pytest.raises(SystemExit, match="big.gguf"):
+        redist_mod.assert_no_models(out)
+    (out / "runtime" / "big.gguf").unlink()
     (out / "models" / "stt").mkdir(parents=True)
     (out / "models" / "stt" / "ggml-large-v3-turbo-q5_0.bin").write_bytes(b"x")
-    with pytest.raises(SystemExit, match="ggml-large"):
+    with pytest.raises(SystemExit, match="models/"):
         redist_mod.assert_no_models(out)
 
 
@@ -358,13 +365,13 @@ def test_trim_removes_only_listed_torch_parts(tmp_path: Path) -> None:
         "torch/lib/cublas64_13.dll",
         "triton/backends/nvidia/lib/x64/cuda.lib",  # Triton собирает свой модуль
         "triton/backends/nvidia/include/cuda.h",
+        "torchgen/model.py",  # его импортирует torch/utils/_python_dispatch.py
     ]
     gone = [
         "torch/lib/cudnn_engines_precompiled64_9.dll",
         "torch/lib/cusolverMg64_12.dll",
         "torch/lib/torch_cpu.lib",
         "torch/include/ATen/ATen.h",
-        "torchgen/model.py",
     ]
     for name in keep + gone:
         (site / name).parent.mkdir(parents=True, exist_ok=True)
@@ -386,3 +393,22 @@ def test_zip_contains_folder_and_reports_size(tmp_path: Path) -> None:
     assert size == (tmp_path / "RAMVI.zip").stat().st_size and size < 3000
     with zipfile.ZipFile(tmp_path / "RAMVI.zip") as archive:
         assert sorted(archive.namelist()) == ["RAMVI/RAMVI.exe", "RAMVI/runtime/a.txt"]
+
+
+def test_record_with_wheel_data_paths_is_copied(tmp_path: Path) -> None:
+    """8.7: RECORD pywhispercpp указывает `.data/platlib/x.dll`, файл лежит в корне site."""
+    source = tmp_path / "src-site"
+    info = source / "pkg-1.0.dist-info"
+    info.mkdir(parents=True)
+    (source / "pkg").mkdir()
+    (source / "pkg" / "__init__.py").write_text("")
+    (source / "whisper-abc.dll").write_bytes(b"dll")
+    (info / "METADATA").write_text("Metadata-Version: 2.1\nName: pkg\nVersion: 1.0\n")
+    (info / "RECORD").write_text(
+        "pkg/__init__.py,,\npkg-1.0.data/platlib/whisper-abc.dll,,\npkg-1.0.dist-info/RECORD,,\n"
+    )
+    dist = bp.md.PathDistribution(info)
+    target = tmp_path / "site"
+    count, _ = bp.copy_distribution(dist, target)
+    assert (target / "whisper-abc.dll").read_bytes() == b"dll"
+    assert (target / "pkg" / "__init__.py").is_file() and count == 3

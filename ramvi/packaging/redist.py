@@ -256,6 +256,7 @@ def check_nvidia(site: Path, internal: bool = False) -> dict[str, Any]:
 # --- модели ------------------------------------------------------------------------------------
 
 MODEL_PATTERNS = ("*.gguf", "*.safetensors", "ggml-*.bin", "*.pt", "*.pth", "*.onnx", "*.ckpt")
+MODEL_MIN_BYTES = 2**20  # *.pth — это и служебные файлы путей Python (distutils-precedence.pth)
 
 
 def assert_no_models(out: Path) -> None:
@@ -263,7 +264,7 @@ def assert_no_models(out: Path) -> None:
     found = [
         p.relative_to(out).as_posix()
         for p in out.rglob("*")
-        if p.is_file() and _match(p.name, MODEL_PATTERNS)
+        if p.is_file() and _match(p.name, MODEL_PATTERNS) and p.stat().st_size >= MODEL_MIN_BYTES
     ]
     if (out / "models").exists():
         found.append("models/")
@@ -284,6 +285,25 @@ def _license_files(dist: md.Distribution) -> list[Path]:
             if path.is_file():
                 files.append((item, path))
     return [p for _, p in files]
+
+
+def _meta_license(dist: md.Distribution) -> str:
+    meta = dist.metadata
+    classes = " ".join(c for c in meta.get_all("Classifier") or [] if c.startswith("License ::"))
+    return " ".join(x for x in (meta.get("License-Expression"), meta.get("License"), classes) if x)
+
+
+def _apache_text(dists: dict[str, md.Distribution]) -> Path | None:
+    """Полный текст Apache License 2.0 из файла лицензии любого пакета комплекта."""
+    for dist in dists.values():
+        for path in _license_files(dist):
+            try:
+                head = path.read_text(encoding="utf-8", errors="replace")[:600]
+            except OSError:
+                continue
+            if "Apache License" in head and "Version 2.0" in head and path.stat().st_size > 9000:
+                return path
+    return None
 
 
 def nuget_packages(shell: Path) -> list[tuple[str, str]]:
@@ -363,9 +383,16 @@ def write_licenses(
         (folder / "python").mkdir(exist_ok=True)
         shutil.copy2(python_license, folder / "python" / "LICENSE.txt")
     missing: list[str] = []
+    apache = _apache_text(dists)
     for key in sorted(dists):
         dist = dists[key]
         files = _license_files(dist)
+        if not files and apache is not None and "apache" in _meta_license(dist).lower():
+            # Пакет без файла лицензии (tokenizers): тот же текст Apache-2.0 из другого пакета.
+            target = folder / "python-packages" / f"{dist.metadata['Name']}-{dist.version}"
+            target.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(apache, target / "LICENSE-Apache-2.0.txt")
+            continue
         if not files:
             missing.append(f"{dist.metadata['Name']} {dist.version}")
             continue
