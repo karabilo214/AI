@@ -6,6 +6,7 @@ import math
 import numbers
 import os
 import struct
+import sys
 
 import numpy as np
 
@@ -99,6 +100,10 @@ class GGUF:
                 return ("array", et, n)
             return [self._val(f, et, depth + 1) for _ in range(n)]
         raise ValueError(f"тип метаданных {t}")
+
+    def release_pages(self):
+        """Убрать прочитанные страницы файла из рабочего набора процесса (см. release_file_pages)."""
+        return self.mm is not None and release_file_pages(self.mm)
 
     def close(self):
         """После close все ранее выданные представления memmap использовать нельзя."""
@@ -266,3 +271,29 @@ def eos_ids(g):
             if marker in tokens:
                 ids.add(tokens.index(marker))
     return ids
+
+
+def release_file_pages(mm):
+    """8.6: страницы файла модели, прочитанные при загрузке весов в видеокарту, остаются в рабочем
+    наборе процесса. Это не копия весов (страницы общие, файловые, их можно вернуть), но Windows
+    не считает их «доступной» памятью: с qwen3:8b целиком в видеокарте движок показывал 5,7 ГБ,
+    из них 4,8 ГБ — страницы файла, и голосу «не хватало» RAM. Здесь страницы выводятся из
+    рабочего набора; отображение остаётся, нужная позже страница подчитается из кэша системы.
+    Windows — VirtualUnlock на незакреплённой области (документированный способ убрать страницы
+    из рабочего набора, ответ ERROR_NOT_LOCKED ожидаем), POSIX — madvise(MADV_DONTNEED)."""
+    size = int(mm.size) * mm.itemsize
+    if size == 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.VirtualUnlock.argtypes = (ctypes.c_void_p, ctypes.c_size_t)
+        kernel.VirtualUnlock.restype = ctypes.c_int
+        ok = kernel.VirtualUnlock(ctypes.c_void_p(mm.ctypes.data), ctypes.c_size_t(size))
+        return bool(ok) or ctypes.get_last_error() == 158  # ERROR_NOT_LOCKED
+    import mmap
+    raw = getattr(mm, "_mmap", None)
+    if raw is None or not hasattr(raw, "madvise") or not hasattr(mmap, "MADV_DONTNEED"):
+        return False
+    raw.madvise(mmap.MADV_DONTNEED)
+    return True

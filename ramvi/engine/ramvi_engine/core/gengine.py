@@ -159,8 +159,11 @@ class GGUFEngine(Engine):
             with open(profile_path, encoding="utf-8") as handle:
                 self.configure_placement(json.load(handle))
         self.load_s = time.time() - t0
+        # 8.6: прочитанные при загрузке страницы файла не держать в рабочем наборе процесса.
+        released = g.release_pages()
         log(f"загружено за {self.load_s:.0f} с: видеокарта {torch.cuda.memory_allocated() / GiB:.2f} ГиБ, "
-            f"закреплено RAM {arena.pinned / GiB:.2f} ГиБ (обычной {arena.plain / GiB:.2f})")
+            f"закреплено RAM {arena.pinned / GiB:.2f} ГиБ (обычной {arena.plain / GiB:.2f}); "
+            f"страницы файла из рабочего набора убраны: {'да' if released else 'нет'}")
         if self.multi:
             per = ", ".join(f"{d}: {self.layer_dev[:R].count(i)} слоёв, {torch.cuda.memory_allocated(d) / GiB:.2f} ГиБ"
                             for i, d in enumerate(self.devices))

@@ -329,7 +329,9 @@ def allowed_layout_changes(name: str, source: str) -> str:
             "        ParentWatch.from_env()\n"
             "    torch.set_grad_enabled(False)",
         )
-    return tc_cfg_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
+    return release_pages_86(
+        name, tc_cfg_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
+    )
 
 
 # 3.18 ENG-MAPPED-01: слои вне видеокарты читаются из файла модели без собственных копий.
@@ -476,6 +478,37 @@ def tc_cfg_b6(name: str, source: str) -> str:
     for old, new in TC_CFG_B6.get(name, ()):
         assert source.count(old) == 1, (name, old[:60])
         source = source.replace(old, new)
+    return source
+
+
+# 8.6: страницы файла модели, прочитанные при загрузке весов, выводятся из рабочего набора
+# процесса (VirtualUnlock / madvise). Вычисления не меняются: только вызов после загрузки,
+# дополненная строка журнала и сама функция освобождения в gguf.
+RELEASE_86: dict[str, tuple[tuple[str, str], ...]] = {
+    "gengine": (
+        (
+            '        self.load_s = time.time() - t0\n        log(f"загружено за {self.load_s:.0f} с: видеокарта {torch.cuda.memory_allocated() / GiB:.2f} ГиБ, "\n            f"закреплено RAM {arena.pinned / GiB:.2f} ГиБ (обычной {arena.plain / GiB:.2f})")\n        if self.multi:\n',
+            '        self.load_s = time.time() - t0\n        # 8.6: прочитанные при загрузке страницы файла не держать в рабочем наборе процесса.\n        released = g.release_pages()\n        log(f"загружено за {self.load_s:.0f} с: видеокарта {torch.cuda.memory_allocated() / GiB:.2f} ГиБ, "\n            f"закреплено RAM {arena.pinned / GiB:.2f} ГиБ (обычной {arena.plain / GiB:.2f}); "\n            f"страницы файла из рабочего набора убраны: {\'да\' if released else \'нет\'}")\n        if self.multi:\n',
+        ),
+    ),
+    "gguf": (
+        (
+            '    def close(self):\n        """После close все ранее выданные представления memmap использовать нельзя."""\n',
+            '    def release_pages(self):\n        """Убрать прочитанные страницы файла из рабочего набора процесса (см. release_file_pages)."""\n        return self.mm is not None and release_file_pages(self.mm)\n\n    def close(self):\n        """После close все ранее выданные представления memmap использовать нельзя."""\n',
+        ),
+    ),
+}
+
+
+def release_pages_86(name: str, source: str) -> str:
+    for old, new in RELEASE_86.get(name, ()):
+        assert source.count(old) == 1, (name, old[:60])
+        source = source.replace(old, new)
+    if name == "gguf":
+        source = (
+            source.rstrip("\n")
+            + '\n\ndef release_file_pages(mm):\n    """8.6: страницы файла модели, прочитанные при загрузке весов в видеокарту, остаются в рабочем\n    наборе процесса. Это не копия весов (страницы общие, файловые, их можно вернуть), но Windows\n    не считает их «доступной» памятью: с qwen3:8b целиком в видеокарте движок показывал 5,7 ГБ,\n    из них 4,8 ГБ — страницы файла, и голосу «не хватало» RAM. Здесь страницы выводятся из\n    рабочего набора; отображение остаётся, нужная позже страница подчитается из кэша системы.\n    Windows — VirtualUnlock на незакреплённой области (документированный способ убрать страницы\n    из рабочего набора, ответ ERROR_NOT_LOCKED ожидаем), POSIX — madvise(MADV_DONTNEED)."""\n    size = int(mm.size) * mm.itemsize\n    if size == 0:\n        return False\n    if sys.platform == "win32":\n        import ctypes\n        kernel = ctypes.WinDLL("kernel32", use_last_error=True)\n        kernel.VirtualUnlock.argtypes = (ctypes.c_void_p, ctypes.c_size_t)\n        kernel.VirtualUnlock.restype = ctypes.c_int\n        ok = kernel.VirtualUnlock(ctypes.c_void_p(mm.ctypes.data), ctypes.c_size_t(size))\n        return bool(ok) or ctypes.get_last_error() == 158  # ERROR_NOT_LOCKED\n    import mmap\n    raw = getattr(mm, "_mmap", None)\n    if raw is None or not hasattr(raw, "madvise") or not hasattr(mmap, "MADV_DONTNEED"):\n        return False\n    raw.madvise(mmap.MADV_DONTNEED)\n    return True\n'
+        )
     return source
 
 

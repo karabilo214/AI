@@ -207,7 +207,10 @@ def main() -> None:
         RESULTS["memory_with_model"] = memory()
         # Голосу (whisper на CPU) нужно ~1,4 ГБ RAM; с загруженной 8B на этом ноутбуке их нет —
         # пользователь выгрузил бы модель кнопкой «Выгрузить». Делаем так же.
-        RESULTS["unload"] = ui.call("POST", "/engine/unload", {}).get("unloaded")
+        if "--keep-model" in sys.argv:  # после исправления 8.6: голос при загруженной модели
+            RESULTS["unload"] = "skipped (--keep-model)"
+        else:
+            RESULTS["unload"] = ui.call("POST", "/engine/unload", {}).get("unloaded")
         time.sleep(3)
         RESULTS["memory_after_unload"] = memory()
         save()

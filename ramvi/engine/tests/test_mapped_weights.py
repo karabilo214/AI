@@ -220,3 +220,20 @@ def test_no_draft_while_unquantized_layers_are_offloaded() -> None:
     assert forced.placement[2] == "hyb"
     full = choose(draft_with_offload=False, vram_available=200)
     assert (full.resident, full.draft_enabled) == (3, True)  # всё в видеокарте — draft разрешён
+
+
+def test_release_file_pages_keeps_data_readable(tmp_path: Path) -> None:
+    """8.6: страницы файла уходят из рабочего набора, а данные читаются как прежде."""
+    np = pytest.importorskip("numpy")
+    from ramvi_engine.formats.gguf import release_file_pages
+
+    values = np.arange(4 * 2**20, dtype=np.uint32)  # 16 МБ
+    path = tmp_path / "w.bin"
+    values.tofile(path)
+    mm = np.memmap(path, dtype=np.uint32, mode="r")
+    assert int(mm.sum(dtype=np.uint64)) == int(values.sum(dtype=np.uint64))  # страницы прочитаны
+    assert release_file_pages(mm) is True  # type: ignore[no-untyped-call]
+    assert np.array_equal(np.asarray(mm), values)  # после — те же данные (подчитаны из кэша)
+    empty = tmp_path / "e.bin"
+    empty.write_bytes(b"\0")
+    assert release_file_pages(np.memmap(empty, dtype=np.uint8, mode="r")[:0]) is False  # type: ignore[no-untyped-call]
