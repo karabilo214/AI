@@ -6,12 +6,13 @@
 нет: ошибки — ключи сообщений с параметрами, перевод делает интерфейс (3.14).
 """
 
+import contextlib
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from ramvi_storage.database import Database
+from ramvi_storage.database import Database, DiskFull
 from ramvi_storage.repositories import Chat, Chats, Message, Models, NotFound
 
 from ramvi_service.contracts.modules import Owner
@@ -298,7 +299,12 @@ class ChatService:
             except Exception as exc:
                 finish = "error"
                 error = {"code": "chat.generation_failed", "params": {"detail": str(exc)}}
-            saved = self._save(chat_id, text, reasoning, finish, usage)
+            try:
+                saved = self._save(chat_id, text, reasoning, finish, usage)
+            except DiskFull:
+                # 8.6: ответ не записался — диск полон; база цела, причина видна пользователю.
+                folder = str(self.chats_repo.db.path.parent)
+                finish, error = "error", {"code": "storage.disk_full", "params": {"path": folder}}
             yield {
                 "type": "done",
                 "finish": finish,
@@ -312,7 +318,8 @@ class ChatService:
                 cancel.set()
             stream.close()
             if finish is None and saved is None:
-                self._save(chat_id, text, reasoning, "cancelled", None)
+                with contextlib.suppress(DiskFull):
+                    self._save(chat_id, text, reasoning, "cancelled", None)
             self._release(chat_id, cancel)
 
     def _save(

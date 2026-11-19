@@ -17,6 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from ramvi_storage.database import DiskFull
+
 from ramvi_service.agent.desktop import AgentDesktop
 from ramvi_service.api_server import ApiOptions
 from ramvi_service.app_config import AppConfig
@@ -497,6 +499,13 @@ def _handler(server: UIServer) -> type[BaseHTTPRequestHandler]:
                 if not path.startswith(PREFIX + "/"):
                     raise ChatError("api.not_found")
                 result = server.route(method, path[len(PREFIX) :], body)
+            except DiskFull:
+                # 8.6 (экзамен 10): запись отменена целиком, база цела — сказать, где освободить место.
+                folder = str(server.chat.chats_repo.db.path.parent)
+                self._json(
+                    507, {"error": {"code": "storage.disk_full", "params": {"path": folder}}}
+                )
+                return
             except ChatError as error:
                 # 8.4: в тексте ошибок сторонних сервисов и движка могут быть ключи.
                 self._json(

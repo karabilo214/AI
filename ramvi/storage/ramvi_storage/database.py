@@ -20,6 +20,14 @@ class ConstraintError(StorageError):
     """Нарушено ограничение схемы: внешний ключ, уникальность, CHECK, NOT NULL."""
 
 
+class DiskFull(StorageError):
+    """8.6 (экзамен 10): нет места на диске (SQLITE_FULL). Запись отменена целиком, база цела."""
+
+
+def _is_full(error: sqlite3.Error) -> bool:
+    return getattr(error, "sqlite_errorcode", None) == sqlite3.SQLITE_FULL
+
+
 class Database:
     """Одно соединение на процесс сервиса; все обращения под общей блокировкой.
 
@@ -70,13 +78,22 @@ class Database:
                 yield self
             except BaseException:
                 self._depth -= 1
-                if outer:
+                # При SQLITE_FULL SQLite сам откатывает транзакцию; повторный ROLLBACK
+                # падал бы и прятал настоящую причину («no transaction is active»).
+                if outer and self._conn.in_transaction:
                     self._conn.execute("ROLLBACK")
                 raise
             else:
                 self._depth -= 1
                 if outer:
-                    self._conn.execute("COMMIT")
+                    try:
+                        self._conn.execute("COMMIT")
+                    except sqlite3.Error as error:
+                        if self._conn.in_transaction:
+                            self._conn.execute("ROLLBACK")
+                        if _is_full(error):
+                            raise DiskFull(str(error)) from error
+                        raise
 
     def execute(self, sql: str, params: Params = ()) -> sqlite3.Cursor:
         with self._lock:
@@ -84,6 +101,10 @@ class Database:
                 return self._conn.execute(sql, params)
             except sqlite3.IntegrityError as error:
                 raise ConstraintError(str(error)) from error
+            except sqlite3.OperationalError as error:
+                if _is_full(error):
+                    raise DiskFull(str(error)) from error
+                raise
 
     def executescript_in_transaction(self, sql: str) -> None:
         """Выполнить несколько операторов внутри уже открытой транзакции.

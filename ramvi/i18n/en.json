@@ -637,5 +637,6 @@
   "settings.theme.high_contrast": "High contrast",
   "chat.new_hint": "New chat (Ctrl+N)",
   "chat.stop_hint": "Stop the answer (Esc)",
-  "settings.close_hint": "Close (Esc)"
+  "settings.close_hint": "Close (Esc)",
+  "storage.disk_full": "The disk is full: nothing was saved, earlier data is intact. Free up space on the disk with the folder {path} and try again."
 }

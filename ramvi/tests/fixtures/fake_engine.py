@@ -166,10 +166,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
                 return
-            for delta in chunks:
+            for number, delta in enumerate(chunks):
                 with lock:
                     if request_id in cancelled:
                         return
+                if "CRASH_MID" in question and number == 4:  # 8.6: процесс падает посреди ответа
+                    os._exit(17)
                 self._event({"choices": [{"delta": delta, "finish_reason": None}]})
                 time.sleep(delay)
             metrics = {

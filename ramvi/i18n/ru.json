@@ -637,5 +637,6 @@
   "settings.theme.high_contrast": "Высокий контраст",
   "chat.new_hint": "Новый чат (Ctrl+N)",
   "chat.stop_hint": "Остановить ответ (Esc)",
-  "settings.close_hint": "Закрыть (Esc)"
+  "settings.close_hint": "Закрыть (Esc)",
+  "storage.disk_full": "Нет места на диске: запись не сохранена, прежние данные целы. Освободите место на диске с папкой {path} и повторите."
 }
