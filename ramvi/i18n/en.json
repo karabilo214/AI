@@ -681,7 +681,7 @@
   "character.voice_state.recognizing": "Transcribing…",
   "character.voice_state.stopping": "Stopping microphone…",
   "character.voice_state.error": "Voice session error",
-  "character.voice_hint": "The microphone runs only during the session. After a pause, your utterance is sent to the character.",
+  "character.voice_hint": "The microphone runs only during the session. After a pause, your phrase is sent to the character. Input is muted during playback; use Stop or Esc to interrupt.",
   "character.speech_title": "Speech output",
   "character.speech_enable": "Read new replies aloud",
   "character.speech_ai": "AI-generated voice. Speech output and recognition settings are independent.",

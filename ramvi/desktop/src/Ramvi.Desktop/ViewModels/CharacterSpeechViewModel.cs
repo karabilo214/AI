@@ -13,6 +13,7 @@ public sealed record SpeechProvider(string Id, string Name, bool External, strin
 public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
 {
     private readonly Func<string, JsonObject?, Task<JsonElement>> _call;
+    private readonly Action<long,string?,string?>? _generationChanged;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _token;
     private SpeechProvider? _provider;
@@ -20,9 +21,9 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
     private bool _enabled, _remoteText, _loading, _disposed, _available;
     private string _key = "", _error = "", _state = "off", _fallback = "";
     private int _watch;
-    public CharacterSpeechViewModel(Func<string, JsonObject?, Task<JsonElement>> call)
+    public CharacterSpeechViewModel(Func<string, JsonObject?, Task<JsonElement>> call, Action<long,string?,string?>? generationChanged = null)
     {
-        _call = call; _token = _lifetime.Token;
+        _call = call; _generationChanged = generationChanged; _token = _lifetime.Token;
         SaveCommand = new Command(SaveAsync, () => _available && Provider is not null);
         KeyCommand = new Command(SaveKeyAsync, () => IsExternal);
         PreviewCommand = new Command(PreviewAsync, () => _available && Provider is not null);
@@ -123,6 +124,8 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
             {
                 var result = await _call("status", null).ConfigureAwait(true);
                 if (watch != _watch || _token.IsCancellationRequested) return;
+                if(result.TryGetProperty("generation", out var generation))
+                    _generationChanged?.Invoke(generation.GetInt64(), result.TryGetProperty("response_id",out var response) && response.ValueKind==JsonValueKind.String ? response.GetString() : null, result.TryGetProperty("session_id",out var session) ? session.GetString() : null);
                 _state = result.GetProperty("state").GetString()!; Raise(nameof(Status));
                 if (result.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String) Error = Localizer.Current["character.speech_error"];
                 if (result.TryGetProperty("last", out var last) && last.ValueKind == JsonValueKind.Object)

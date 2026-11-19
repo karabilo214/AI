@@ -59,7 +59,7 @@ class CharacterModule:
         self._initiative, self._task, self._scope = initiative, task, scope
         self._presentation = None
         self._pack = None
-        self._speech = SpeechOutput(context.get("services"))
+        self._speech = SpeechOutput(context.get("services"), context.get("session_id"))
         self._dialogue = Dialogue(self, context.get("services"))
         self._voice = VoiceConversation(self, context.get("services"))
         # Text activation does not import/load animation, STT, TTS or an LLM.
@@ -124,8 +124,7 @@ class CharacterModule:
             "emotional_state": self._emotions.view(),
             "task": self._task,
             "initiative": self._initiative.status(),
-            "devices_open": self._voice.state
-            in {"listening", "hearing", "recognizing", "stopping"}
+            "devices_open": self._voice.state in {"listening", "hearing", "recognizing", "stopping"}
             or self._speech.state == "playing",
             "provider_connected": self._dialogue.connected
             or self._speech.state in {"synthesizing", "playing"},

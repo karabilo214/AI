@@ -74,7 +74,11 @@ class Dialogue:
             raise ValueError("invalid event cursor")
         with self.lock:
             job = self.job
-            result: dict[str, Any] = {"history": copy.deepcopy(self.history), "job": None}
+            result: dict[str, Any] = {
+                "session_id": self.owner._speech.session_id,
+                "history": copy.deepcopy(self.history),
+                "job": None,
+            }
             if job and (response_id is None or job["id"] == response_id):
                 result["job"] = {
                     key: copy.deepcopy(value) for key, value in job.items() if key != "events"
@@ -111,9 +115,11 @@ class Dialogue:
                 raise RuntimeError("previous response is still stopping")
             self.cancelled = threading.Event()
             identifier = uuid.uuid4().hex
-            self.owner._speech.begin(identifier)
+            generation = self.owner._speech.begin(identifier)
             self.job = {
                 "id": identifier,
+                "generation": generation,
+                "session_id": self.owner._speech.session_id,
                 "state": "running",
                 "events": [],
                 "error": None,
@@ -132,46 +138,68 @@ class Dialogue:
                 daemon=True,
             )
             self.thread.start()
-            return {"response_id": identifier}
+            return {
+                "response_id": identifier,
+                "generation": generation,
+                "session_id": self.owner._speech.session_id,
+            }
 
     def _check(self, identifier: str, revision: int) -> None:
         if (
             self.cancelled.is_set()
             or self.job is None
             or self.job["id"] != identifier
+            or not self.owner._speech.current(identifier, self.job["generation"])
             or self.owner._personality.view()["policy_revision"] != revision
         ):
             raise InterruptedError("response cancelled")
 
     def _emit(self, identifier: str, revision: int, records: list[dict[str, Any]]) -> None:
-        with self.lock:
-            self._check(identifier, revision)
-            assert self.job is not None
-            for record in records:
+        for record in records:
+            with self.lock:
+                self._check(identifier, revision)
+                assert self.job is not None
+                generation = self.job["generation"]
                 if record["type"] != "end":
-                    self.job["events"].append({"response_id": identifier, **record})
-                    if record["type"] == "segment":
-                        self.owner._speech.offer(identifier, record)
+                    self.job["events"].append(
+                        {
+                            "response_id": identifier,
+                            "generation": generation,
+                            "session_id": self.owner._speech.session_id,
+                            **record,
+                        }
+                    )
+            # Never wait for playback/backpressure while holding the dialogue lock:
+            # Stop must be able to invalidate this generation and wake this producer.
+            if record["type"] == "segment":
+                self.owner._speech.offer(identifier, record, generation, self._keepalive)
+            with self.lock:
+                self._check(identifier, revision)
+
+    def _keepalive(self) -> None:
+        with self.lock:
+            stream_id = self.stream_id
+        if stream_id:
+            self.services.call("llm.read", {"stream_id": stream_id, "timeout": 0, "max_chunks": 0})
 
     def _request(self, request: dict[str, Any], streaming: bool) -> Iterator[str]:
-        if not streaming:
-            result = self.services.call("llm.complete", {"request": request, "timeout": 30})
-            choice = result["choices"][0]
-            if choice.get("finish_reason") not in {"stop", "end_turn"}:
-                raise ValueError("incomplete provider response")
-            yield choice["message"]["content"]
-            return
-        stream_id = self.services.call("llm.stream", {"request": request, "timeout": 30})[
-            "stream_id"
-        ]
+        stream_id = self.services.call(
+            "llm.stream", {"request": request, "timeout": 30, "single": not streaming}
+        )["stream_id"]
         with self.lock:
             self.stream_id = stream_id
         finished = False
         deadline = time.monotonic() + 180
         try:
             while not finished:
-                if self.cancelled.is_set():
-                    raise InterruptedError("response cancelled")
+                with self.lock:
+                    job = self.job
+                    if (
+                        self.cancelled.is_set()
+                        or job is None
+                        or not self.owner._speech.current(job["id"], job["generation"])
+                    ):
+                        raise InterruptedError("response cancelled")
                 if time.monotonic() > deadline:
                     raise TimeoutError("response deadline")
                 packet = self.services.call("llm.read", {"stream_id": stream_id, "timeout": 0.5})
@@ -284,6 +312,8 @@ class Dialogue:
                 self.job["events"].append(
                     {
                         "type": "end",
+                        "session_id": self.owner._speech.session_id,
+                        "generation": self.job["generation"],
                         "response_id": identifier,
                         "memory_candidates": [{**c, "status": "candidate"} for c in candidates],
                     }
@@ -296,6 +326,8 @@ class Dialogue:
                 if self.job and self.job["id"] == identifier:
                     self.job["error"] = type(error).__name__
         finally:
+            if status == "error":
+                self.owner._speech.cancel()
             with self.lock:
                 self.connected = False
                 if self.cancelled.is_set():

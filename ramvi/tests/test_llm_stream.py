@@ -278,3 +278,99 @@ def test_provider_without_streaming_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(NotImplementedError, match="llm.stream"):
         scope.call("llm.complete", {"request": {"messages": [], "stream": True}})
     scope.stop()
+
+
+def test_complete_only_provider_has_cancellable_async_job_without_claiming_streaming(
+    tmp_path: Path,
+) -> None:
+    started = threading.Event()
+
+    class Plain:
+        capabilities = ProviderCapabilities()
+
+        def complete(self, request, cancel):
+            started.set()
+            assert cancel.wait(3)
+            raise InterruptedError("cancelled single completion")
+
+        def cancel(self):
+            pass
+
+        def unload(self):
+            pass
+
+    scope, _, _ = make_scope(tmp_path, Plain())
+    try:
+        identifier = scope.call("llm.stream", {"request": {"messages": []}, "single": True})[
+            "stream_id"
+        ]
+        stream = scope._streams[identifier]
+        assert started.wait(2)
+        scope.call("llm.cancel", {"stream_id": identifier})
+        stream.thread.join(2)
+        assert not stream.thread.is_alive() and stream.finished
+        assert not scope.call("llm.capabilities", {})["capabilities"]["streaming"]
+    finally:
+        scope.stop()
+
+
+def test_zero_chunk_keepalive_preserves_buffer_and_finished_result(tmp_path: Path) -> None:
+    from ramvi_service.services import LLMStream
+
+    class Plain:
+        capabilities = ProviderCapabilities()
+
+    scope, _, _ = make_scope(tmp_path, Plain())
+    stream = LLMStream(threading.Event())
+    stream.chunks.append({"type": "text", "text": "Fresh 524287"})
+    stream.finished = True
+    stream.last_read = 0
+    scope._streams["retained"] = stream
+    try:
+        result = scope.call("llm.read", {"stream_id": "retained", "max_chunks": 0, "timeout": 0})
+        assert result == {"chunks": [], "done": False} and stream.last_read > 0
+        result = scope.call("llm.read", {"stream_id": "retained", "timeout": 0})
+        assert result["chunks"][0]["text"] == "Fresh 524287"
+        assert scope.call("llm.read", {"stream_id": "retained", "max_chunks": 0, "timeout": 0})[
+            "done"
+        ]
+        assert "retained" in scope._streams
+        assert scope.call("llm.read", {"stream_id": "retained", "timeout": 0})["done"]
+        assert "retained" not in scope._streams
+    finally:
+        scope.stop()
+
+
+def test_complete_only_job_delivers_one_result_and_finish(tmp_path: Path) -> None:
+    class Plain:
+        capabilities = ProviderCapabilities()
+
+        def complete(self, request, cancel):
+            return {"choices": [{"message": {"content": "Fresh 104729"}, "finish_reason": "stop"}]}
+
+        def cancel(self):
+            pass
+
+        def unload(self):
+            pass
+
+    scope, _, _ = make_scope(tmp_path, Plain())
+    chunks = []
+    try:
+        identifier = scope.call("llm.stream", {"request": {"messages": []}, "single": True})[
+            "stream_id"
+        ]
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            packet = scope.call("llm.read", {"stream_id": identifier, "timeout": 0.1})
+            chunks.extend(packet["chunks"])
+            if packet["done"]:
+                break
+        else:
+            raise AssertionError("completion did not finish")
+        assert chunks == [
+            {"type": "text", "text": "Fresh 104729"},
+            {"type": "finish", "finish_reason": "stop"},
+        ]
+    finally:
+        scope.stop()

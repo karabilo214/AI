@@ -55,6 +55,9 @@ class VoiceConversation:
                 raise RuntimeError("voice session already active or stopping")
             if self.services is None or not self.owner._model:
                 raise RuntimeError("select a model before starting voice")
+            # An explicitly opened microphone must not start under an older TTS
+            # stream which was opened before this input session existed.
+            self.owner._dialogue.cancel()
             self.stop_event = threading.Event()
             self.touch()
             self.state, self.error, self.partial = "starting", None, ""
@@ -107,6 +110,7 @@ class VoiceConversation:
                     kind = event["type"]
                     with self.lock:
                         if kind == "speech_start":
+                            pending.clear()
                             latest_utterance = event["utterance_id"]
                             speaking.add(latest_utterance)
                             self.owner._dialogue.cancel()
@@ -116,7 +120,11 @@ class VoiceConversation:
                             self.state = "hearing" if speaking else "recognizing"
                         elif kind == "partial" and event["utterance_id"] == latest_utterance:
                             self.partial = event["text"]
-                        elif kind == "final" and event["utterance_id"] not in seen:
+                        elif (
+                            kind == "final"
+                            and event["utterance_id"] == latest_utterance
+                            and event["utterance_id"] not in seen
+                        ):
                             seen.add(event["utterance_id"])
                             if len(seen) > 256 or len(pending) >= 2:
                                 raise RuntimeError("voice.session_overflow")

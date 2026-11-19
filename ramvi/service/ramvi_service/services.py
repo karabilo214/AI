@@ -342,7 +342,10 @@ class ScopedServices:
         """Начать потоковый ответ; куски забираются llm.read, отмена — llm.cancel."""
         if self.llm is None:
             raise NotImplementedError("LLM Provider is not connected")
-        if not self.llm.provider.capabilities.streaming:
+        single = payload.get("single", False)
+        if not isinstance(single, bool):
+            raise ValueError("single must be boolean")
+        if not self.llm.provider.capabilities.streaming and not single:
             raise NotImplementedError("Provider did not declare streaming")
         with self._condition:
             now = time.monotonic()
@@ -363,7 +366,7 @@ class ScopedServices:
             self._streams[identifier] = stream
         stream.thread = threading.Thread(
             target=self._produce,
-            args=(stream, llm, request, min(30, payload.get("timeout", 30)), rights),
+            args=(stream, llm, request, min(30, payload.get("timeout", 30)), rights, single),
             name="ramvi-llm-stream",
             daemon=True,
         )
@@ -377,11 +380,20 @@ class ScopedServices:
         request: dict[str, Any],
         timeout: float,
         rights: list[tuple[str, str]],
+        single: bool = False,
     ) -> None:
         # Генератор закрывается явно: сохранённое исключение держит его кадр,
         # и без close() слот модели освободился бы только при сборке мусора.
-        chunks: Generator[dict[str, Any]] = llm.stream(
-            self.owner, request, timeout=timeout, cancel=stream.cancel
+        def completed() -> Generator[dict[str, Any]]:
+            result = llm.complete(self.owner, request, timeout=timeout, cancel=stream.cancel)
+            choice = result["choices"][0]
+            yield {"type": "text", "text": choice["message"]["content"]}
+            yield {"type": "finish", "finish_reason": choice.get("finish_reason")}
+
+        chunks: Generator[dict[str, Any]] = (
+            completed()
+            if single
+            else llm.stream(self.owner, request, timeout=timeout, cancel=stream.cancel)
         )
         try:
             for chunk in chunks:
@@ -426,24 +438,27 @@ class ScopedServices:
     def _llm_read(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Ждёт до timeout (не больше 0,5 с) и отдаёт все накопленные куски."""
         stream = self._stream(payload)
+        maximum = payload.get("max_chunks", 64)
+        if isinstance(maximum, bool) or not isinstance(maximum, int) or not 0 <= maximum <= 64:
+            raise ValueError("invalid stream chunk limit")
         deadline = time.monotonic() + max(0.0, min(0.5, payload.get("timeout", 0.5)))
         with stream.condition:
             # Конец потока — только когда производитель завершился и освободил модель.
-            while not stream.finished and (not stream.chunks or stream.cancel.is_set()):
+            while maximum and not stream.finished and (not stream.chunks or stream.cancel.is_set()):
                 left = deadline - time.monotonic()
                 if left <= 0:
                     break
                 stream.condition.wait(left)
             if stream.cancel.is_set():
                 stream.chunks.clear()  # после отмены старые куски не доставляются
-            chunks = [stream.chunks.popleft() for _ in range(min(len(stream.chunks), 64))]
+            chunks = [stream.chunks.popleft() for _ in range(min(len(stream.chunks), maximum))]
             stream.last_read = time.monotonic()
             stream.condition.notify_all()
             done = stream.finished and not stream.chunks
             error = stream.error
         if done and not chunks:
             with self._condition:
-                if self._streams.get(payload["stream_id"]) is stream:
+                if maximum and self._streams.get(payload["stream_id"]) is stream:
                     del self._streams[payload["stream_id"]]
             if error is not None:
                 if isinstance(error, PASSED_ERRORS):
@@ -538,6 +553,14 @@ class ScopedServices:
     @handler("speech.key", permission="speech", active=True)
     def _speech_key(self, payload: dict[str, Any]) -> dict[str, Any]:
         return dict(self._speech_service().key(self.secrets, payload["provider"], payload["value"]))
+
+    @handler("speech.advance", permission="speech")
+    def _speech_advance(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return dict(
+            self._speech_service().advance(
+                self.owner, payload["generation"], payload.get("response_id")
+            )
+        )
 
     @handler("speech.start", permission="speech", active=True)
     def _speech_start(self, payload: dict[str, Any]) -> dict[str, Any]:

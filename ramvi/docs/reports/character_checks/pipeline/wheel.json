@@ -1,0 +1,9 @@
+{
+  "outside_checkout": true,
+  "character_version": "0.7.0",
+  "source_is_installed": true,
+  "audio_non_silent": true,
+  "pcm_blocks": 4,
+  "pcm_block_ms": 20,
+  "audio_bytes": 81736
+}

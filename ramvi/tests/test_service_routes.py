@@ -49,6 +49,7 @@ METHODS = {
     "speech.configure",
     "speech.key",
     "speech.start",
+    "speech.advance",
     "speech.status",
     "speech.cancel",
     "voice.capabilities",

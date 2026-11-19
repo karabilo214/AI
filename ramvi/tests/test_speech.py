@@ -50,6 +50,9 @@ class Output:
     def __init__(self, rate):
         self.rate, self.pcm, self.closed, self.aborted = rate, b"", False, False
 
+    def start(self):
+        self.started = True
+
     def write(self, pcm):
         assert len(pcm) % 2 == 0
         self.pcm += pcm

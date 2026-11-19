@@ -41,6 +41,23 @@ public sealed record CharacterLayer(string File, double X = 0, double Y = 0);
 public sealed class CharacterPlayer(CharacterPack pack)
 {
     private double _elapsed;
+    private long _epoch = -1;
+    private string? _response;
+    private readonly HashSet<string> _seen = [];
+    public bool Apply(CharacterDirective directive)
+    {
+        if(directive.Epoch<_epoch) return false;
+        if(directive.Epoch>_epoch) {
+            _epoch=directive.Epoch; _response=directive.ResponseId; _seen.Clear(); Stop();
+        }
+        if(directive.ResponseId!=_response) return false;
+        if(directive.SegmentId is null) { Stop(); return true; }
+        if(_seen.Count>=8 || !_seen.Add(directive.SegmentId)) return false;
+        var emotion=pack.Emotions.Contains(directive.Emotion,StringComparer.Ordinal) ? directive.Emotion : "neutral";
+        var animation=directive.Animation=="none" ? "idle" : directive.Animation;
+        if(!pack.HasAnimation(animation)) animation="idle";
+        Present(emotion,animation); return true;
+    }
     public string Emotion { get; private set; } = "neutral";
     public string Animation { get; private set; } = "idle";
     public double Speed => Animation is "nod" or "shake" ? 2 : 1;

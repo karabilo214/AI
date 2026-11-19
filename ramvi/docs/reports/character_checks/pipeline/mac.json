@@ -1,0 +1,45 @@
+{
+  "runs": [
+    {
+      "code": "131071",
+      "old_state": "cancelled",
+      "new_state": "completed",
+      "fence_ms": 149.891,
+      "old_audio_after_ack": false,
+      "new_non_silent": true,
+      "new_sha256": "497e35d9981c860bcc0f89b039c5bf1c25b957ed4140d2efc6c22207f9bbc55f",
+      "duplicate_replayed": false,
+      "max_pcm_block_bytes": 640,
+      "pcm_high_water": 4,
+      "leases_after": 0
+    },
+    {
+      "code": "262147",
+      "old_state": "cancelled",
+      "new_state": "completed",
+      "fence_ms": 165.071,
+      "old_audio_after_ack": false,
+      "new_non_silent": true,
+      "new_sha256": "7eed51dbdb656af6218ab7d7d682ec306220b37378abf86a553d904b80b99f16",
+      "duplicate_replayed": false,
+      "max_pcm_block_bytes": 640,
+      "pcm_high_water": 4,
+      "leases_after": 0
+    },
+    {
+      "code": "524287",
+      "old_state": "cancelled",
+      "new_state": "completed",
+      "fence_ms": 158.665,
+      "old_audio_after_ack": false,
+      "new_non_silent": true,
+      "new_sha256": "c7b7beafc3477cad21c64da39eb8daf25960be983d7f1442a71f035639915d26",
+      "duplicate_replayed": false,
+      "max_pcm_block_bytes": 640,
+      "pcm_high_water": 4,
+      "leases_after": 0
+    }
+  ],
+  "leases_after_close": 0,
+  "all_outputs_closed": true
+}

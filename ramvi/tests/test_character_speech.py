@@ -1,6 +1,8 @@
 """Character policy feeds only validated dialogue segments into optional output."""
 
-from ramvi_character.speech import SpeechOutput
+import threading
+
+from ramvi_character.speech import SEGMENT_QUEUE, SpeechOutput
 from test_character_dialogue import Services, active, finish
 from test_speech import wait
 
@@ -18,6 +20,9 @@ class SpeechServices(Services):
         if method == "speech.configure":
             self.enabled = payload["settings"]["enabled"]
             return {"settings": {"enabled": self.enabled}}
+        if method == "speech.advance":
+            self.cancels.append(payload)
+            return {"generation": payload["generation"]}
         if method == "speech.start":
             self.starts.append(payload)
             return {"job_id": str(len(self.starts))}
@@ -65,7 +70,7 @@ def test_preview_is_tracked_even_when_output_disabled_and_heartbeat_stops():
     try:
         speech.preview()
         wait(lambda: len(svc.starts) == 1)
-        assert svc.starts[0]["preview"] and svc.starts[0]["response_id"] == "preview"
+        assert svc.starts[0]["preview"] and svc.starts[0]["response_id"].startswith("preview-")
         wait(lambda: not speech.armed)
         assert not speech.enabled
         speech.configure({"enabled": True})
@@ -77,14 +82,26 @@ def test_preview_is_tracked_even_when_output_disabled_and_heartbeat_stops():
     assert not speech.thread.is_alive()
 
 
-def test_late_segment_wrong_response_and_queue_bounds():
+def test_late_segment_wrong_response_queue_backpressure_and_cancel_wakes():
     svc = SpeechServices()
     speech = SpeechOutput(svc)
     speech.enabled = speech.armed = True
     speech.begin("new")
-    speech.offer("old", {"text": "late"})
+    speech.offer("old", {"id": "late", "text": "late"})
     assert not speech.queue
-    for _ in range(9):
-        speech.offer("new", {"text": "bounded"})
-    assert not speech.queue and speech.error == "speech.queue_full"
-    speech.close()
+    for i in range(SEGMENT_QUEUE):
+        speech.offer("new", {"id": str(i), "text": "bounded"})
+    result = []
+    producer = threading.Thread(
+        target=lambda: result.append(speech.offer("new", {"id": "next", "text": "blocked"}))
+    )
+    producer.start()
+    try:
+        wait(lambda: speech.backpressure_waits > 0)
+        assert len(speech.queue) == SEGMENT_QUEUE
+        speech.cancel()
+        producer.join(2)
+        assert result == [False] and not speech.queue and not producer.is_alive()
+    finally:
+        speech.close()
+        producer.join(2)

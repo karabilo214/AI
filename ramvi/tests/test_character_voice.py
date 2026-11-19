@@ -190,3 +190,24 @@ def test_lost_owner_heartbeat_ends_microphone_session() -> None:
     assert module._voice.error == "voice.session_heartbeat_lost"
     assert not module.status()["devices_open"]
     module.dispose()
+
+
+def test_new_utterance_discards_late_final_from_previous_speech() -> None:
+    svc = VoiceServices()
+    module = active(svc)
+    module.configure("", "one")
+    try:
+        module.voice("start")
+        wait(lambda: svc.starts == 1)
+        svc.push("speech_start", identifier="old")
+        svc.push("speech_end", identifier="old")
+        svc.push("speech_start", identifier="new")
+        svc.push("final", "Late 783041", identifier="old")
+        svc.push("speech_end", identifier="new")
+        svc.push("final", "Fresh 131071", identifier="new")
+        wait(lambda: module.voice()["reply"] is not None)
+        result = finish(module)
+        assert result["history"][0]["user"] == "Fresh 131071"
+        assert len(svc.requests) == 1
+    finally:
+        module.dispose()

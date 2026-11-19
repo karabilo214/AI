@@ -128,8 +128,8 @@ public sealed partial class MainWindow : Window
         {
             Key.M when e.KeyModifiers == KeyModifiers.Control && model.Sections.IsCharacterSelected => (model.Character.Voice.ToggleCommand, false),
             Key.M when e.KeyModifiers == KeyModifiers.Control => (model.Voice.ToggleCommand, false),
+            Key.Escape when model.Sections.IsCharacterSelected && model.Character.Stop.CanExecute(null) => (model.Character.Stop, true),
             Key.Escape when model.Character.Voice.IsActive => (model.Character.Voice.EndCommand, false),
-            Key.Escape when model.Sections.IsCharacterSelected && model.Character.Busy => (model.Character.Stop, true),
             Key.Escape when model.Voice.IsRecording => (model.Voice.CancelCommand, false),
             Key.Escape when model.Settings.IsOpen => (model.Settings.CloseCommand, true),
             Key.Escape when model.IsGenerating => (model.StopCommand, true),

@@ -1,6 +1,7 @@
 """Scoped speech synthesis/playback, separate credentials and remote-text opt-in."""
 
 import copy
+import hashlib
 import json
 import threading
 import time
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ramvi_service.contracts.speech import SPEAKER, SpeechRequest
+from ramvi_service.speech.buffer import PCM_BLOCK_MS, PCM_BLOCKS, PCMBuffer
 from ramvi_service.speech.cloud import CloudSpeech
 from ramvi_service.speech.native import SystemSpeech
 from ramvi_service.speech.output import SoundOutput
@@ -32,6 +34,7 @@ class SpeechService:
         self.output_factory = output_factory
         self.lock = threading.RLock()
         self.jobs: dict[str, dict[str, Any]] = {}
+        self.generations: dict[Any, dict[str, Any]] = {}
         self.voice_cache: list[dict[str, Any]] | None = None
 
     @staticmethod
@@ -112,6 +115,7 @@ class SpeechService:
             "response_id",
             "segment_id",
             "preview",
+            "generation",
         }:
             raise ValueError("invalid speech job")
         if not isinstance(payload.get("preview", False), bool):
@@ -151,19 +155,52 @@ class SpeechService:
             else "provider_default"
         )
         adapted = replace(request, voice=voice, style=request.style if applied == "prompt" else "")
+        generation = payload.get("generation")
+        fingerprint = hashlib.sha256(
+            json.dumps({"request": adapted.to_dict(), "config": config}, sort_keys=True).encode()
+        ).hexdigest()
         with self.lock:
-            # One active request per owner; bounded terminal metadata, no accumulated audio/text.
-            if any(j["owner"] == owner and j["thread"].is_alive() for j in self.jobs.values()):
+            fence = self.generations.get(owner)
+            # Legacy callers are isolated only until they opt into generation fencing.
+            if generation is None and fence is None:
+                generation = 0
+                fence = {"generation": 0, "response_id": response_id, "seen": {}}
+            if (
+                generation is None
+                or isinstance(generation, bool)
+                or not isinstance(generation, int)
+            ):
+                raise ValueError("speech.generation_required")
+            if (
+                fence is None
+                or generation != fence["generation"]
+                or response_id != fence["response_id"]
+            ):
+                raise RuntimeError("speech.stale_generation")
+            previous = fence["seen"].get(segment_id)
+            if previous:
+                if previous[0] != fingerprint:
+                    raise ValueError("speech.segment_conflict")
+                old = self.jobs[previous[1]]
+                return {
+                    "job_id": old["id"],
+                    "metadata": copy.deepcopy(old["metadata"]),
+                    "duplicate": True,
+                }
+            if len(fence["seen"]) >= 8:
+                raise RuntimeError("speech.segment_limit")
+            if any(j["owner"] == owner and not self._settled(j) for j in self.jobs.values()):
                 raise RuntimeError("speech.busy")
-            for identifier, old in list(self.jobs.items()):
-                if old["owner"] == owner and not old["thread"].is_alive():
-                    del self.jobs[identifier]
-            if len(self.jobs) >= 16:
+            self._prune(owner)
+            if len(self.jobs) >= 128:
                 raise RuntimeError("speech.busy")
             identifier = uuid.uuid4().hex
             job: dict[str, Any] = {
                 "id": identifier,
                 "owner": owner,
+                "generation": generation,
+                "io_lock": threading.RLock(),
+                "producer": None,
                 "state": "queued",
                 "cancel": threading.Event(),
                 "provider": None,
@@ -188,27 +225,91 @@ class SpeechService:
             }
             provider = self.provider_factory(info, key)
             job["provider"] = provider
+            job["buffer"] = PCMBuffer(job["cancel"])
             thread = threading.Thread(
                 target=self._run, args=(job, adapted), name="speech-output", daemon=True
             )
             job["thread"] = thread
             self.jobs[identifier] = job
+            fence["seen"][segment_id] = (fingerprint, identifier)
             thread.start()
             return {"job_id": identifier, "metadata": copy.deepcopy(job["metadata"])}
+
+    @staticmethod
+    def _settled(job: dict[str, Any]) -> bool:
+        return not job["thread"].is_alive() and not (job["producer"] and job["producer"].is_alive())
+
+    def _prune(self, owner: Any) -> None:
+        current = self.generations.get(owner, {}).get("generation")
+        for identifier, old in list(self.jobs.items()):
+            if old["owner"] == owner and old["generation"] != current and self._settled(old):
+                del self.jobs[identifier]
+
+    def advance(self, owner: Any, generation: int, response_id: str | None) -> dict[str, Any]:
+        if (
+            isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or not 0 < generation < 2**53
+        ):
+            raise ValueError("invalid speech generation")
+        if response_id is not None and (
+            not isinstance(response_id, str) or not response_id or len(response_id) > 64
+        ):
+            raise ValueError("invalid speech response id")
+        with self.lock:
+            current = self.generations.get(owner)
+            if current and generation < current["generation"]:
+                raise RuntimeError("speech.stale_generation")
+            if current and generation == current["generation"]:
+                if current["response_id"] != response_id:
+                    raise ValueError("speech.generation_conflict")
+                return {"generation": generation}
+            if current is None and len(self.generations) >= 64:
+                raise RuntimeError("speech.busy")
+            self.generations[owner] = {
+                "generation": generation,
+                "response_id": response_id,
+                "seen": {},
+            }
+            jobs = [j for j in self.jobs.values() if j["owner"] == owner and not self._settled(j)]
+            for job in jobs:
+                job["cancel"].set()
+        # Fence publication + the per-device lock form a barrier: after acknowledgement
+        # no older device can start or submit PCM. Provider cancellation is owned by
+        # the consumer's finally, so network/process teardown never blocks this barrier.
+        for job in jobs:
+            self._abort(job)
+        return {"generation": generation}
+
+    @staticmethod
+    def _abort(job: dict[str, Any]) -> None:
+        with job["io_lock"]:
+            if job["output"]:
+                try:
+                    job["output"].cancel()
+                except Exception:
+                    pass
 
     def _run(self, job: dict[str, Any], request: SpeechRequest) -> None:
         lease = None
         gated = False
-        carry = b""
+        output = None
+        buffer = job["buffer"]
         started = time.monotonic()
         try:
             job["state"] = "synthesizing"
-            for piece in job["provider"].synthesize(request, job["cancel"]):
-                if job["cancel"].is_set():
-                    raise InterruptedError("speech cancelled")
+            producer = threading.Thread(
+                target=buffer.produce,
+                args=(job["provider"], request),
+                name="speech-producer",
+                daemon=True,
+            )
+            job["producer"] = producer
+            producer.start()
+            while (piece := buffer.get()) is not None:
                 if time.monotonic() - started > 180:
                     raise TimeoutError("speech deadline")
-                if job["output"] is None:
+                if output is None:
                     if self.resources:
                         lease = self.resources.acquire(
                             job["owner"], {SPEAKER: 1}, timeout=10, cancel=job["cancel"]
@@ -218,29 +319,25 @@ class SpeechService:
                             self.voice.session_playback(True, owner=job["owner"])
                             gated = True
                         except Exception:
-                            pass  # no own input session; never suppress somebody else's microphone
+                            pass
+                    # Construction must not start playback. A late constructor can
+                    # finish after advance; its cancelled job will never call start.
+                    output = self.output_factory(piece.rate)
+                    with job["io_lock"]:
+                        job["output"] = output
+                        if job["cancel"].is_set():
+                            raise InterruptedError("speech cancelled")
+                        output.start()
+                        job["rate"] = piece.rate
+                        job["state"] = "playing"
+                with job["io_lock"]:
                     if job["cancel"].is_set():
                         raise InterruptedError("speech cancelled")
-                    job["output"] = self.output_factory(piece.rate)
-                    job["rate"] = piece.rate
-                    job["state"] = "playing"
-                if piece.rate != job["rate"]:
-                    raise ValueError("speech format changed midstream")
-                pcm = carry + piece.pcm
-                carry = pcm[len(pcm) // 2 * 2 :]
-                pcm = pcm[: len(pcm) // 2 * 2]
-                job["bytes"] += len(pcm)
-                if job["bytes"] > piece.rate * 2 * 120:
-                    raise ValueError("speech duration exceeds limit")
-                if job["cancel"].is_set():
-                    raise InterruptedError("speech cancelled")
-                if pcm:
-                    job["output"].write(pcm)
-                job["submitted_audio_s"] = job["bytes"] / piece.rate / 2
+                    output.write(piece.pcm)
+                    job["bytes"] += len(piece.pcm)
+                    job["submitted_audio_s"] = job["bytes"] / piece.rate / 2
             if job["cancel"].is_set():
                 raise InterruptedError("speech cancelled")
-            if carry or not job["bytes"]:
-                raise ValueError("truncated or empty speech audio")
             job["metadata"]["alignment"] = getattr(job["provider"], "timings", None)
             job["state"] = "completed"
         except InterruptedError:
@@ -253,11 +350,15 @@ class SpeechService:
                     code if code.startswith("speech.") and len(code) < 100 else "speech.failed"
                 )
         finally:
-            if job["output"]:
-                try:
-                    job["output"].close()
-                except Exception:
-                    pass
+            if job["cancel"].is_set():
+                self._abort(job)
+            # No new output can overlap this lease while the device drains/closes.
+            if output:
+                with job["io_lock"]:
+                    try:
+                        output.close()
+                    except Exception:
+                        pass
             if gated:
                 try:
                     self.voice.session_playback(False, owner=job["owner"])
@@ -265,7 +366,13 @@ class SpeechService:
                     pass
             if lease:
                 self.resources.release(job["owner"], lease)
-            job["provider"].close()
+            if job["state"] != "completed":
+                job["cancel"].set()
+            try:
+                job["provider"].close()
+            finally:
+                if job["producer"]:
+                    job["producer"].join(timeout=3)
 
     def status(self, owner: Any, identifier: str | None = None) -> dict[str, Any]:
         with self.lock:
@@ -284,6 +391,7 @@ class SpeechService:
                 for k in [
                     "id",
                     "state",
+                    "generation",
                     "response_id",
                     "segment_id",
                     "error",
@@ -293,7 +401,13 @@ class SpeechService:
                     "submitted_audio_s",
                 ]
             }
-            result["settled"] = not job["thread"].is_alive()
+            result["settled"] = self._settled(job)
+            result["pcm_buffer"] = {
+                "blocks": job["buffer"].queue.qsize(),
+                "high_water": job["buffer"].high_water,
+                "capacity": PCM_BLOCKS,
+                "block_ms": PCM_BLOCK_MS,
+            }
             return {"job": result}
 
     def cancel(self, owner: Any, identifier: str | None = None) -> dict[str, Any]:
@@ -310,12 +424,7 @@ class SpeechService:
                 if job["state"] not in {"completed", "error"}:
                     job["state"] = "cancelled"
         for job in jobs:
-            if job["output"]:
-                try:
-                    job["output"].cancel()
-                except Exception:
-                    pass
-            job["provider"].cancel()
+            self._abort(job)
         return {"ok": True}
 
     def release(self, owner: Any) -> None:
@@ -326,11 +435,13 @@ class SpeechService:
             job["thread"].join(timeout=3)
         with self.lock:
             for job in jobs:
-                if not job["thread"].is_alive():
+                if self._settled(job):
                     self.jobs.pop(job["id"], None)
+            if not any(j["owner"] == owner for j in self.jobs.values()):
+                self.generations.pop(owner, None)
 
     def close(self) -> None:
         with self.lock:
-            owners = {j["owner"] for j in self.jobs.values()}
+            owners = {j["owner"] for j in self.jobs.values()} | set(self.generations)
         for owner in owners:
             self.release(owner)

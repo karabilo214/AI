@@ -15,6 +15,9 @@ class SoundOutput:
         self.stream: Any = sd.RawOutputStream(
             samplerate=rate, channels=1, dtype="int16", blocksize=512
         )
+
+    def start(self) -> None:
+        self._com()
         try:
             self.stream.start()
         except Exception:

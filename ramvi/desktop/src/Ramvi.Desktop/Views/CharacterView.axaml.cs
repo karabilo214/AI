@@ -13,6 +13,15 @@ namespace Ramvi.Desktop.Views;
 
 public sealed partial class CharacterView : UserControl, IDisposable
 {
+    public static readonly StyledProperty<CharacterDirective?> ResponseProperty = AvaloniaProperty.Register<CharacterView,CharacterDirective?>(nameof(Response));
+    public CharacterDirective? Response { get => GetValue(ResponseProperty); set => SetValue(ResponseProperty,value); }
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if(change.Property==ResponseProperty && Response is {} directive) {
+            _player?.Apply(directive); CharacterSurface?.InvalidateVisual();
+        }
+    }
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(33) };
     private readonly Stopwatch _clock = new();
     private CharacterPack? _pack;
@@ -103,6 +112,7 @@ public sealed partial class CharacterView : UserControl, IDisposable
             var root = ServiceOptions.FromEnvironment().RamviRoot;
             _pack = new CharacterPack(Path.Combine(root, "character", "ramvi_character", "assets", "pack.json"));
             _player = new CharacterPlayer(_pack);
+            if(Response is {} directive) _player.Apply(directive);
             CharacterSurface.Pack = _pack; CharacterSurface.Player = _player;
             CharacterEmotion.ItemsSource = _pack.Emotions.Select(id => new EmotionItem(id)).ToArray();
             CharacterEmotion.SelectedIndex = _pack.Emotions.ToList().IndexOf(_emotion);
