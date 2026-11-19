@@ -216,6 +216,59 @@ public sealed class StyleTests
         }
     }
 
+    /// <summary>
+    /// Фокус с клавиатуры без рамки (решение владельца): квадратной рамки Fluent нет ни у одного
+    /// элемента, ни рамки, ни кольца не добавляется; фокус виден цветом primary. Во всех трёх темах.
+    /// </summary>
+    [AvaloniaFact]
+    public void Keyboard_focus_has_no_border()
+    {
+        foreach (var variant in Variants)
+        {
+            Application.Current!.RequestedThemeVariant = variant;
+            try
+            {
+                var plain = new Button { Content = "Обзор…" };
+                var icon = new Button { Content = "+", Classes = { "icon" } };
+                var check = new CheckBox { Content = "Флажок" };
+                var combo = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
+                var list = new ListBox { ItemsSource = new[] { "Диалог" } };
+                var other = new TextBox();
+                var window = new Window { Content = new StackPanel { Children = { plain, icon, check, combo, list, other } } };
+                window.Show();
+                Pump();
+                var item = Assert.IsType<ListBoxItem>(list.ContainerFromIndex(0));
+                foreach (var control in new Control[] { plain, icon, check, combo, item })
+                {
+                    var name = $"{variant}: {control.GetType().Name}";
+                    var shadowsBefore = control.GetVisualDescendants().OfType<Border>().Select(b => (b.BorderThickness, b.BoxShadow)).ToList();
+                    other.Focus(NavigationMethod.Pointer);
+                    control.Focus(NavigationMethod.Tab);
+                    Pump();
+                    Assert.True(control.IsFocused, name);
+                    Assert.Null(control.FocusAdorner);
+                    Assert.Empty(window.GetVisualDescendants().OfType<AdornerLayer>().SelectMany(l => l.Children)); // нет рамки фокуса
+                    Assert.Equal(shadowsBefore, control.GetVisualDescendants().OfType<Border>().Select(b => (b.BorderThickness, b.BoxShadow)).ToList()); // ничего не дорисовано
+                }
+
+                var presenter = Part<Avalonia.Controls.Presenters.ContentPresenter>(plain, "PART_ContentPresenter");
+                other.Focus(NavigationMethod.Pointer);
+                plain.Focus(NavigationMethod.Tab);
+                Pump();
+                Assert.Equal(Token("primary", variant), Assert.IsAssignableFrom<ISolidColorBrush>(presenter.Foreground).Color); // фокус виден цветом
+                window.Close();
+            }
+            finally
+            {
+                Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+            }
+        }
+    }
+
+    private static T Part<T>(Control owner, string name)
+        where T : Control =>
+        owner.GetVisualDescendants().OfType<T>().First(c => c.Name == name);
+
     private static async Task<(MainWindow Window, MainViewModel Model, FakeChatApi Api)> OpenAsync(
         FakeChatApi api, Func<Task<IReadOnlyList<DroppedFile>>>? pickFiles = null, Action<string>? applyTheme = null)
     {

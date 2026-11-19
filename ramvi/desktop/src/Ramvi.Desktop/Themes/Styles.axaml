@@ -403,4 +403,20 @@
   <Style Selector="TextBox.bare:focus">
     <Setter Property="Foreground" Value="{DynamicResource ramvi-text}" />
   </Style>
+
+  <!-- Фокус с клавиатуры (решение владельца): без рамки. Квадратная бело-синяя рамка Fluent
+       (FocusAdorner) убрана; элемент в фокусе подсвечивается цветом primary, как при наведении. -->
+  <Style Selector="Button, ToggleButton, ListBoxItem, ComboBox, CheckBox">
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+  </Style>
+  <Style Selector="Button:focus-visible /template/ ContentPresenter#PART_ContentPresenter, ToggleButton:focus-visible /template/ ContentPresenter#PART_ContentPresenter, ListBoxItem:focus-visible /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-primary}" />
+  </Style>
+  <Style Selector="ComboBox:focus-visible, CheckBox:focus-visible">
+    <Setter Property="TemplatedControl.Foreground" Value="{DynamicResource ramvi-primary}" />
+  </Style>
+  <Style Selector="Button.accent:focus-visible /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-primary-hover}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-on-primary}" />
+  </Style>
 </Styles>
