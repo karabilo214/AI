@@ -122,9 +122,12 @@ class SectionRegistry:
         manifest: Manifest,
         sql: Sequence[Migration] = (),
         texts: dict[str, dict[str, str]] | None = None,
+        *,
+        register: bool = True,
     ) -> Section | None:
         """Зарегистрировать модуль в Host (с его SQL-миграциями, 3.12, и переводами, 3.14);
-        процесс не запускается."""
+        процесс не запускается. register=False — модуль уже в Host (обновление пакета, 8.8):
+        только раздел, команды и переводы."""
         section = section_of(manifest)
         commands = (manifest.ui or {}).get("commands", [])
         forbidden = {
@@ -151,7 +154,10 @@ class SectionRegistry:
             raise ValueError(f"section {section.id} already exists")
         if texts:
             check_texts(texts, manifest.module_id)
-        self.host.register(manifest, approved_permissions=manifest.permissions, sql_migrations=sql)
+        if register:
+            self.host.register(
+                manifest, approved_permissions=manifest.permissions, sql_migrations=sql
+            )
         if section is not None:
             self._sections[section.id] = section
             self._commands[section.id] = tuple(commands)
@@ -177,13 +183,22 @@ class SectionRegistry:
                 merged[lang].update(catalogs.get(lang, {}))
         return merged
 
+    def restore(self, manifest: Manifest, texts: dict[str, dict[str, str]] | None = None) -> None:
+        """8.8: вернуть раздел обновлённого модуля (в Host он уже обновлён)."""
+        self.install(manifest, (), texts, register=False)
+
     def discover(self, modules_dir: Path) -> None:
-        """Установленные модули из `<папка>/<id>/manifest.json`; испорченный — в problems."""
+        """Установленные модули из `<папка>/<id>/manifest.json`; испорченный — в problems.
+        8.8: отключённые (`.disabled`) не регистрируются; папка `code/` пакета — в путь процесса."""
         if not modules_dir.is_dir():
             return
         for path in sorted(modules_dir.glob("*/manifest.json")):
+            if (path.parent / ".disabled").exists():
+                continue
             try:
                 manifest = load_manifest(path)
+                if (path.parent / "code").is_dir():
+                    self.host.code_paths[manifest.module_id] = [str(path.parent / "code")]
                 self.install(
                     manifest,
                     load_migrations(path.parent / "migrations"),

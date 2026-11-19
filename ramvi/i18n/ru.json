@@ -703,5 +703,12 @@
   "character.speech_state.playing": "Озвучивание…",
   "character.speech_state.completed": "Готово",
   "character.speech_state.cancelled": "Отменено",
-  "character.speech_state.error": "Ошибка озвучки"
+  "character.speech_state.error": "Ошибка озвучки",
+  "module.package_invalid": "Это не пакет модуля RAMVI или он повреждён: {detail}",
+  "module.api_incompatible": "Модуль «{module_id}» сделан для Module API {need}, а эта версия RAMVI поддерживает {core}. Нужна версия модуля для этой версии RAMVI",
+  "module.integrity": "Пакет модуля «{module_id}» повреждён или изменён: не сходится файл {file}. Скачайте пакет заново",
+  "module.update_failed": "Обновление модуля «{module_id}» до {version} не удалось ({detail}). Возвращена версия {previous}, её данные на месте",
+  "module.no_backup": "Для модуля «{module_id}» нет предыдущей версии для отката",
+  "module.not_installed": "Модуль «{module_id}» не установлен",
+  "module.not_found": "Модуль «{module_id}» не найден"
 }

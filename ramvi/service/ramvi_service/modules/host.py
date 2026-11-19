@@ -94,8 +94,12 @@ class ModuleHost:
         self.llm, self.context = llm, context
         self.secrets = secrets or MemorySecrets()
         self.gateway = ServiceGateway(self.authority)
+        # 8.8: папки кода установленных пакетов модулей (modules/<id>/code)
+        self.code_paths: dict[str, list[str]] = {}
         self.controller = controller or (
-            lambda m: ProcessModuleWorker(m.entrypoint, timeout=timeout)
+            lambda m: ProcessModuleWorker(
+                m.entrypoint, timeout=timeout, extra_paths=self.code_paths.get(m.module_id, ())
+            )
         )
         self._entries: dict[str, Entry] = {}
         self._migrations: dict[str, dict[int, Callable[[ScopedData], None]]] = {}
@@ -441,13 +445,19 @@ class ModuleHost:
         manifest: Manifest,
         *,
         migrations: dict[int, Callable[[ScopedData], None]] | None = None,
+        sql_migrations: Sequence[Migration] | None = None,
+        keep_backup: Path | None = None,
+        data_from: Path | None = None,
     ) -> dict[str, Any]:
+        """Новая версия модуля с откатом данных при неудаче. 8.8: keep_backup — сохранить копию
+        данных прежней версии (для отката пакета); data_from — взять данные из такой копии."""
         entry = self._entry(identifier)
         if manifest.module_id != identifier:
             raise ValueError("update cannot change module_id")
         with entry.lock:
             was_active, was_suspended = entry.state == "active", entry.state == "suspended"
             previous, old_migrations = entry.manifest, self._migrations[identifier]
+            old_sql = self._sql[identifier]
             self.deactivate(identifier)
             if entry.database is not None:  # копия пространства — с закрытой базой
                 entry.database.close()
@@ -458,8 +468,13 @@ class ModuleHost:
                 backup = Path(temporary) / "backup"
                 shutil.copytree(data.root, backup)
                 try:
+                    if data_from is not None:
+                        shutil.rmtree(data.root)
+                        shutil.copytree(data_from, data.root)
                     entry.manifest = copy.deepcopy(manifest)
                     self._migrations[identifier] = dict(migrations or {})
+                    if sql_migrations is not None:  # 8.8: миграции новой версии пакета
+                        self._sql[identifier] = list(sql_migrations)
                     self._check_graph()
                     self.initialize(identifier)
                     if was_active:
@@ -469,12 +484,17 @@ class ModuleHost:
                         self.suspend(identifier)
                     else:
                         self.deactivate(identifier)
+                    if keep_backup is not None:
+                        if keep_backup.exists():
+                            shutil.rmtree(keep_backup)
+                        shutil.copytree(backup, keep_backup)
                 except Exception:
                     self._stop(entry)
                     shutil.rmtree(data.root)
                     shutil.copytree(backup, data.root)
                     entry.manifest = previous
                     self._migrations[identifier] = old_migrations
+                    self._sql[identifier] = old_sql
                     entry.state, entry.error = "inactive", "update rolled back"
                     if was_active:
                         self.activate(identifier)

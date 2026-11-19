@@ -89,6 +89,7 @@ class UIServer:
         self.app_dir: Path | None = None
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
+        self.packages: Any = None  # 8.8: ModulePackages (пакеты модулей в папке приложения)
         self._server = _Server(("127.0.0.1", port), _handler(self))
         self._server.daemon_threads = True
         self._thread: threading.Thread | None = None
@@ -433,7 +434,16 @@ class UIServer:
             raise ChatError("api.not_found")
         if method == "GET" and path == "/modules":
             return {"modules": api.list()}
-        match = re.fullmatch(r"/modules/([a-z][a-z0-9_]{0,63})/(export|reset|uninstall)", path)
+        packages = self.packages
+        # 8.8: пакеты модулей — список, установка/обновление из файла, отключение, откат
+        if method == "GET" and path == "/modules/packages" and packages is not None:
+            return {"packages": packages.list()}
+        if method == "POST" and path == "/modules/install" and packages is not None:
+            return {"package": packages.install(Path(_required_str(body, "path")))}
+        match = re.fullmatch(
+            r"/modules/([a-z][a-z0-9_]{0,63})/(export|reset|uninstall|disable|enable|rollback)",
+            path,
+        )
         if method != "POST" or match is None:
             raise ChatError("api.not_found")
         module_id, action = match.groups()
@@ -441,9 +451,17 @@ class UIServer:
             return {"export": api.export(module_id)}
         if action == "reset":
             return {"module": api.reset(module_id)}
+        if action in ("disable", "enable", "rollback"):
+            if packages is None:
+                raise ChatError("api.not_found")
+            return {"package": getattr(packages, action)(module_id)}
         purge = body.get("purge", False)
         if not isinstance(purge, bool):
             raise ChatError("api.bad_request", field="purge")
+        if packages is not None and (packages.dir / module_id / "manifest.json").is_file():
+            return {
+                "uninstalled": packages.uninstall(module_id, purge)
+            }  # код тоже, данные — по выбору
         return {"uninstalled": api.uninstall(module_id, purge)}
 
     def _remember(self, model_id: str | None) -> None:

@@ -2,6 +2,7 @@
 
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -13,12 +14,15 @@ class WorkerController(Protocol):
 
 
 class ProcessModuleWorker:
-    def __init__(self, entrypoint: str, *, timeout: float = 10) -> None:
+    def __init__(
+        self, entrypoint: str, *, timeout: float = 10, extra_paths: Sequence[str] = ()
+    ) -> None:
         from ramvi_engine.processes import ProcessSupervisor
 
         service = Path(__file__).resolve().parents[2]
         engine = service.parent / "engine"
         paths = [
+            *extra_paths,  # 8.8: код установленного пакета модуля (modules/<id>/code)
             str(service),
             str(engine),
             str(service.parent / "character"),

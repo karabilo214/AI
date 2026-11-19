@@ -703,5 +703,12 @@
   "character.speech_state.playing": "Speaking…",
   "character.speech_state.completed": "Completed",
   "character.speech_state.cancelled": "Cancelled",
-  "character.speech_state.error": "Speech error"
+  "character.speech_state.error": "Speech error",
+  "module.package_invalid": "This is not a RAMVI module package or it is damaged: {detail}",
+  "module.api_incompatible": "Module “{module_id}” targets Module API {need}, but this RAMVI supports {core}. Get the module version for this RAMVI",
+  "module.integrity": "The package of module “{module_id}” is damaged or modified: file {file} does not match. Download the package again",
+  "module.update_failed": "Updating module “{module_id}” to {version} failed ({detail}). Version {previous} was restored with its data",
+  "module.no_backup": "Module “{module_id}” has no previous version to roll back to",
+  "module.not_installed": "Module “{module_id}” is not installed",
+  "module.not_found": "Module “{module_id}” not found"
 }

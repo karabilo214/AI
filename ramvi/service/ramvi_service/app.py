@@ -53,6 +53,7 @@ from ramvi_service.model_control import ModelControl
 from ramvi_service.model_fit import ModelFit
 from ramvi_service.model_library import ModelLibrary
 from ramvi_service.modules.host import ModuleHost
+from ramvi_service.modules.packages import ModulePackages
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.resources import SharedLLM
 from ramvi_service.secrets_store import os_secrets
@@ -204,6 +205,8 @@ def build(
     # Модели распознавания — в папке приложения, а не в папке моделей LLM: та может указывать
     # в чужое хранилище (например, blobs Ollama), куда нельзя класть свои подпапки.
     stt_root = (root or data_dir) / "models"
+    if root is not None:  # 8.8: установка, обновление, отключение и удаление пакетов модулей
+        server.packages = ModulePackages(root / "modules", sections)
     server.voice = VoiceService(
         lambda: stt_root,
         current_settings,
