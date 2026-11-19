@@ -630,5 +630,6 @@
   "settings.update_rolled_back": "Update {version} did not start — version {current} was restored. Chats and models are untouched",
   "settings.update_install": "Install from file…",
   "settings.update_restart": "Restart and update",
-  "settings.update_note": "The package is checked against the RAMVI signature. Updates never touch chats, models or settings; if the new version does not start, the previous one comes back."
+  "settings.update_note": "The package is checked against the RAMVI signature. Updates never touch chats, models or settings; if the new version does not start, the previous one comes back.",
+  "update.rollback_incomplete": "The rollback is incomplete: could not restore {files}. Close RAMVI and roll back again"
 }

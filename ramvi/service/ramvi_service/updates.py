@@ -41,9 +41,11 @@ from ramvi_service.i18n import UserError
 
 SCHEMA = "ramvi.update/1"
 PRODUCT = "RAMVI"
-# Открытые ключи выпусков RAMVI (hex, 32 байта). Заполняются при первом подписанном
-# выпуске; пока пусто — обновления не устанавливаются (не с чем сверить подпись).
-TRUSTED_KEYS: tuple[str, ...] = ()
+# Открытые ключи выпусков RAMVI (hex, 32 байта). Закрытая часть хранится только у
+# владельца вне репозитория; пакет, подписанный другим ключом, не устанавливается.
+TRUSTED_KEYS: tuple[str, ...] = (
+    "15d704139a14739f953f61ef2c6e58647efae41c92b8a4c22a50fcd68fd019be",  # выпуск RAMVI, 2026-11-19
+)
 ALLOWED_DIRS = ("ramvi", "runtime", "modules")
 ALLOWED_FILES = ("RAMVI.exe", "BUILD.json", "LICENSE")
 MAX_MANIFEST = 8 * 1024 * 1024
@@ -194,6 +196,7 @@ class Updater:
         return {"current": current_version(self.app_dir), **state}
 
     def _save(self, state: dict[str, Any]) -> None:
+        state = {k: v for k, v in state.items() if k != "current"}  # версия — из BUILD.json
         self.root.mkdir(parents=True, exist_ok=True)
         temp = self.state_file.with_suffix(".tmp")
         temp.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -240,7 +243,20 @@ class Updater:
                     raise UpdateError("update.bad_file", path=entry.path)
             (staging / "manifest.json").write_bytes(raw)
             (staging / "manifest.sig").write_text(signature, encoding="ascii")
-        self._save({**self.status(), "staged": manifest.version, "notes": manifest.notes})
+        # Новый цикл: отметки прошлого обновления (откат, журнал, проверка) больше не к месту.
+        stale = (
+            "rolled_back",
+            "rollback_failed",
+            "journal",
+            "applied",
+            "applying",
+            "health",
+            "previous",
+            "db_schema",
+            "applied_at",
+        )
+        state = {k: v for k, v in self.status().items() if k not in stale}
+        self._save({**state, "staged": manifest.version, "notes": manifest.notes})
         return {"staged": manifest.version, "files": len(manifest.files), "current": current}
 
     # --- сеть (только по согласию) ----------------------------------------------------
@@ -351,14 +367,29 @@ class Updater:
         if not version or not journal:
             raise UpdateError("update.nothing_to_roll_back")
         backup = self.root / "backup" / version
+        rejected = backup / "rejected"
+        failed: list[str] = []
         for entry in reversed(journal):
             target = self.app_dir / safe_path(entry["path"])
             saved = backup / "files" / entry["path"]
-            if entry.get("new") and target.exists() and (saved.exists() or not entry["had_old"]):
-                target.unlink()
-            if saved.exists():
-                target.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(saved, target)
+            try:
+                if (
+                    entry.get("new")
+                    and target.exists()
+                    and (saved.exists() or not entry["had_old"])
+                ):
+                    # Новый файл может быть занят (откат запускает новый python.exe с новым
+                    # python312.dll): удалить занятый файл Windows не даст, а перенести — даст.
+                    aside = rejected / entry["path"]
+                    aside.parent.mkdir(parents=True, exist_ok=True)
+                    if aside.exists():
+                        aside.unlink()
+                    os.replace(target, aside)
+                if saved.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(saved, target)
+            except OSError:
+                failed.append(entry["path"])  # остальные файлы всё равно возвращаются
         restored_db = False
         db_file, db_copy = self.data_dir / DB_FILE, backup / DB_FILE
         if db_copy.exists() and _schema_version(db_file) > int(state.get("db_schema") or 0):
@@ -373,7 +404,10 @@ class Updater:
                     os.replace(part, Path(str(keep) + suffix))
             shutil.copy2(db_copy, db_file)
             restored_db = True
-        for key in ("applying", "applied", "journal", "staged"):
+        if failed:
+            self._save({**state, "rollback_failed": failed})
+            raise UpdateError("update.rollback_incomplete", files=", ".join(failed))
+        for key in ("applying", "applied", "journal", "staged", "rollback_failed"):
             state.pop(key, None)
         self._save({**state, "rolled_back": version, "health": "rolled_back"})
         return {"rolled_back": version, "database_restored": restored_db}

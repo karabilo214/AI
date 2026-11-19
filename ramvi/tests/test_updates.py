@@ -335,7 +335,8 @@ def test_ui_routes_report_and_stage(tmp_path: Path, app: Path) -> None:
         assert ui.ok("GET", "/updates")["current"] == "0.8.0"
         pkg = package(tmp_path, app)
         status, error = ui.request("POST", "/updates/stage", {"path": str(pkg)})
-        assert status == 400 and error["error"]["code"] == "update.no_trusted_key"
+        # Приложение доверяет только ключу выпуска RAMVI: тестовый ключ — чужой.
+        assert status == 400 and error["error"]["code"] == "update.bad_signature"
         server.updater.keys = (PUBLIC,)
         staged = ui.ok("POST", "/updates/stage", {"path": str(pkg)})
         assert staged["staged"] == "0.9.0" and staged["current"] == "0.8.0"
@@ -373,3 +374,70 @@ def test_cli_in_a_real_process(tmp_path: Path, app: Path) -> None:
     assert (
         json.loads(done.stdout.strip().splitlines()[-1])["error"]["code"] == "update.nothing_staged"
     )
+
+
+def test_release_key_is_trusted_and_well_formed() -> None:
+    assert len(up.TRUSTED_KEYS) >= 1
+    for key in up.TRUSTED_KEYS:
+        assert len(bytes.fromhex(key)) == 32
+    assert PUBLIC not in up.TRUSTED_KEYS  # тестовый ключ не должен попасть в доверенные
+
+
+def test_rollback_moves_new_files_aside_instead_of_deleting(
+    tmp_path: Path, app: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows: откат запускает новый python.exe, и новый python312.dll занят — удалить его
+    нельзя, а перенести можно (найдено проверкой на Windows)."""
+    updater = up.Updater(app, app / "data", keys=(PUBLIC,))
+    updater.stage(package(tmp_path, app))
+    updater.apply()
+    assert up.current_version(app) == "0.9.0" and updater.status()["current"] == "0.9.0"
+
+    def locked(self: Path, missing_ok: bool = False) -> None:
+        raise PermissionError("file is in use")
+
+    monkeypatch.setattr(Path, "unlink", locked)  # любой занятый файл
+    assert updater.rollback()["rolled_back"] == "0.9.0"
+    monkeypatch.undo()
+    assert (app / "ramvi/service/core.py").read_text() == "old core"
+    assert not (app / "ramvi/service/added.py").exists()
+    assert (app / "updates/backup/0.9.0/rejected/ramvi/service/added.py").exists()
+    assert updater.status()["current"] == "0.8.0"
+
+
+def test_rollback_reports_files_it_could_not_restore(
+    tmp_path: Path, app: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    updater = up.Updater(app, app / "data", keys=(PUBLIC,))
+    updater.stage(package(tmp_path, app))
+    updater.apply()
+    real = os.replace
+
+    def stuck(src: Any, dst: Any) -> None:
+        if str(dst).endswith("RAMVI.exe") and "rejected" not in str(dst):
+            raise PermissionError("locked")
+        real(src, dst)
+
+    monkeypatch.setattr(os, "replace", stuck)
+    with pytest.raises(up.UpdateError) as error:
+        updater.rollback()
+    assert error.value.code == "update.rollback_incomplete"
+    assert error.value.params == {"files": "RAMVI.exe"}
+    assert (app / "ramvi/service/core.py").read_text() == "old core"  # остальное вернулось
+    monkeypatch.setattr(os, "replace", real)
+    assert updater.status()["rollback_failed"] == ["RAMVI.exe"]
+
+
+def test_new_cycle_forgets_the_previous_rollback(tmp_path: Path, app: Path) -> None:
+    """Найдено на Windows: после отката и нового обновления в состоянии висело «откачено»."""
+    updater = up.Updater(app, app / "data", keys=(PUBLIC,))
+    updater.stage(package(tmp_path, app))
+    updater.apply()
+    updater.rollback()
+    assert updater.status()["rolled_back"] == "0.9.0"
+    updater.stage(package(tmp_path, app))
+    assert "rolled_back" not in updater.status() and "journal" not in updater.status()
+    updater.apply()
+    updater.mark_good()
+    state = updater.status()
+    assert (state["applied"], state["health"], "rolled_back" in state) == ("0.9.0", "good", False)
