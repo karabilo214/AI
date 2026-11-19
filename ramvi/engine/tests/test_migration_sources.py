@@ -329,8 +329,11 @@ def allowed_layout_changes(name: str, source: str) -> str:
             "        ParentWatch.from_env()\n"
             "    torch.set_grad_enabled(False)",
         )
-    return release_pages_86(
-        name, tc_cfg_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
+    return driver_jit_87(
+        name,
+        release_pages_86(
+            name, tc_cfg_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
+        ),
     )
 
 
@@ -510,6 +513,22 @@ def release_pages_86(name: str, source: str) -> str:
             + '\n\ndef release_file_pages(mm):\n    """8.6: страницы файла модели, прочитанные при загрузке весов в видеокарту, остаются в рабочем\n    наборе процесса. Это не копия весов (страницы общие, файловые, их можно вернуть), но Windows\n    не считает их «доступной» памятью: с qwen3:8b целиком в видеокарте движок показывал 5,7 ГБ,\n    из них 4,8 ГБ — страницы файла, и голосу «не хватало» RAM. Здесь страницы выводятся из\n    рабочего набора; отображение остаётся, нужная позже страница подчитается из кэша системы.\n    Windows — VirtualUnlock на незакреплённой области (документированный способ убрать страницы\n    из рабочего набора, ответ ERROR_NOT_LOCKED ожидаем), POSIX — madvise(MADV_DONTNEED)."""\n    size = int(mm.size) * mm.itemsize\n    if size == 0:\n        return False\n    if sys.platform == "win32":\n        import ctypes\n        kernel = ctypes.WinDLL("kernel32", use_last_error=True)\n        kernel.VirtualUnlock.argtypes = (ctypes.c_void_p, ctypes.c_size_t)\n        kernel.VirtualUnlock.restype = ctypes.c_int\n        ok = kernel.VirtualUnlock(ctypes.c_void_p(mm.ctypes.data), ctypes.c_size_t(size))\n        return bool(ok) or ctypes.get_last_error() == 158  # ERROR_NOT_LOCKED\n    import mmap\n    raw = getattr(mm, "_mmap", None)\n    if raw is None or not hasattr(raw, "madvise") or not hasattr(mmap, "MADV_DONTNEED"):\n        return False\n    raw.madvise(mmap.MADV_DONTNEED)\n    return True\n'
         )
     return source
+
+
+# 8.7: без ptxas (его нельзя распространять) ядра Triton собирает драйвер NVIDIA — в cli
+# только включение этого режима после set_grad_enabled; вычисления движка прежние.
+DRIVER_JIT_87 = (
+    "    torch.set_grad_enabled(False)\n",
+    '    torch.set_grad_enabled(False)\n    if torch.cuda.is_available():  # 8.7: без ptxas ядра Triton собирает драйвер\n        from ramvi_engine.kernels.driver_jit import enable\n\n        if enable():\n            print("ядра Triton собирает драйвер NVIDIA (ptxas нет)", file=sys.stderr, flush=True)\n',
+)
+
+
+def driver_jit_87(name: str, source: str) -> str:
+    if name != "__main__":
+        return source
+    old, new = DRIVER_JIT_87
+    assert source.count(old) == 1, (name, old)
+    return source.replace(old, new)
 
 
 def computational_tree(source: str) -> str:

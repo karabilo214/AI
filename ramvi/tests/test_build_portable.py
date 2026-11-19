@@ -256,7 +256,7 @@ def test_visual_studio_and_license_basis_are_required(tmp_path: Path) -> None:
 
 
 def test_nvidia_files_are_checked_against_license_lists(tmp_path: Path) -> None:
-    """8.7: CUDA EULA 13.2 прил. A и cuDNN SLA; cusolverMg/nvperf удаляются, ptxas — блок."""
+    """8.7: CUDA EULA 13.2 прил. A и cuDNN SLA; cusolverMg, nvperf и ptxas удаляются."""
     site = tmp_path / "site-packages"
     names = [
         "torch/lib/cublasLt64_13.dll",
@@ -275,13 +275,14 @@ def test_nvidia_files_are_checked_against_license_lists(tmp_path: Path) -> None:
     for name in names:
         (site / name).parent.mkdir(parents=True, exist_ok=True)
         (site / name).write_bytes(b"x")
-    with pytest.raises(SystemExit, match="ptxas.exe"):
-        redist_mod.check_nvidia(site)
-    result = redist_mod.check_nvidia(site, internal=True)
-    assert result["removed"] == []  # уже удалены первым вызовом
-    assert not (site / "torch/lib/cusolverMg64_12.dll").exists()
-    assert not (site / "torch/lib/nvperf_host.dll").exists()
-    assert result["kept_internal_only"] == ["triton/backends/nvidia/bin/ptxas.exe"]
+    result = redist_mod.check_nvidia(site)
+    assert sorted(result["removed"]) == [
+        "torch/lib/cusolverMg64_12.dll",
+        "torch/lib/nvperf_host.dll",
+        "triton/backends/nvidia/bin/ptxas.exe",  # ядра собирает драйвер (driver_jit)
+    ]
+    assert not (site / "triton/backends/nvidia/bin/ptxas.exe").exists()
+    assert result["kept_internal_only"] == []
     allowed = {a["file"] for a in result["allowed"]}
     assert (
         "torch/lib/cudnn_graph64_9.dll" in allowed

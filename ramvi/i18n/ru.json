@@ -659,5 +659,7 @@
   "character.emotion.thinking": "Размышление",
   "character.emotion.talking": "Речь",
   "character.emotion.excited": "Восторг",
-  "character.emotion.side_eye": "Косой взгляд"
+  "character.emotion.side_eye": "Косой взгляд",
+  "engine.no_nvidia_driver": "Не найден драйвер NVIDIA. Для работы RAMVI нужна видеокарта NVIDIA и драйвер с поддержкой CUDA {detail} или новее. Установите драйвер GeForce с сайта NVIDIA: https://www.nvidia.com/drivers (CUDA Toolkit ставить не нужно)",
+  "engine.driver_cuda_old": "Драйвер NVIDIA поддерживает только CUDA {detail}, а для RAMVI нужна CUDA 13.2 или новее. Обновите драйвер GeForce с сайта NVIDIA: https://www.nvidia.com/drivers (CUDA Toolkit ставить не нужно)"
 }

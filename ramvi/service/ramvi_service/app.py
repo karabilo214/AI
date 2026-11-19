@@ -24,6 +24,7 @@ from ramvi_engine.processes import ParentWatch
 from ramvi_storage.repositories import AgentRuns, Model, Models, NotFound
 from ramvi_storage.schema import open_core
 
+from ramvi_service import driver_gate
 from ramvi_service import settings as app_settings
 from ramvi_service.agent.desktop import AgentDesktop
 from ramvi_service.agent.gateway import AgentGateway
@@ -162,6 +163,8 @@ def build(
     engines.resident_for = runs.resident_for  # безопасный план после отката (4.7)
     guard = Guard(fit, Models(db), root, task)
     engines.preflight = guard.preflight  # невыполнимый план — сразу понятная ошибка (4.8)
+    if engine_command is None:  # 8.7: настоящий движок — сначала драйвер NVIDIA с нужной CUDA
+        engines.preflight = lambda model: driver_gate.check() or guard.preflight(model)
 
     def after_download(model_id: str) -> None:
         nvidia = any(g.vendor == "NVIDIA" for g in fit.hardware_profile().gpus)

@@ -659,5 +659,7 @@
   "character.emotion.thinking": "Thinking",
   "character.emotion.talking": "Talking",
   "character.emotion.excited": "Excited",
-  "character.emotion.side_eye": "Side eye"
+  "character.emotion.side_eye": "Side eye",
+  "engine.no_nvidia_driver": "No NVIDIA driver found. RAMVI needs an NVIDIA GPU and a driver that supports CUDA {detail} or newer. Install the GeForce driver from NVIDIA: https://www.nvidia.com/drivers (no CUDA Toolkit needed)",
+  "engine.driver_cuda_old": "The NVIDIA driver supports only CUDA {detail}, but RAMVI needs CUDA 13.2 or newer. Update the GeForce driver from NVIDIA: https://www.nvidia.com/drivers (no CUDA Toolkit needed)"
 }

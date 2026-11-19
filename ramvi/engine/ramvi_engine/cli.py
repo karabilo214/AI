@@ -83,6 +83,11 @@ def main() -> None:
     import torch
 
     torch.set_grad_enabled(False)
+    if torch.cuda.is_available():  # 8.7: без ptxas ядра Triton собирает драйвер
+        from ramvi_engine.kernels.driver_jit import enable
+
+        if enable():
+            print("ядра Triton собирает драйвер NVIDIA (ptxas нет)", file=sys.stderr, flush=True)
     gguf = is_gguf_model(a.model)
     if a.cmd == "plan":
         from ramvi_engine.planning.plan import make_plan, plan_gguf

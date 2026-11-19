@@ -7,8 +7,9 @@
 - NVIDIA: каждый файл NVIDIA в пакетах сверяется со списком распространяемых файлов
   CUDA Toolkit EULA (приложение A, версия 13.2 — как CUDA 13.2.86 в torch) и cuDNN SLA
   (v. 22.02.2022: «runtime files .so and .dll»). Нераспространяемые и ненужные движку файлы
-  удаляются, нераспространяемые нужные (ptxas.exe — им Triton собирает ядра) останавливают
-  сборку релиза; внутренняя сборка для своих проверок (`internal`) их оставляет с отметкой.
+  удаляются. ptxas.exe (Triton) тоже не распространяется: ядра собирает драйвер NVIDIA
+  (engine/ramvi_engine/kernels/driver_jit.py; проверено — ответ побайтно тот же, скорость та же).
+  Механизм «блокирующих» файлов оставлен для будущих находок (`internal` их пропускает).
 - Модели в комплект не входят: модель и предсказатель пользователь скачивает сам.
 - Тексты лицензий собираются в папку `licenses/`.
 """
@@ -205,10 +206,11 @@ NVIDIA_ALLOWED = {
     "cudnn64_*.dll": CUDNN_SLA,
     "cudnn_*64_*.dll": CUDNN_SLA,
 }
-# Нет в приложении A — удаляются (движку не нужны: в import torch статически не входят).
-NVIDIA_REMOVE = ("cusolvermg64_*.dll", "nvperf_host*.dll", "nvperf_target*.dll")
-# Нет в приложении A, но нужны (Triton собирает ими ядра) — релиз с ними не собирается.
-NVIDIA_BLOCKING = ("ptxas*.exe",)
+# Нет в приложении A — удаляются: cusolverMg/nvperf движку не нужны (в import torch статически
+# не входят); вместо ptxas ядра Triton собирает драйвер (driver_jit).
+NVIDIA_REMOVE = ("cusolvermg64_*.dll", "nvperf_host*.dll", "nvperf_target*.dll", "ptxas*.exe")
+# Нет в приложении A, но нужны — релиз с ними не собирается (сейчас таких нет).
+NVIDIA_BLOCKING: tuple[str, ...] = ()
 _NVIDIA_NAME = re.compile(r"^(cu|nv|ptxas|libdevice)", re.IGNORECASE)
 
 
