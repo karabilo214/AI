@@ -24,7 +24,7 @@ VOICE_MODELS = tuple(MODELS)
 VOICE_BACKENDS = ("local", "api")
 
 LANGUAGES = ("ru", "en", "uk")
-THEMES = ("system", "light", "dark")  # 3.16: тема окна оболочки
+THEMES = ("system", "light", "dark", "high_contrast")  # 3.16; 8.5 — высокий контраст
 FILE_NAME = "settings.json"
 
 

@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using Ramvi.Desktop.Api;
 using Ramvi.Desktop.Localization;
@@ -26,6 +27,11 @@ public sealed partial class App : Application, IDisposable
             var settings = AppSettingsFile.Read(ServiceOptions.AppDirectory);
             Localizer.Current = Localizer.Load(Environment.GetEnvironmentVariable("RAMVI_LANGUAGE") ?? settings.Language);
             ApplyTheme(settings.Theme);
+            if (PlatformSettings is { } platform)
+            {
+                // Пользователь включил высокий контраст в ОС, пока приложение открыто.
+                platform.ColorValuesChanged += (_, _) => ApplyTheme(_theme);
+            }
             var window = new MainWindow();
             desktop.MainWindow = window;
             window.Opened += async (_, _) => await ConnectAsync(window).ConfigureAwait(true);
@@ -42,16 +48,31 @@ public sealed partial class App : Application, IDisposable
             window.PickFolderAsync, RestartAsync, ChooseDataDirAsync, window.PickFilesAsync, ApplyTheme);
         window.DataContext = model;
         await model.InitializeAsync().ConfigureAwait(true);
+        window.FocusInput(); // 8.5: можно сразу печатать, без мыши
     }
 
-    /// <summary>Тема окна (3.16): system — как в ОС, light, dark; применяется сразу.</summary>
-    public void ApplyTheme(string theme) => RequestedThemeVariant = ThemeVariantOf(theme);
+    /// <summary>8.5 (UI-04): высокий контраст; ресурсы, которых нет в его палитре, — из Dark.</summary>
+    public static readonly ThemeVariant HighContrast = new("HighContrast", ThemeVariant.Dark);
 
-    public static ThemeVariant ThemeVariantOf(string theme) => theme switch
+    private string _theme = "system";
+
+    /// <summary>
+    /// Тема окна (3.16): system — как в ОС, light, dark, high_contrast; применяется сразу.
+    /// При «как в системе» включённый в ОС высокий контраст выбирает тему высокого контраста.
+    /// </summary>
+    public void ApplyTheme(string theme)
+    {
+        _theme = theme;
+        var high = PlatformSettings?.GetColorValues().ContrastPreference == ColorContrastPreference.High;
+        RequestedThemeVariant = ThemeVariantOf(theme, high);
+    }
+
+    public static ThemeVariant ThemeVariantOf(string theme, bool systemHighContrast = false) => theme switch
     {
         "light" => ThemeVariant.Light,
         "dark" => ThemeVariant.Dark,
-        _ => ThemeVariant.Default,
+        "high_contrast" => HighContrast,
+        _ => systemHighContrast ? HighContrast : ThemeVariant.Default,
     };
 
     private static Task ChooseDataDirAsync(string path)

@@ -207,6 +207,12 @@
     <Setter Property="Background" Value="{DynamicResource ramvi-primary}" />
     <Setter Property="Foreground" Value="{DynamicResource ramvi-on-primary}" />
   </Style>
+  <!-- 8.5: Fluent красит accent своим цветом прямо в шаблоне — задаём цвет палитры там же
+       (в светлой и тёмной теме цвета совпадали, в высоком контрасте кнопка была фиолетовой) -->
+  <Style Selector="Button.accent /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ramvi-primary}" />
+    <Setter Property="Foreground" Value="{DynamicResource ramvi-on-primary}" />
+  </Style>
   <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource ramvi-primary-hover}" />
     <Setter Property="Foreground" Value="{DynamicResource ramvi-on-primary}" />
@@ -324,8 +330,12 @@
     <Setter Property="BoxShadow" Value="{DynamicResource ramvi-shadow-inset}" />
   </Style>
   <!-- Крестик удаления диалога: виден при наведении и у выбранного диалога -->
+  <!-- 8.5: не в обходе Tab — иначе Tab попадал на крестик и Enter удалял диалог;
+       с клавиатуры диалог удаляется клавишей Delete в списке -->
   <Style Selector="ListBox.nav ListBoxItem Button.row-action">
     <Setter Property="Opacity" Value="0" />
+    <Setter Property="IsTabStop" Value="False" />
+    <Setter Property="Focusable" Value="False" />
   </Style>
   <Style Selector="ListBox.nav ListBoxItem:pointerover Button.row-action, ListBox.nav ListBoxItem:selected Button.row-action">
     <Setter Property="Opacity" Value="1" />

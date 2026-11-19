@@ -56,7 +56,8 @@
 
         <DockPanel IsVisible="{Binding Sections.IsChatSelected}">
           <Button x:Name="NewChatButton" DockPanel.Dock="Top" HorizontalAlignment="Stretch"
-                  HorizontalContentAlignment="Left" Margin="4,0,4,12" Command="{Binding NewChatCommand}">
+                  HorizontalContentAlignment="Left" Margin="4,0,4,12" Command="{Binding NewChatCommand}"
+                  ToolTip.Tip="{l:T chat.new_hint}">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <PathIcon Data="{StaticResource icon-plus}" />
               <TextBlock VerticalAlignment="Center" Text="{l:T chat.new}" />
@@ -237,7 +238,8 @@
                   <TextBlock VerticalAlignment="Center" Text="{l:T chat.send}" />
                 </StackPanel>
               </Button>
-              <Button x:Name="StopButton" Command="{Binding StopCommand}" IsVisible="{Binding IsGenerating}">
+              <Button x:Name="StopButton" Command="{Binding StopCommand}" IsVisible="{Binding IsGenerating}"
+                      ToolTip.Tip="{l:T chat.stop_hint}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <PathIcon Data="{StaticResource icon-stop}" />
                   <TextBlock VerticalAlignment="Center" Text="{l:T chat.stop}" />
@@ -338,13 +340,15 @@
 
     <!-- Настройки (3.7): поверх окна; вкладки «Общие», «Звук», «Модели», «Подключения» и вкладки модулей.
          Шапка со значком «Закрыть» и низ с «Сохранить» не прокручиваются. -->
-    <Border x:Name="SettingsPanel" Grid.ColumnSpan="2" ZIndex="9" Classes="overlay" IsVisible="{Binding Settings.IsOpen}">
+    <!-- 8.5: Tab ходит по кругу внутри открытого окна и не уходит на элементы под ним -->
+    <Border x:Name="SettingsPanel" Grid.ColumnSpan="2" ZIndex="9" Classes="overlay" IsVisible="{Binding Settings.IsOpen}"
+            KeyboardNavigation.TabNavigation="Cycle">
       <Border x:Name="SettingsCard" Classes="card" MaxWidth="920" Margin="24" Padding="0"
               HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
         <Grid RowDefinitions="Auto,Auto,*,Auto">
           <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="28,18,16,4">
             <TextBlock Classes="title" VerticalAlignment="Center" Text="{l:T settings.title}" />
-            <Button x:Name="SettingsClose" Grid.Column="1" Classes="icon" ToolTip.Tip="{l:T settings.cancel}"
+            <Button x:Name="SettingsClose" Grid.Column="1" Classes="icon" ToolTip.Tip="{l:T settings.close_hint}"
                     Command="{Binding Settings.CloseCommand}">
               <PathIcon Data="{StaticResource icon-close}" />
             </Button>
@@ -763,7 +767,8 @@
     </Border>
 
     <!-- Мастер первого запуска (UI-01, 3.6): поверх всего окна -->
-    <Border x:Name="Onboarding" Grid.ColumnSpan="2" ZIndex="10" Classes="overlay" IsVisible="{Binding Onboarding.IsOpen}">
+    <Border x:Name="Onboarding" Grid.ColumnSpan="2" ZIndex="10" Classes="overlay" IsVisible="{Binding Onboarding.IsOpen}"
+            KeyboardNavigation.TabNavigation="Cycle">
       <ScrollViewer>
         <Border Classes="card" MaxWidth="680" Margin="24" Padding="28" HorizontalAlignment="Center" VerticalAlignment="Top">
           <StackPanel Spacing="12">

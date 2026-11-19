@@ -93,7 +93,7 @@ public sealed class SettingsTests : IDisposable
             Assert.Equal("en", Localizer.Current.Language);
             Assert.Equal("Settings saved", settings.Message);
             Assert.Equal("Ready", model.Status);
-            Assert.Equal(["Same as system", "Light", "Dark"], settings.Themes.Select(t => t.Label));
+            Assert.Equal(["Same as system", "Light", "Dark", "High contrast"], settings.Themes.Select(t => t.Label));
             Assert.Equal("en", settings.Language?.Code);
             Assert.Empty(calls);
         }

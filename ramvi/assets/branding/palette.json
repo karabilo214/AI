@@ -74,6 +74,37 @@
       "disabled-text": "#9A8AA9",
       "shadow-dark": "#07050B",
       "shadow-light": "#251D33"
+    },
+    "high_contrast": {
+      "background": "#000000",
+      "surface": "#000000",
+      "surface-raised": "#0A0A0A",
+      "surface-muted": "#141414",
+      "text": "#FFFFFF",
+      "text-muted": "#E6E6E6",
+      "border": "#FFFFFF",
+      "control-border": "#FFFFFF",
+      "primary": "#FFD400",
+      "primary-hover": "#FFE24D",
+      "primary-pressed": "#E6BF00",
+      "on-primary": "#000000",
+      "accent": "#FFD400",
+      "on-accent": "#000000",
+      "focus": "#00FFFF",
+      "selection": "#0033CC",
+      "on-selection": "#FFFFFF",
+      "success": "#5CFF8F",
+      "success-bg": "#000000",
+      "warning": "#FFD400",
+      "warning-bg": "#000000",
+      "error": "#FF8080",
+      "error-bg": "#000000",
+      "info": "#7FC4FF",
+      "info-bg": "#000000",
+      "disabled-bg": "#1A1A1A",
+      "disabled-text": "#BFBFBF",
+      "shadow-dark": "#000000",
+      "shadow-light": "#000000"
     }
   }
 }

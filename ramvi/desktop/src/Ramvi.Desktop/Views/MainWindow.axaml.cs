@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window
         MessagesScroll.ScrollChanged += OnMessagesScrolled;
         InputBox.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        ChatList.KeyDown += OnChatListKeyDown;
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         DataContextChanged += (_, _) =>
@@ -31,6 +32,22 @@ public sealed partial class MainWindow : Window
             if (DataContext is MainViewModel model)
             {
                 model.Messages.CollectionChanged += OnMessagesChanged;
+                model.Settings.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(SettingsViewModel.IsOpen))
+                    {
+                        FocusLater(model.Settings.IsOpen ? SettingsClose : InputBox);
+                    }
+                };
+                model.Onboarding.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName is nameof(OnboardingViewModel.IsOpen) or nameof(OnboardingViewModel.Step))
+                    {
+                        FocusLater(!model.Onboarding.IsOpen ? InputBox
+                            : model.Onboarding.Step == 1 ? NextButton
+                            : StartButton.IsEffectivelyEnabled ? StartButton : SkipButton2);
+                    }
+                };
             }
         };
     }
@@ -94,8 +111,10 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 5.3 (VOI-02): Ctrl+M — начать или остановить голосовую запись (и во время набора текста),
-    /// Esc во время записи — отменить её. Микрофон включается только так или кнопкой.
+    /// Горячие клавиши окна. 5.3 (VOI-02): Ctrl+M — начать или остановить голосовую запись,
+    /// Esc во время записи — отменить её. 8.5 (UI-04, основной путь без мыши): Ctrl+N (⌘N) —
+    /// новый диалог, Ctrl+, (⌘,) — настройки, Esc — закрыть настройки, иначе остановить ответ;
+    /// после этих действий фокус возвращается в поле ввода.
     /// </summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
@@ -104,9 +123,17 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var command = e.Key == Key.M && e.KeyModifiers == KeyModifiers.Control ? model.Voice.ToggleCommand
-            : e.Key == Key.Escape && model.Voice.IsRecording ? model.Voice.CancelCommand
-            : null;
+        var primary = e.KeyModifiers is KeyModifiers.Control or KeyModifiers.Meta;
+        var (command, toInput) = e.Key switch
+        {
+            Key.M when e.KeyModifiers == KeyModifiers.Control => (model.Voice.ToggleCommand, false),
+            Key.Escape when model.Voice.IsRecording => (model.Voice.CancelCommand, false),
+            Key.Escape when model.Settings.IsOpen => (model.Settings.CloseCommand, true),
+            Key.Escape when model.IsGenerating => (model.StopCommand, true),
+            Key.N when primary && !model.Settings.IsOpen && !model.Onboarding.IsOpen => (model.NewChatCommand, true),
+            Key.OemComma when primary && !model.Onboarding.IsOpen => (model.OpenSettingsCommand, false),
+            _ => ((System.Windows.Input.ICommand?)null, false),
+        };
         if (command is null)
         {
             return;
@@ -116,8 +143,34 @@ public sealed partial class MainWindow : Window
         if (command.CanExecute(null))
         {
             command.Execute(null);
+            if (toInput)
+            {
+                FocusInput();
+            }
         }
     }
+
+    /// <summary>8.5: Delete в списке диалогов — удалить выбранный (как крестик мышью).</summary>
+    private void OnChatListKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Delete || Model is not { SelectedChat: { } chat } model)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (model.DeleteChatCommand.CanExecute(chat))
+        {
+            model.DeleteChatCommand.Execute(chat);
+        }
+    }
+
+    /// <summary>Фокус в поле ввода чата (после запуска, нового диалога, закрытия настроек).</summary>
+    public void FocusInput() => FocusLater(Model?.Onboarding.IsOpen == true ? NextButton : InputBox);
+
+    /// <summary>8.5: фокус переходит в открывшееся окно (настройки, мастер) и обратно в поле ввода.</summary>
+    private static void FocusLater(Control control) => Avalonia.Threading.Dispatcher.UIThread.Post(
+        () => control.Focus(NavigationMethod.Tab), Avalonia.Threading.DispatcherPriority.Input);
 
     /// <summary>Enter — отправить, Shift+Enter — новая строка.</summary>
     private void OnInputKeyDown(object? sender, KeyEventArgs e)

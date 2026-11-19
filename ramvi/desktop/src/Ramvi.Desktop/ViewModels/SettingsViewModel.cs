@@ -237,7 +237,7 @@ public sealed class SettingsViewModel : ObservableObject
 
     public List<LanguageOption> Languages { get; private set; } = [];
 
-    public static IReadOnlyList<string> ThemeCodes { get; } = ["system", "light", "dark"];
+    public static IReadOnlyList<string> ThemeCodes { get; } = ["system", "light", "dark", "high_contrast"];
 
     public List<ThemeOption> Themes { get; private set; }
 

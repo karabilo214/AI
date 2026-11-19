@@ -118,7 +118,7 @@
   "settings.unload_model": "Unload model: free GPU memory and RAM. An answer in progress is stopped. The model loads again with the next message or when chosen in the list.",
   "settings.model_unloaded": "Model unloaded, memory freed.",
   "settings.onboarding_open": "Run wizard",
-  "settings.open": "Settings",
+  "settings.open": "Settings (Ctrl+,)",
   "settings.port_not_number": "Port must be a number from 1024 to 65535",
   "settings.restart_needed": "Changes apply after restarting the application",
   "settings.restart_now": "Restart now",
@@ -633,5 +633,9 @@
   "settings.update_note": "The package is checked against the RAMVI signature. Updates never touch chats, models or settings; if the new version does not start, the previous one comes back.",
   "update.rollback_incomplete": "The rollback is incomplete: could not restore {files}. Close RAMVI and roll back again",
   "download.too_large": "The source sent more data than announced ({expected} bytes) — the download was stopped and the partial file deleted",
-  "voice.api_key_where": "The key is kept in this computer's protected store (Windows — DPAPI of your account, macOS — Keychain), not in the RAMVI folder. If you move RAMVI on a USB stick to another computer, enter the key again."
+  "voice.api_key_where": "The key is kept in this computer's protected store (Windows — DPAPI of your account, macOS — Keychain), not in the RAMVI folder. If you move RAMVI on a USB stick to another computer, enter the key again.",
+  "settings.theme.high_contrast": "High contrast",
+  "chat.new_hint": "New chat (Ctrl+N)",
+  "chat.stop_hint": "Stop the answer (Esc)",
+  "settings.close_hint": "Close (Esc)"
 }

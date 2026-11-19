@@ -27,7 +27,10 @@ namespace Ramvi.Desktop.Tests;
 /// </summary>
 public sealed class StyleTests
 {
-    private static readonly ThemeVariant[] Variants = [ThemeVariant.Light, ThemeVariant.Dark];
+    private static readonly ThemeVariant[] Variants = [ThemeVariant.Light, ThemeVariant.Dark, App.HighContrast];
+
+    private static readonly (string Name, ThemeVariant Variant)[] Named =
+        [("light", ThemeVariant.Light), ("dark", ThemeVariant.Dark), ("high_contrast", App.HighContrast)];
 
     /// <summary>Пары «текст на фоне», которые использует стиль (Styles.axaml).</summary>
     private static readonly (string Text, string Background)[] TextPairs =
@@ -92,7 +95,8 @@ public sealed class StyleTests
     public void Theme_resources_equal_palette_json_in_both_themes()
     {
         var themes = PaletteThemes();
-        foreach (var (name, variant) in new[] { ("light", ThemeVariant.Light), ("dark", ThemeVariant.Dark) })
+        Assert.Equal(Named.Select(n => n.Name).Order(), themes.Keys.Order());
+        foreach (var (name, variant) in Named)
         {
             foreach (var (token, hex) in themes[name])
             {
@@ -100,12 +104,14 @@ public sealed class StyleTests
             }
 
             Assert.True(Application.Current!.TryGetResource("ramvi-shadow-raised", variant, out var shadow));
-            Assert.Equal(Color.Parse(themes[name]["shadow-dark"]), Assert.IsType<BoxShadows>(shadow)[0].Color);
+            // В высоком контрасте вместо теней — рамка цвета border (8.5)
+            var line = name == "high_contrast" ? "border" : "shadow-dark";
+            Assert.Equal(Color.Parse(themes[name][line]), Assert.IsType<BoxShadows>(shadow)[0].Color);
         }
 
         // Стандартные элементы Fluent — в тех же цветах (App.axaml)
         var fluent = Application.Current!.Styles.OfType<FluentTheme>().Single();
-        foreach (var (name, variant) in new[] { ("light", ThemeVariant.Light), ("dark", ThemeVariant.Dark) })
+        foreach (var (name, variant) in Named.Take(2))
         {
             var palette = fluent.Palettes[variant];
             Assert.Equal(Color.Parse(themes[name]["primary"]), palette.Accent);
@@ -160,6 +166,54 @@ public sealed class StyleTests
         Assert.Equal(ThemeVariant.Dark, App.ThemeVariantOf("dark"));
         Assert.Equal(ThemeVariant.Default, App.ThemeVariantOf("system"));
         Assert.Equal(ThemeVariant.Default, App.ThemeVariantOf("что-то"));
+        Assert.Equal(App.HighContrast, App.ThemeVariantOf("high_contrast"));
+        // 8.5: «как в системе» при включённом в ОС высоком контрасте; явный выбор важнее.
+        Assert.Equal(App.HighContrast, App.ThemeVariantOf("system", systemHighContrast: true));
+        Assert.Equal(ThemeVariant.Light, App.ThemeVariantOf("light", systemHighContrast: true));
+    }
+
+    /// <summary>
+    /// 8.5 (UI-04): в теме высокого контраста стандартные элементы Fluent (поля, флажки) берут
+    /// цвета тёмной палитры — проверяем, что на чёрном фоне они читаются (текст ≥ 7:1, AAA).
+    /// </summary>
+    [AvaloniaFact]
+    public void High_contrast_standard_controls_are_readable()
+    {
+        Application.Current!.RequestedThemeVariant = App.HighContrast;
+        try
+        {
+            var box = new TextBox { Text = "x" };
+            var check = new CheckBox { IsChecked = true };
+            var accent = new Button { Content = "Отправить", Classes = { "accent" } };
+            var plain = new Button { Content = "Обзор…" };
+            var window = new Window { Content = new StackPanel { Children = { box, check, accent, plain } } };
+            window.Show();
+            Pump();
+            var background = Token("background", App.HighContrast);
+            Assert.Equal(Color.Parse("#000000"), background);
+            Assert.True(Contrast(Token("text", App.HighContrast), background) >= 7);
+            Assert.True(Contrast(Token("text-muted", App.HighContrast), background) >= 7);
+            var text = Assert.IsAssignableFrom<ISolidColorBrush>(box.Foreground).Color;
+            var border = Assert.IsAssignableFrom<ISolidColorBrush>(box.BorderBrush).Color;
+            Assert.True(Contrast(text, background) >= 7, $"текст поля {text}");
+            Assert.True(Contrast(border, background) >= 3, $"контур поля {border}");
+            Assert.True(Contrast(Assert.IsAssignableFrom<ISolidColorBrush>(check.Foreground).Color, background) >= 7);
+
+            // Основная кнопка — цвет палитры (раньше Fluent оставлял фиолетовый из тёмной темы)
+            var presenter = accent.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
+            var fill = Assert.IsAssignableFrom<ISolidColorBrush>(presenter.Background).Color;
+            Assert.Equal(Token("primary", App.HighContrast), fill);
+            Assert.True(Contrast(Assert.IsAssignableFrom<ISolidColorBrush>(presenter.Foreground).Color, fill) >= 7);
+
+            // Обычная кнопка различима: рамка цвета border вместо невидимых теней
+            var outline = plain.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.ContentPresenter>().First(p => p.Name == "PART_ContentPresenter").BoxShadow;
+            Assert.True(outline.Count > 0 && Contrast(outline[0].Color, background) >= 3);
+            window.Close();
+        }
+        finally
+        {
+            Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
     }
 
     private static async Task<(MainWindow Window, MainViewModel Model, FakeChatApi Api)> OpenAsync(
@@ -338,7 +392,7 @@ public sealed class StyleTests
                  {
                      ("DeleteButton", "Удалить диалог"),
                      ("ClearButton", "Очистить диалог: удалить все сообщения, сам диалог останется"),
-                     ("SettingsButton", "Настройки"),
+                     ("SettingsButton", "Настройки (Ctrl+,)"),
                  })
         {
             var button = window.FindControl<Button>(name)!;
@@ -411,7 +465,7 @@ public sealed class StyleTests
         await model.Settings.OpenAsync();
         Pump();
         Assert.Equal("system", model.Settings.Theme?.Code);
-        Assert.Equal(["Как в системе", "Светлая", "Тёмная"], model.Settings.Themes.Select(t => t.Label));
+        Assert.Equal(["Как в системе", "Светлая", "Тёмная", "Высокий контраст"], model.Settings.Themes.Select(t => t.Label));
 
         model.Settings.Theme = model.Settings.Themes.Single(t => t.Code == "dark");
         await model.Settings.SaveCommand.RunAsync();
@@ -489,7 +543,7 @@ public sealed class StyleTests
             Pump();
 
             Assert.Equal("Send", SendText());
-            Assert.Equal("Settings", ToolTip.GetTip(window.FindControl<Button>("SettingsButton")!));
+            Assert.Equal("Settings (Ctrl+,)", ToolTip.GetTip(window.FindControl<Button>("SettingsButton")!));
             Assert.Equal("No model", window.FindControl<TextBlock>("StateTitle")!.Text);
             Assert.Equal("Ready", model.Status);
             await model.Settings.OpenAsync();
