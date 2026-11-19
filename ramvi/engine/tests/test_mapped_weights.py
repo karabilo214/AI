@@ -203,7 +203,8 @@ def test_no_draft_while_unquantized_layers_are_offloaded() -> None:
         args.update(kwargs)
         return choose_plan(**args)
 
-    before = choose(cpu_fraction=1.0)
+    # VRAM 99: целиком без draft (100) не помещается, поэтому правило B.6 не срабатывает.
+    before = choose(cpu_fraction=1.0, vram_available=99)
     assert (before.resident, before.draft_enabled) == (2, True)
     assert before.placement[2] == "hyb"  # с draft процессорный слой становится гибридным
     after = choose(draft_with_offload=False)
@@ -219,7 +220,8 @@ def test_no_draft_while_unquantized_layers_are_offloaded() -> None:
     assert (forced.resident, forced.draft_enabled) == (2, True)  # явное «всегда» сильнее правила
     assert forced.placement[2] == "hyb"
     full = choose(draft_with_offload=False, vram_available=200)
-    assert (full.resident, full.draft_enabled) == (3, True)  # всё в видеокарте — draft разрешён
+    # B.6: всё помещается в видеокарту и без draft — draft не включается (он там медленнее).
+    assert (full.resident, full.draft_enabled) == (3, False)
 
 
 def test_release_file_pages_keeps_data_readable(tmp_path: Path) -> None:

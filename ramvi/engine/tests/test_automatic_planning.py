@@ -52,10 +52,17 @@ def choose(**kwargs: Any) -> PlanningDecision:
 
 
 def test_hand_solved_memory_choice_and_manual_override() -> None:
+    # B.6: все 3 слоя без угадывателя помещаются (10 + 3*30 = 100) — угадыватель не включается.
     selected = choose()
-    assert selected.resident == 2  # 10 + 2*30 + 15 = 85; three residents need115.
-    assert selected.draft_enabled
-    assert selected.resources.required.vram == 85
+    assert selected.resident == 3 and not selected.draft_enabled
+    assert selected.resources.required.vram == 100
+    assert any(r.startswith("B.6") for r in selected.reasons)
+    # Если целиком не помещается и без угадывателя — прежний выбор: 2 слоя с угадывателем.
+    partial = choose(vram_available=99)
+    assert partial.resident == 2 and partial.draft_enabled  # 10 + 2*30 + 15 = 85
+    assert partial.resources.required.vram == 85
+    forced = choose(options=PlanningOptions(reserve_bytes=0, max_batch=16, draft="on"))
+    assert forced.draft_enabled  # явное draft=on сильнее правила
     assert selected.prefill_mode == "legacy"  # no speculative blocked-prefill default
     manual = choose(requested_resident=3)
     assert manual.mode == "manual" and manual.resident == 3
@@ -93,7 +100,7 @@ def test_moe_placement_and_bounded_search() -> None:
 
     with pytest.raises(NoMemoryPlan):
         choose(estimate=impossible)
-    assert len(calls) == 2 * (3 + 1)
+    assert len(calls) == 1 + 2 * (3 + 1)  # B.6: одна проверка «целиком без угадывателя»
     with pytest.raises(NotImplementedError):
         choose(architecture="qwen3moe", options=PlanningOptions(reserve_bytes=0, prefill="blocked"))
 
@@ -146,7 +153,7 @@ def test_bounded_atomic_journal_and_actual_placement(tmp_path: Path) -> None:
     engine.place[0] = "stream"
     engine.planning_controller.observe(engine)
     report = engine.placement_decision
-    assert report["actual_resident"] == 1
+    assert report["actual_resident"] == decision.resident - 1
     assert report["estimate_status"] == "stale_after_runtime_change"
     assert json.loads(journal.path.read_text().splitlines()[-1])["event"] == "actual"
 

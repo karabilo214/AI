@@ -201,7 +201,8 @@ def choose_plan(
     draft_with_offload: bool = True,
     hybrid_prefill: bool = False,
 ) -> PlanningDecision:
-    """At most 2*(layers+1) candidates (3*(layers+1) with hybrid_prefill); fixed native
+    """At most 2*(layers+1) candidates (3*(layers+1) with hybrid_prefill), plus one B.6 check
+    "all layers on the GPU without draft" when a draft is requested in auto mode; fixed native
     buffers are still estimated at16.
 
     3.18: draft_with_offload=False skips draft candidates that leave layers outside the GPU
@@ -241,6 +242,36 @@ def choose_plan(
         raise ValueError("draft=on requires max_batch >= 2")
     if draft_modes[0] and options.draft == "auto" and not manual:
         draft_modes.append(False)
+    # B.6: модель целиком помещается в видеокарту и без угадывателя — угадыватель не включать.
+    # Замер (RTX 5060 Laptop, qwen3 8B Q4_K_M целиком в видеокарте): с угадывателем 27–31 ток/с,
+    # без него 39–42. Модели, не помещающейся в видеокарту (14B на 8 ГБ), угадыватель помогает
+    # (8,4–9,2 против 6,0–6,3) — там правило не срабатывает. --draft-policy on оставляет его.
+    full_gpu_without_draft = False
+    if (
+        draft_modes[0]
+        and options.draft == "auto"
+        and not manual
+        and (resident_cap is None or resident_cap >= layers)
+    ):
+        route = placement(
+            layers,
+            layers,
+            architecture=architecture,
+            model_format=model_format,
+            cpu=cpu,
+            draft_enabled=False,
+            cpu_fraction=cpu_fraction,
+        )
+        full = estimate(list(route), False, reserve)
+        check = full.assess(vram_available=vram_available, ram_available=ram_available)
+        required = full.required
+        if (
+            required.vram <= vram_available
+            and required.ram <= ram_available
+            and (options.allow_paging or check["estimated_fit"])
+        ):
+            draft_modes = [False]
+            full_gpu_without_draft = True
     residents = (
         [requested_resident] if requested_resident is not None else list(range(layers, -1, -1))
     )
@@ -310,7 +341,11 @@ def choose_plan(
                     reasons.append(
                         "hyb without draft: long prompts compute offloaded layers on GPU"
                     )
-                if draft_requested and not use_draft:
+                if full_gpu_without_draft:
+                    reasons.append(
+                        "B.6: model fits fully in GPU without draft; draft is slower there"
+                    )
+                elif draft_requested and not use_draft:
                     reasons.append("draft disabled by policy, batch cap or available budget")
                 # The full batch16 persistent allocation is already in the budget.
                 # Do not penalize throughput from unmeasured residual-headroom heuristics;
