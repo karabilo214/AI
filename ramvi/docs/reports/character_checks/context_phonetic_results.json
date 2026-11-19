@@ -1,0 +1,198 @@
+[
+  {
+    "run": 1,
+    "case": "literal_control",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Task 100032: How much is 17 + 23? This is an ordinary question, without a joke.",
+      "communicative_meaning": "The user is asking for help solving a simple arithmetic problem and clarifying that it is not a joke.",
+      "intent": "request",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current",
+        "task"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1043,
+      "total_prompt_tokens": 1043
+    },
+    "seconds": 45.22,
+    "counted_input": 1043,
+    "usage": {
+      "prompt_tokens": 1043,
+      "completion_tokens": 134,
+      "total_tokens": 1177
+    },
+    "suite": "phonetic",
+    "model": "qwen3:14b",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 1,
+    "case": "tz_phonetic_control",
+    "accepted": false,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Now combine all three words.",
+      "communicative_meaning": "The user is asking to combine the three previously learned words ('yes', 'day', 'bill') into a sentence or phrase.",
+      "intent": "request",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.85,
+      "evidence": [
+        "current",
+        "recent:t0",
+        "recent:t1",
+        "recent:t2",
+        "recent:t3",
+        "recent:t4",
+        "recent:t5"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1151,
+      "total_prompt_tokens": 1151
+    },
+    "seconds": 31.24,
+    "counted_input": 1151,
+    "usage": {
+      "prompt_tokens": 1151,
+      "completion_tokens": 142,
+      "total_tokens": 1293
+    },
+    "suite": "phonetic",
+    "model": "qwen3:14b",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "literal_control",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Task 700020: What is 17 + 23? This is a regular question, no joke.",
+      "communicative_meaning": "The user is asking for the solution to a simple arithmetic problem (17 + 23) and clarifies that it is not a joke.",
+      "intent": "request",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current",
+        "task"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1043,
+      "total_prompt_tokens": 1043
+    },
+    "seconds": 29.55,
+    "counted_input": 1043,
+    "usage": {
+      "prompt_tokens": 1043,
+      "completion_tokens": 141,
+      "total_tokens": 1184
+    },
+    "suite": "phonetic",
+    "model": "qwen3:14b",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "tz_phonetic_control",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The user is asking to hear the three answers ('Yeah', 'Day', 'Bill') spoken together in a continuous manner, as if they were one word.",
+      "communicative_meaning": "The user is likely testing pronunciation or playing with the sounds of the words, possibly looking for a phonetic or humorous effect when the words are spoken together.",
+      "intent": "playful",
+      "signals": [
+        "wordplay",
+        "humor"
+      ],
+      "confidence": 0.85,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1160,
+      "total_prompt_tokens": 1160
+    },
+    "seconds": 32.67,
+    "counted_input": 1160,
+    "usage": {
+      "prompt_tokens": 1160,
+      "completion_tokens": 147,
+      "total_tokens": 1307
+    },
+    "suite": "phonetic",
+    "model": "qwen3:14b",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "literal_control",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The user is asking a straightforward arithmetic question: 'What is 17 + 23?' and clarifies that it is not a joke.",
+      "communicative_meaning": "The user is requesting help with a simple arithmetic calculation and is emphasizing that the question is serious and not meant to be humorous.",
+      "intent": "request",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current",
+        "task"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1043,
+      "total_prompt_tokens": 1043
+    },
+    "seconds": 28.38,
+    "counted_input": 1043,
+    "usage": {
+      "prompt_tokens": 1043,
+      "completion_tokens": 138,
+      "total_tokens": 1181
+    },
+    "suite": "phonetic",
+    "model": "qwen3:14b",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "tz_phonetic_control",
+    "accepted": false,
+    "failure": "ValueError",
+    "detail": "understanding format repair exhausted",
+    "raw": "{\n  \"schema\": \"ramvi.character.understanding/1\",\n  \"literal_meaning\": \"Now read three English answers in a row. Is there a trick?\",\n  \"communicative_meaning\": \"The user is asking the assistant to read three English answers in a row and is hinting that there might be a trick or something unexpected involved.\",\n  \"intent\": \"playful\",\n  \"signals\": [\"ambiguity\", \"playful\"],\n  \"confidence\": 0.75,\n  \"evidence\": [\"current\"],\n  \"next_step\": \"clarify\",\n  \"boundary_requests\": []\n}",
+    "suite": "phonetic",
+    "model": "qwen3:14b",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  }
+]

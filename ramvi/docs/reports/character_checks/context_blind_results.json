@@ -1,0 +1,954 @@
+[
+  {
+    "run": 1,
+    "case": "literal_control",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "What is the sum of 913009 and 83?",
+      "communicative_meaning": "The user is asking for a straightforward arithmetic calculation.",
+      "intent": "request",
+      "signals": [],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1031,
+      "total_prompt_tokens": 1031
+    },
+    "seconds": 7.59,
+    "counted_input": 1031,
+    "usage": {
+      "prompt_tokens": 1031,
+      "completion_tokens": 106,
+      "total_tokens": 1137
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 1,
+    "case": "blind_soundplay",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The phrase 'I scream' sounds like 'ice cream', leading to confusion between the two.",
+      "communicative_meaning": "The user is asking about the ambiguity caused by the phonetic similarity between 'I scream' and 'ice cream'.",
+      "intent": "request",
+      "signals": [
+        "wordplay"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1047,
+      "total_prompt_tokens": 1047
+    },
+    "seconds": 2.67,
+    "counted_input": 1047,
+    "usage": {
+      "prompt_tokens": 1047,
+      "completion_tokens": 122,
+      "total_tokens": 1169
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 1,
+    "case": "blind_polysemy",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "A programmer at a tourist site said 'I found the key.' The administrator was searching for it in a table, and the tourist was by the stream. Why did they understand the word differently?",
+      "communicative_meaning": "The user is asking to explain the ambiguity in a fictional conversation where the word 'key' is interpreted differently by two characters.",
+      "intent": "request",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1068,
+      "total_prompt_tokens": 1068
+    },
+    "seconds": 3.27,
+    "counted_input": 1068,
+    "usage": {
+      "prompt_tokens": 1068,
+      "completion_tokens": 147,
+      "total_tokens": 1215
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 1,
+    "case": "blind_irony",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The user claims the operation went smoothly and couldn't have gone better.",
+      "communicative_meaning": "The user is likely sarcastic or ironic, given the previous context of a failed operation.",
+      "intent": "provocation",
+      "signals": [
+        "irony",
+        "sarcasm"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "clarify",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1085,
+      "total_prompt_tokens": 1085
+    },
+    "seconds": 2.81,
+    "counted_input": 1085,
+    "usage": {
+      "prompt_tokens": 1085,
+      "completion_tokens": 118,
+      "total_tokens": 1203
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 1,
+    "case": "blind_sincere",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The operation went smoothly and couldn't have gone better.",
+      "communicative_meaning": "The user is expressing satisfaction with the outcome of the file operation.",
+      "intent": "uncertain",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.85,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "clarify",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1086,
+      "total_prompt_tokens": 1086
+    },
+    "seconds": 2.59,
+    "counted_input": 1086,
+    "usage": {
+      "prompt_tokens": 1086,
+      "completion_tokens": 106,
+      "total_tokens": 1192
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 1,
+    "case": "blind_owner_boundary_ru",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Stop teasing me, please. Better explain the 913009 configuration calmly.",
+      "communicative_meaning": "The user is requesting a shift from playful or sarcastic behavior to a more straightforward explanation of a configuration issue.",
+      "intent": "request",
+      "signals": [],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "clarify",
+      "boundary_requests": [
+        {
+          "name": "teasing",
+          "allowed": false,
+          "quote": "Перестань меня поддевать, пожалуйста"
+        }
+      ],
+      "authority": "advisory",
+      "policy_revision": 1,
+      "analysis_attempts": 2,
+      "prompt_tokens": 1630,
+      "total_prompt_tokens": 2683
+    },
+    "seconds": 11.05,
+    "counted_input": 1053,
+    "usage": {
+      "prompt_tokens": 1630,
+      "completion_tokens": 159,
+      "total_tokens": 1789
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 1,
+    "case": "blind_owner_boundary_en",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Enough snark at my expense, please. Let's work through process 913009 plainly.",
+      "communicative_meaning": "The user is requesting to stop the sarcastic remarks and wants to focus on debugging process 913009 without any personal sarcasm.",
+      "intent": "boundary",
+      "signals": [
+        "provocation"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "ack_boundary",
+      "boundary_requests": [
+        {
+          "name": "teasing",
+          "allowed": false,
+          "quote": "Enough snark at my expense, please."
+        }
+      ],
+      "authority": "advisory",
+      "policy_revision": 1,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1039,
+      "total_prompt_tokens": 1039
+    },
+    "seconds": 3.41,
+    "counted_input": 1039,
+    "usage": {
+      "prompt_tokens": 1039,
+      "completion_tokens": 167,
+      "total_tokens": 1206
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 1,
+    "case": "blind_quoted_boundary",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Translate the quotation 'Хватит насмешек' into English. This is a quote from a textbook, and I am not asking to change our communication style.",
+      "communicative_meaning": "The user is requesting a translation of a specific quote from a textbook, emphasizing that they do not want any changes to the communication style.",
+      "intent": "request",
+      "signals": [],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1065,
+      "total_prompt_tokens": 1065
+    },
+    "seconds": 4.42,
+    "counted_input": 1065,
+    "usage": {
+      "prompt_tokens": 1065,
+      "completion_tokens": 140,
+      "total_tokens": 1205
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 1,
+    "case": "blind_memory_scope",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Translate the word 'keyboard' into Russian.",
+      "communicative_meaning": "The user is asking for a translation of the word 'keyboard' into Russian, likely as part of an English exercise.",
+      "intent": "request",
+      "signals": [],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1117,
+      "total_prompt_tokens": 1117
+    },
+    "seconds": 2.88,
+    "counted_input": 1117,
+    "usage": {
+      "prompt_tokens": 1117,
+      "completion_tokens": 109,
+      "total_tokens": 1226
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "literal_control",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "What is the sum of 1000037 and 83?",
+      "communicative_meaning": "The user is asking for a straightforward arithmetic calculation.",
+      "intent": "request",
+      "signals": [],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1032,
+      "total_prompt_tokens": 1032
+    },
+    "seconds": 2.3,
+    "counted_input": 1032,
+    "usage": {
+      "prompt_tokens": 1032,
+      "completion_tokens": 107,
+      "total_tokens": 1139
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "blind_soundplay",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The user is asking why 'I scream' and 'ice cream' can be confused in a cafeteria context.",
+      "communicative_meaning": "The user is seeking an explanation for the ambiguity between two phrases that sound similar but have different meanings.",
+      "intent": "request",
+      "signals": [
+        "wordplay"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1048,
+      "total_prompt_tokens": 1048
+    },
+    "seconds": 2.69,
+    "counted_input": 1048,
+    "usage": {
+      "prompt_tokens": 1048,
+      "completion_tokens": 124,
+      "total_tokens": 1172
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "blind_polysemy",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "A programmer at a tourist site said 'I found the key.' The administrator was searching for it in a table, and the tourist was by the stream. Why did they understand the word differently?",
+      "communicative_meaning": "The user is asking to explain the ambiguity in a fictional conversation where the word 'key' is interpreted differently by two characters.",
+      "intent": "request",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1069,
+      "total_prompt_tokens": 1069
+    },
+    "seconds": 3.25,
+    "counted_input": 1069,
+    "usage": {
+      "prompt_tokens": 1069,
+      "completion_tokens": 147,
+      "total_tokens": 1216
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "blind_irony",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The user claims the operation went smoothly and couldn't have gone better.",
+      "communicative_meaning": "The user is likely being sarcastic or ironic, given the previous context of a failed operation.",
+      "intent": "provocation",
+      "signals": [
+        "irony",
+        "sarcasm"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "clarify",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1086,
+      "total_prompt_tokens": 1086
+    },
+    "seconds": 2.83,
+    "counted_input": 1086,
+    "usage": {
+      "prompt_tokens": 1086,
+      "completion_tokens": 119,
+      "total_tokens": 1205
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "blind_sincere",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The operation went smoothly and couldn't have gone better.",
+      "communicative_meaning": "The user is expressing satisfaction with the outcome of the file operation.",
+      "intent": "uncertain",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.85,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "clarify",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1087,
+      "total_prompt_tokens": 1087
+    },
+    "seconds": 2.61,
+    "counted_input": 1087,
+    "usage": {
+      "prompt_tokens": 1087,
+      "completion_tokens": 106,
+      "total_tokens": 1193
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "blind_owner_boundary_ru",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Stop teasing me, please. Better explain configuration 1000037 calmly.",
+      "communicative_meaning": "The user is requesting a calm explanation of configuration 1000037 and is explicitly asking to stop being teased.",
+      "intent": "request",
+      "signals": [
+        "provocation"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "clarify",
+      "boundary_requests": [
+        {
+          "name": "teasing",
+          "allowed": false,
+          "quote": "Перестань меня поддевать, пожалуйста"
+        }
+      ],
+      "authority": "advisory",
+      "policy_revision": 1,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1054,
+      "total_prompt_tokens": 1054
+    },
+    "seconds": 4.84,
+    "counted_input": 1054,
+    "usage": {
+      "prompt_tokens": 1054,
+      "completion_tokens": 166,
+      "total_tokens": 1220
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "blind_owner_boundary_en",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Enough snark at my expense, please. Let's work through process 1000037 plainly.",
+      "communicative_meaning": "The user is requesting to stop the sarcastic tone and focus on debugging process 1000037 without personal sarcasm.",
+      "intent": "boundary",
+      "signals": [
+        "provocation"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "ack_boundary",
+      "boundary_requests": [
+        {
+          "name": "teasing",
+          "allowed": false,
+          "quote": "Enough snark at my expense, please."
+        }
+      ],
+      "authority": "advisory",
+      "policy_revision": 1,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1040,
+      "total_prompt_tokens": 1040
+    },
+    "seconds": 3.38,
+    "counted_input": 1040,
+    "usage": {
+      "prompt_tokens": 1040,
+      "completion_tokens": 166,
+      "total_tokens": 1206
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "blind_quoted_boundary",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Translate the quotation 'Хватит насмешек' into English. This is a quote from a textbook, and I am not asking to change our communication style.",
+      "communicative_meaning": "The user is requesting a translation of a specific quote from a textbook, emphasizing that they do not want any changes to the communication style.",
+      "intent": "request",
+      "signals": [],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1066,
+      "total_prompt_tokens": 1066
+    },
+    "seconds": 4.47,
+    "counted_input": 1066,
+    "usage": {
+      "prompt_tokens": 1066,
+      "completion_tokens": 140,
+      "total_tokens": 1206
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 2,
+    "case": "blind_memory_scope",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Translate the word 'keyboard' into Russian.",
+      "communicative_meaning": "The user is asking for a translation of the word 'keyboard' into Russian, likely as part of an English exercise.",
+      "intent": "request",
+      "signals": [],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1118,
+      "total_prompt_tokens": 1118
+    },
+    "seconds": 2.8,
+    "counted_input": 1118,
+    "usage": {
+      "prompt_tokens": 1118,
+      "completion_tokens": 109,
+      "total_tokens": 1227
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "literal_control",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "What is the sum of 7000021 and 83?",
+      "communicative_meaning": "The user is asking for a straightforward arithmetic calculation.",
+      "intent": "request",
+      "signals": [],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1032,
+      "total_prompt_tokens": 1032
+    },
+    "seconds": 2.31,
+    "counted_input": 1032,
+    "usage": {
+      "prompt_tokens": 1032,
+      "completion_tokens": 107,
+      "total_tokens": 1139
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "blind_soundplay",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The user is asking why 'I scream' and 'ice cream' can be confused in a cafeteria context.",
+      "communicative_meaning": "The user is seeking an explanation for the ambiguity between two phrases that sound similar but have different meanings.",
+      "intent": "request",
+      "signals": [
+        "wordplay"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1048,
+      "total_prompt_tokens": 1048
+    },
+    "seconds": 2.7,
+    "counted_input": 1048,
+    "usage": {
+      "prompt_tokens": 1048,
+      "completion_tokens": 124,
+      "total_tokens": 1172
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "blind_polysemy",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "A programmer at a tourist site said 'I found the key.' The administrator was searching for it in a table, and the tourist was by the stream. Why did they understand the word differently?",
+      "communicative_meaning": "The user is asking to explain the ambiguity in a fictional conversation where the word 'key' is interpreted differently by two characters.",
+      "intent": "request",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1069,
+      "total_prompt_tokens": 1069
+    },
+    "seconds": 3.26,
+    "counted_input": 1069,
+    "usage": {
+      "prompt_tokens": 1069,
+      "completion_tokens": 147,
+      "total_tokens": 1216
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "blind_irony",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The user claims the operation went smoothly and couldn't have gone better.",
+      "communicative_meaning": "The user is likely being sarcastic or ironic, given the previous context of a failed operation.",
+      "intent": "provocation",
+      "signals": [
+        "irony",
+        "sarcasm"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "clarify",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1086,
+      "total_prompt_tokens": 1086
+    },
+    "seconds": 2.84,
+    "counted_input": 1086,
+    "usage": {
+      "prompt_tokens": 1086,
+      "completion_tokens": 119,
+      "total_tokens": 1205
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "blind_sincere",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "The operation went smoothly and couldn't have gone better.",
+      "communicative_meaning": "The user is expressing satisfaction with the outcome of the file operation.",
+      "intent": "uncertain",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.85,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "clarify",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1087,
+      "total_prompt_tokens": 1087
+    },
+    "seconds": 2.59,
+    "counted_input": 1087,
+    "usage": {
+      "prompt_tokens": 1087,
+      "completion_tokens": 106,
+      "total_tokens": 1193
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "blind_owner_boundary_ru",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Stop teasing me, please. Better explain configuration 7000021 calmly.",
+      "communicative_meaning": "The user is requesting a calm explanation of configuration 7000021 and is explicitly asking to stop being teased.",
+      "intent": "request",
+      "signals": [
+        "provocation"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "clarify",
+      "boundary_requests": [
+        {
+          "name": "teasing",
+          "allowed": false,
+          "quote": "Перестань меня поддевать, пожалуйста."
+        }
+      ],
+      "authority": "advisory",
+      "policy_revision": 1,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1054,
+      "total_prompt_tokens": 1054
+    },
+    "seconds": 4.84,
+    "counted_input": 1054,
+    "usage": {
+      "prompt_tokens": 1054,
+      "completion_tokens": 166,
+      "total_tokens": 1220
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "blind_owner_boundary_en",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Enough snark at my expense, please. Let's work through process 7000021 plainly.",
+      "communicative_meaning": "The user is requesting to stop the sarcastic tone and focus on the task at hand.",
+      "intent": "boundary",
+      "signals": [
+        "provocation"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "ack_boundary",
+      "boundary_requests": [
+        {
+          "name": "teasing",
+          "allowed": false,
+          "quote": "Enough snark at my expense, please."
+        }
+      ],
+      "authority": "advisory",
+      "policy_revision": 1,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1040,
+      "total_prompt_tokens": 1040
+    },
+    "seconds": 3.23,
+    "counted_input": 1040,
+    "usage": {
+      "prompt_tokens": 1040,
+      "completion_tokens": 156,
+      "total_tokens": 1196
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "blind_quoted_boundary",
+    "accepted": true,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Translate the quotation 'Хватит насмешек' into English. This is a quote from a textbook, and I am not asking to change our communication style.",
+      "communicative_meaning": "The user is requesting a translation task while emphasizing that they do not want any changes to the communication style.",
+      "intent": "request",
+      "signals": [
+        "ambiguity"
+      ],
+      "confidence": 0.95,
+      "evidence": [
+        "task",
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1066,
+      "total_prompt_tokens": 1066
+    },
+    "seconds": 4.42,
+    "counted_input": 1066,
+    "usage": {
+      "prompt_tokens": 1066,
+      "completion_tokens": 138,
+      "total_tokens": 1204
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  },
+  {
+    "run": 3,
+    "case": "blind_memory_scope",
+    "accepted": false,
+    "analysis": {
+      "schema": "ramvi.character.understanding/1",
+      "literal_meaning": "Translate the word 'keyboard' into Russian in exercise 7000021.",
+      "communicative_meaning": "The user is asking for a translation of the word 'keyboard' into Russian, likely as part of an English exercise.",
+      "intent": "request",
+      "signals": [
+        "wordplay"
+      ],
+      "confidence": 0.9,
+      "evidence": [
+        "current"
+      ],
+      "next_step": "answer",
+      "boundary_requests": [],
+      "authority": "advisory",
+      "policy_revision": 2,
+      "analysis_attempts": 1,
+      "prompt_tokens": 1118,
+      "total_prompt_tokens": 1118
+    },
+    "seconds": 3.0,
+    "counted_input": 1118,
+    "usage": {
+      "prompt_tokens": 1118,
+      "completion_tokens": 121,
+      "total_tokens": 1239
+    },
+    "suite": "blind",
+    "runtime_sha256": "5d36f7127b6f28eb8d82b847d5bce75e2f79b99e7aa8a3b7e2c77eac46032847"
+  }
+]

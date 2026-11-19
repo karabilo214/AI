@@ -260,7 +260,7 @@ def test_v1_state_migrates_without_inventing_emotion_from_an_old_preview_pose() 
     assert result["draft"] == "draft" and result["emotion"] == "cheerful"
     assert result["emotional_state"]["primary"]["id"] == "neutral"
     assert result["personality"]["base"]["id"] == "neutral"
-    assert module.checkpoint()["schema"] == "ramvi.character.state/2"
+    assert module.checkpoint()["schema"] == "ramvi.character.state/3"
 
 
 def test_policy_revision_tracks_owner_changes_and_checkpoint_is_rpc_bounded() -> None:
@@ -306,6 +306,7 @@ def test_policy_revision_tracks_owner_changes_and_checkpoint_is_rpc_bounded() ->
             "checkpoint": {
                 "schema": "ramvi.character.state/2",
                 "draft": "😀" * 8000,
+                "task": "g" * 4096,
                 "personality": saved,
                 "emotional_state": state.checkpoint(),
             }

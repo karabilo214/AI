@@ -3,7 +3,9 @@
 import copy
 from typing import Any
 
+from ramvi_character.context import Budget, ContextOrchestrator, text
 from ramvi_character.emotions import EmotionalState
+from ramvi_character.initiative import InitiativeGate
 from ramvi_character.pack import load_pack, presentation
 from ramvi_character.personality import Personality
 
@@ -12,6 +14,9 @@ class CharacterModule:
     def __init__(self) -> None:
         self._personality = Personality()
         self._emotions = EmotionalState()
+        self._initiative = InitiativeGate()
+        self._scope = "uninitialized"
+        self._task = ""
         self._state = "new"
         self._draft = ""
         self._model: str | None = None
@@ -23,7 +28,8 @@ class CharacterModule:
         saved = context.get("checkpoint", {})
         if not isinstance(saved, dict) or (
             saved
-            and saved.get("schema") not in {"ramvi.character.state/1", "ramvi.character.state/2"}
+            and saved.get("schema")
+            not in {"ramvi.character.state/1", "ramvi.character.state/2", "ramvi.character.state/3"}
         ):
             raise ValueError("unsupported character state schema")
         draft, model = saved.get("draft", ""), saved.get("model")
@@ -36,8 +42,14 @@ class CharacterModule:
             raise ValueError("invalid emotion")
         personality = Personality(saved.get("personality"))
         emotions = EmotionalState(saved.get("emotional_state"))
+        initiative = InitiativeGate(saved.get("initiative"))
+        task = text(saved.get("task", ""), 4096)
+        scope = text(
+            context.get("module_id", "character") + ":" + context.get("session_id", "local"), 255
+        )
         self._draft, self._model, self._emotion = draft, model, expression
         self._personality, self._emotions = personality, emotions
+        self._initiative, self._task, self._scope = initiative, task, scope
         self._presentation = None
         self._pack = None
         # Text activation does not import/load animation, STT, TTS or an LLM.
@@ -49,11 +61,13 @@ class CharacterModule:
         return self.status()
 
     def deactivate(self) -> None:
+        self._initiative.end()
         self._presentation = None
         self._pack = None
         self._state = "inactive"
 
     def suspend(self) -> None:
+        self._initiative.end()
         self._presentation = None
         self._pack = None
         self._state = "suspended"
@@ -69,12 +83,14 @@ class CharacterModule:
     def checkpoint(self) -> dict[str, Any]:
         # No sound, animation queue or unfinished response resumes after a restart.
         return {
-            "schema": "ramvi.character.state/2",
+            "schema": "ramvi.character.state/3",
             "draft": self._draft,
             "model": self._model,
             "emotion": self._emotion,
             "personality": self._personality.checkpoint(),
             "emotional_state": self._emotions.checkpoint(),
+            "task": self._task,
+            "initiative": self._initiative.checkpoint(),
         }
 
     def status(self) -> dict[str, Any]:
@@ -87,6 +103,8 @@ class CharacterModule:
             "presentation": copy.deepcopy(self._presentation),
             "personality": self._personality.view(),
             "emotional_state": self._emotions.view(),
+            "task": self._task,
+            "initiative": self._initiative.status(),
             "devices_open": False,
             "provider_connected": False,
         }
@@ -94,6 +112,58 @@ class CharacterModule:
     def _require_active(self) -> None:
         if self._state != "active":
             raise RuntimeError("character is not active")
+
+    def set_task(self, task: str) -> dict[str, Any]:
+        self._require_active()
+        self._task = text(task, 4096)
+        return self.status()
+
+    def prepare_context(
+        self,
+        user_input: str,
+        recent: list[dict[str, str]] | None = None,
+        memories: list[dict[str, Any]] | None = None,
+        budget: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self._require_active()
+        options = Budget(**budget) if budget is not None else Budget()
+        return (
+            ContextOrchestrator(self._scope)
+            .build(
+                task=self._task,
+                user_input=user_input,
+                personality=self._personality.view(),
+                state=self._emotions.view(),
+                recent=recent,
+                memories=memories,
+                budget=options,
+            )
+            .view()
+        )
+
+    def configure_initiative(self, preferences: dict[str, Any]) -> dict[str, Any]:
+        self._require_active()
+        self._initiative.configure(preferences)
+        return self.status()
+
+    def begin_session(self) -> dict[str, Any]:
+        self._require_active()
+        self._initiative.begin()
+        return self.status()
+
+    def end_session(self) -> dict[str, Any]:
+        self._initiative.end()
+        return self.status()
+
+    def claim_initiative(self, tokens: int) -> dict[str, Any]:
+        self._require_active()
+        view = self._personality.view()
+        return self._initiative.claim(
+            tokens,
+            permitted=(
+                view["boundaries"]["initiative"] and view["effective_traits"]["initiative"] > 0
+            ),
+        )
 
     def profiles(self) -> dict[str, Any]:
         return {"schema": "ramvi.character.profiles/1", "profiles": self._personality.catalog()}
