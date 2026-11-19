@@ -211,3 +211,26 @@ def test_new_utterance_discards_late_final_from_previous_speech() -> None:
         assert len(svc.requests) == 1
     finally:
         module.dispose()
+
+
+def test_input_failure_pauses_own_output_without_invalidating_text_generation() -> None:
+    from ramvi_character.speech import SpeechOutput
+
+    svc = VoiceServices()
+    module = active(svc)
+    module.configure("", "one")
+    module._speech = SpeechOutput()
+    module._speech.enabled = module._speech.armed = True
+    try:
+        module.voice("start")
+        wait(lambda: svc.starts == 1)
+        generation = module._speech.generation
+        svc.push("error")
+        with svc.guard:
+            svc.events[-1]["code"] = "voice.device_error"
+        wait(lambda: module.voice()["state"] == "error")
+        assert not module._speech.armed and module._speech.mode == "text"
+        assert module._speech.generation == generation
+        assert svc.stops == 1
+    finally:
+        module.dispose()

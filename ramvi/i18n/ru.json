@@ -672,7 +672,7 @@
   "character.profile": "Профиль",
   "character.voice_start": "Начать голосовую сессию",
   "character.voice_stop": "Завершить голосовую сессию",
-  "character.voice_error": "Голосовая сессия остановлена. Проверьте микрофон и раздел «Звук» в настройках.",
+  "character.voice_error": "Голосовая сессия недоступна. Продолжайте текстом или запустите сессию снова.",
   "voice.session_overflow": "Голосовая сессия остановлена: обработка не успевает за звуком.",
   "character.voice_state.inactive": "Микрофон выключен",
   "character.voice_state.starting": "Включение микрофона…",
@@ -710,5 +710,18 @@
   "module.update_failed": "Обновление модуля «{module_id}» до {version} не удалось ({detail}). Возвращена версия {previous}, её данные на месте",
   "module.no_backup": "Для модуля «{module_id}» нет предыдущей версии для отката",
   "module.not_installed": "Модуль «{module_id}» не установлен",
-  "module.not_found": "Модуль «{module_id}» не найден"
+  "module.not_found": "Модуль «{module_id}» не найден",
+  "character.speech_resume": "Возобновить для новых ответов",
+  "character.speech_refresh": "Обновить голоса",
+  "character.speech_text_only": "Озвучка приостановлена. Текст доступен. Возобновление действует на новые ответы.",
+  "character.speech_voices_loading": "Загружаю локальные голоса…",
+  "character.speech_voices_failed": "Локальные голоса недоступны. Можно обновить список или выбрать другой провайдер.",
+  "character.speech_missing_voice": "{voice} (нет в текущем списке)",
+  "character.speech_device_failed": "Аудиовыход недоступен. Проверьте устройство и возобновите озвучку.",
+  "character.speech_timeout": "Озвучка не ответила вовремя. Ответ остаётся текстом.",
+  "character.speech_auth_failed": "Проверьте отдельный ключ TTS и доступ к API.",
+  "character.speech_permission_failed": "Передача текста в TTS API не разрешена.",
+  "character.speech_voice_failed": "Выбранный голос недоступен. Обновите список и выберите голос.",
+  "voice.cleanup_failed": "Ошибка при остановке ресурса голосовой сессии.",
+  "character.speech_pause": "Приостановить озвучку"
 }

@@ -41,11 +41,16 @@ class SystemSpeech:
         self.worker.start()
         # Core owns the temporary directory, so cancellation of the child cannot orphan audio.
         with tempfile.TemporaryDirectory(prefix="ramvi-speech-") as directory:
-            result = self.worker.request(
-                "synthesize",
-                {**request.to_dict(), "path": str(Path(directory) / "speech.wav")},
-                timeout=45,
-            )
+            try:
+                result = self.worker.request(
+                    "synthesize",
+                    {**request.to_dict(), "path": str(Path(directory) / "speech.wav")},
+                    timeout=45,
+                )
+            except RuntimeError as error:
+                if "speech.voice_missing" in str(error):
+                    raise ValueError("speech.voice_missing") from None
+                raise
             size, rate = result["size"], result["rate"]
             if not isinstance(size, int) or not 0 < size <= rate * 2 * 120:
                 raise ValueError("invalid native speech length")

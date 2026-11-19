@@ -2,13 +2,19 @@
  xmlns:l="using:Ramvi.Desktop.Localization" xmlns:vm="using:Ramvi.Desktop.ViewModels"
  xmlns:api="using:Ramvi.Desktop.Api" x:Class="Ramvi.Desktop.Views.CharacterDialogueView" x:DataType="vm:CharacterViewModel">
  <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="12,24,24,24" RowSpacing="12">
-  <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+  <Grid x:Name="CharacterSelectors" ColumnDefinitions="*,*" ColumnSpacing="8">
    <StackPanel><TextBlock Text="{l:T character.model}"/><ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding Model}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="api:ModelInfo"><TextBlock Text="{Binding Id}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
    <StackPanel Grid.Column="1"><TextBlock Text="{l:T character.profile}"/><ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding Profile}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:CharacterProfile"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
   </Grid>
   <ScrollViewer x:Name="DialogueScroll" Grid.Row="1"><SelectableTextBlock x:Name="DialogueText" Text="{Binding Transcript}" TextWrapping="Wrap"/></ScrollViewer>
-  <StackPanel Grid.Row="2" Spacing="6">
+  <ScrollViewer x:Name="CharacterControls" Grid.Row="2" MaxHeight="320">
+  <StackPanel Spacing="6">
    <TextBlock Text="{Binding Error}" Classes="error" TextWrapping="Wrap"/>
+   <StackPanel x:Name="SpeechRecovery" DataContext="{Binding Speech}" x:DataType="vm:CharacterSpeechViewModel" IsVisible="{Binding TextOnly}" Spacing="6">
+    <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
+    <TextBlock Text="{l:T character.speech_text_only}" TextWrapping="Wrap" Classes="muted"/>
+    <Button Content="{l:T character.speech_resume}" Command="{Binding ResumeCommand}"/>
+   </StackPanel>
    <TextBlock Text="{l:T character.voice_hint}" TextWrapping="Wrap" Classes="muted"/>
    <StackPanel DataContext="{Binding Voice}" x:DataType="vm:CharacterVoiceViewModel" Spacing="6">
     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"><Button Content="{Binding ButtonText}" Command="{Binding ToggleCommand}"/><TextBlock Grid.Column="1" Text="{Binding Status}" VerticalAlignment="Center" TextWrapping="Wrap"/></Grid>
@@ -28,9 +34,11 @@
        <TextBox Text="{Binding Key}" PasswordChar="●" PlaceholderText="{l:T character.speech_key}"/>
        <Button Content="{l:T character.speech_save_key}" Command="{Binding KeyCommand}"/>
       </StackPanel>
+      <Button Content="{l:T character.speech_refresh}" Command="{Binding RefreshCommand}"/>
+      <TextBlock Text="{Binding InventoryStatus}" TextWrapping="Wrap" Classes="muted"/>
       <TextBlock Text="{Binding Price}" TextWrapping="Wrap" Classes="muted"/>
       <SelectableTextBlock Text="{Binding Source}" TextWrapping="Wrap" Classes="muted"/>
-      <WrapPanel><Button Content="{l:T character.speech_save}" Command="{Binding SaveCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.speech_preview}" Command="{Binding PreviewCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.stop}" Command="{Binding StopCommand}" Margin="0,0,8,8"/></WrapPanel>
+      <WrapPanel><Button Content="{l:T character.speech_save}" Command="{Binding SaveCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.speech_preview}" Command="{Binding PreviewCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.speech_pause}" Command="{Binding StopCommand}" Margin="0,0,8,8"/></WrapPanel>
       <TextBlock Text="{Binding Status}" TextWrapping="Wrap"/>
       <TextBlock Text="{Binding Fallback}" TextWrapping="Wrap" Classes="muted"/>
       <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
@@ -38,7 +46,8 @@
     </ScrollViewer>
    </Expander>
   </StackPanel>
-  <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+  </ScrollViewer>
+  <Grid x:Name="CharacterComposer" Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8">
    <TextBox Text="{Binding Draft}" PlaceholderText="{l:T character.input}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" MaxHeight="180"/>
    <StackPanel Grid.Column="1" Spacing="8"><Button Content="{l:T character.send}" Command="{Binding Send}"/><Button Content="{l:T character.stop}" Command="{Binding Stop}"/></StackPanel>
   </Grid>

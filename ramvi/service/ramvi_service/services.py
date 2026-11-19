@@ -544,7 +544,7 @@ class ScopedServices:
 
     @handler("speech.catalog", permission="speech")
     def _speech_catalog(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return dict(self._speech_service().catalog(self.data))
+        return dict(self._speech_service().catalog(self.data, payload.get("refresh", False)))
 
     @handler("speech.configure", permission="speech", active=True)
     def _speech_configure(self, payload: dict[str, Any]) -> dict[str, Any]:

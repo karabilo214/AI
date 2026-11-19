@@ -1358,3 +1358,29 @@ def test_auto_send_setting_is_in_status_and_validated(tmp_path: Path) -> None:
     assert env.voice.status()["auto_send"] is False
     with pytest.raises(st.SettingsError):
         st.Settings(voice_auto_send="yes").validate()  # type: ignore[arg-type]
+
+
+def test_failed_native_start_closes_every_opened_microphone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ramvi_service.voice.audio import SoundDeviceMicrophone
+
+    sd = FakeSd()
+    closed = []
+
+    def broken(**kwargs: Any) -> Any:
+        class Stream:
+            def start(self) -> None:
+                raise OSError("lost microphone")
+
+            def close(self) -> None:
+                closed.append(kwargs["samplerate"])
+
+        return Stream()
+
+    sd.RawInputStream = broken
+    mic = SoundDeviceMicrophone(platform="darwin")
+    monkeypatch.setattr(mic, "_sd", lambda: sd)
+    with pytest.raises(ChatError):
+        mic.open(None, lambda _: None)
+    assert closed == [16000, 48000]

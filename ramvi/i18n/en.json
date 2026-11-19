@@ -672,7 +672,7 @@
   "character.profile": "Profile",
   "character.voice_start": "Start voice session",
   "character.voice_stop": "End voice session",
-  "character.voice_error": "Voice session stopped. Check the microphone and Sound settings.",
+  "character.voice_error": "The voice session is unavailable. Continue with text or start the session again.",
   "voice.session_overflow": "Voice session stopped: audio processing could not keep up.",
   "character.voice_state.inactive": "Microphone off",
   "character.voice_state.starting": "Starting microphone…",
@@ -710,5 +710,18 @@
   "module.update_failed": "Updating module “{module_id}” to {version} failed ({detail}). Version {previous} was restored with its data",
   "module.no_backup": "Module “{module_id}” has no previous version to roll back to",
   "module.not_installed": "Module “{module_id}” is not installed",
-  "module.not_found": "Module “{module_id}” not found"
+  "module.not_found": "Module “{module_id}” not found",
+  "character.speech_resume": "Resume for new replies",
+  "character.speech_refresh": "Refresh voices",
+  "character.speech_text_only": "Speech is paused. Text remains available. Resuming applies to new replies.",
+  "character.speech_voices_loading": "Loading local voices…",
+  "character.speech_voices_failed": "Local voices are unavailable. Refresh the list or select another provider.",
+  "character.speech_missing_voice": "{voice} (not in the current list)",
+  "character.speech_device_failed": "Audio output is unavailable. Check the device and resume speech.",
+  "character.speech_timeout": "Speech timed out. The reply remains available as text.",
+  "character.speech_auth_failed": "Check the separate TTS key and API access.",
+  "character.speech_permission_failed": "Sending text to the TTS API is not enabled.",
+  "character.speech_voice_failed": "The selected voice is unavailable. Refresh the list and choose a voice.",
+  "voice.cleanup_failed": "A voice session resource could not be closed.",
+  "character.speech_pause": "Pause speech"
 }

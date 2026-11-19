@@ -304,7 +304,7 @@ def test_sound_device_construction_cannot_start_playback(monkeypatch):
     import sys
     from types import SimpleNamespace
 
-    from ramvi_service.speech.output import SoundOutput
+    from ramvi_service.speech.device_worker import DeviceOutput
 
     calls = []
 
@@ -329,7 +329,7 @@ def test_sound_device_construction_cannot_start_playback(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "sounddevice", SimpleNamespace(RawOutputStream=Stream))
     monkeypatch.setattr("ramvi_service.voice.audio._com_init", lambda: None)
-    output = SoundOutput(16000)
+    output = DeviceOutput(16000)
     assert calls == ["open"]
     output.start()
     output.write(bytes(640))

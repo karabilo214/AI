@@ -166,6 +166,11 @@ class VoiceConversation:
                     )
         finally:
             self.stop_event.set()
+            if self.error:
+                try:
+                    self.owner._speech.pause()
+                except (OSError, RuntimeError, PermissionError, ValueError):
+                    pass
             if self.services is not None:
                 try:
                     # Startup can time out after the service opened our microphone.

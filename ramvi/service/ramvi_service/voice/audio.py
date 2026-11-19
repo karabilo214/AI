@@ -181,6 +181,7 @@ class SoundDeviceMicrophone:
         tries += [(RATE, None), (native, None)]
         last: Exception | None = None
         for rate, extra in dict.fromkeys(tries):
+            stream = None
             try:
                 stream = sd.RawInputStream(
                     samplerate=rate,
@@ -194,6 +195,11 @@ class SoundDeviceMicrophone:
                 stream.start()
             except Exception as error:  # частота не поддерживается или устройство занято
                 last = error
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except Exception:
+                        pass
                 continue
             return _SoundDeviceStream(stream, rate, self.com)
         raise ChatError("voice.device_error", detail=str(last))

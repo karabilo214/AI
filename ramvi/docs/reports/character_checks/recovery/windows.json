@@ -1,0 +1,52 @@
+{
+  "runs": [
+    {
+      "fault": "voice",
+      "error": "speech.voice_missing",
+      "error_ms": 391.0,
+      "code": "104729",
+      "recovered_voice": "Microsoft Irina Desktop",
+      "recovered_state": "completed",
+      "non_silent": true,
+      "sha256": "b15a494e3309274cad62ca3ac04616075958ddcf7316da5faae9107225533a98",
+      "starts": 1,
+      "leases_after": 0
+    },
+    {
+      "fault": "device",
+      "error": "speech.device_timeout",
+      "error_ms": 906.0,
+      "code": "393241",
+      "recovered_voice": "Microsoft Zira Desktop",
+      "recovered_state": "completed",
+      "non_silent": true,
+      "sha256": "d427e584fe2c1e0abd8c80b7a995b965c82fba63ef3f2298a170018c811e1785",
+      "starts": 1,
+      "leases_after": 0
+    },
+    {
+      "fault": "provider",
+      "error": "speech.provider_timeout",
+      "error_ms": 156.0,
+      "code": "10000019",
+      "recovered_voice": "Microsoft Irina Desktop",
+      "recovered_state": "completed",
+      "non_silent": true,
+      "sha256": "63485d630ca69597e57da5d314e9ff2d21c2ec82637e8f600877993a276ba740",
+      "starts": 1,
+      "leases_after": 0
+    }
+  ],
+  "hung_children_stopped": true,
+  "all_device_children_stopped": true,
+  "distinct_recovered_audio": 3,
+  "leases_after_close": 0,
+  "microphone": {
+    "bytes": 32000,
+    "blocks": 10,
+    "rate": 16000,
+    "child_stopped": true,
+    "reader_stopped": true,
+    "error": null
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "character_version": "0.8.0",
+  "outside_checkout": true,
+  "source_is_installed": true,
+  "capture_worker_bundled": true,
+  "audio_worker_stopped": true,
+  "pcm_non_silent": true,
+  "pcm_sha256": "431b4c7d3750be1b0d296ee4da99585622b3205f694c2e70d5d3c23a1db86005",
+  "capture_worker_failure_isolated": true
+}

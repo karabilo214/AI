@@ -27,6 +27,7 @@ from ramvi_service.downloads import Download, DownloadError
 from ramvi_service.secrets_store import SecretsUnavailable
 from ramvi_service.voice import accel
 from ramvi_service.voice.audio import Microphone, Recorder, SoundDeviceMicrophone
+from ramvi_service.voice.capture import ProcessMicrophone
 from ramvi_service.voice.models import (
     DEFAULT_MODEL,
     FOLDER,
@@ -357,7 +358,9 @@ class VoiceService:
             try:
                 recognizer = self._get_transcriber(backend, model)
                 session = VoiceSession(
-                    self.microphone,
+                    ProcessMicrophone()
+                    if isinstance(self.microphone, SoundDeviceMicrophone)
+                    else self.microphone,
                     self.make_detector(vad),
                     recognizer,
                     on_close=lambda: self._session_closed(session),

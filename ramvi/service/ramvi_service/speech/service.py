@@ -14,6 +14,7 @@ from typing import Any
 from ramvi_service.contracts.speech import SPEAKER, SpeechRequest
 from ramvi_service.speech.buffer import PCM_BLOCK_MS, PCM_BLOCKS, PCMBuffer
 from ramvi_service.speech.cloud import CloudSpeech
+from ramvi_service.speech.errors import failure
 from ramvi_service.speech.native import SystemSpeech
 from ramvi_service.speech.output import SoundOutput
 
@@ -28,6 +29,9 @@ class SpeechService:
         voice: Any = None,
         provider_factory: Callable[..., Any] | None = None,
         output_factory: Callable[[int], Any] = SoundOutput,
+        first_audio_timeout: float = 45,
+        audio_timeout: float = 20,
+        job_timeout: float = 180,
     ) -> None:
         self.resources, self.voice = resources, voice
         self.provider_factory = provider_factory or self._provider
@@ -36,6 +40,15 @@ class SpeechService:
         self.jobs: dict[str, dict[str, Any]] = {}
         self.generations: dict[Any, dict[str, Any]] = {}
         self.voice_cache: list[dict[str, Any]] | None = None
+        self.inventory: dict[str, Any] = {"state": "idle", "error": None}
+        self.inventory_thread: threading.Thread | None = None
+        self.inventory_provider: Any = None
+        self.closed = False
+        self.first_audio_timeout, self.audio_timeout, self.job_timeout = (
+            first_audio_timeout,
+            audio_timeout,
+            job_timeout,
+        )
 
     @staticmethod
     def _provider(info: dict[str, Any], key: str) -> Any:
@@ -62,7 +75,10 @@ class SpeechService:
     def configure(self, owner: Any, data: Any, settings: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(settings, dict) or set(settings) - set(DEFAULTS):
             raise ValueError("invalid speech settings")
-        proposed = {**self.settings(data), **settings}
+        current = self.settings(data)
+        proposed = {**current, **settings}
+        if proposed["provider"] != current["provider"]:
+            proposed["remote_text_enabled"] = settings.get("remote_text_enabled", False)
 
         # Validate without committing, using the same settings parser.
         class Proposed:
@@ -74,19 +90,48 @@ class SpeechService:
         data.write_json("speech.json", proposed)
         return {"settings": proposed}
 
-    def catalog(self, data: Any) -> dict[str, Any]:
+    def _inventory(self) -> None:
+        provider = None
+        try:
+            provider = self.provider_factory(CATALOG["providers"][0], "")
+            with self.lock:
+                self.inventory_provider = provider
+                if self.closed:
+                    return
+            voices = provider.voices()[:128]
+            with self.lock:
+                self.voice_cache = voices
+                self.inventory = {"state": "ready", "error": None}
+        except Exception:
+            with self.lock:
+                self.inventory = {"state": "error", "error": "speech.provider_failed"}
+        finally:
+            if provider is not None:
+                try:
+                    provider.close()
+                except Exception:
+                    pass
+            with self.lock:
+                self.inventory_provider = None
+
+    def catalog(self, data: Any, refresh: bool = False) -> dict[str, Any]:
+        if not isinstance(refresh, bool):
+            raise ValueError("invalid inventory refresh")
         result: dict[str, Any] = copy.deepcopy(CATALOG)
         result["settings"] = self.settings(data)
         with self.lock:
-            if self.voice_cache is None:
-                provider = self.provider_factory(result["providers"][0], "")
-                try:
-                    self.voice_cache = provider.voices()
-                except (RuntimeError, OSError, NotImplementedError):
-                    self.voice_cache = []
-                finally:
-                    provider.close()
-            result["providers"][0]["voices"] = copy.deepcopy(self.voice_cache)
+            if (
+                not self.closed
+                and (self.inventory["state"] == "idle" or refresh)
+                and not (self.inventory_thread and self.inventory_thread.is_alive())
+            ):
+                self.inventory = {"state": "loading", "error": None}
+                self.inventory_thread = threading.Thread(
+                    target=self._inventory, name="speech-inventory", daemon=True
+                )
+                self.inventory_thread.start()
+            result["local_voices"] = copy.deepcopy(self.inventory)
+            result["providers"][0]["voices"] = copy.deepcopy(self.voice_cache or [])
         for item in result["providers"][1:]:
             item["voices"] = [
                 {"id": v, "name": v, "languages": ["ru", "en"]} for v in item["voices"]
@@ -160,6 +205,8 @@ class SpeechService:
             json.dumps({"request": adapted.to_dict(), "config": config}, sort_keys=True).encode()
         ).hexdigest()
         with self.lock:
+            if self.closed:
+                raise RuntimeError("speech.closed")
             fence = self.generations.get(owner)
             # Legacy callers are isolated only until they opt into generation fencing.
             if generation is None and fence is None:
@@ -283,6 +330,12 @@ class SpeechService:
 
     @staticmethod
     def _abort(job: dict[str, Any]) -> None:
+        output = job["output"]
+        if output is not None and callable(getattr(output, "interrupt", None)):
+            try:
+                output.interrupt()
+            except Exception:
+                pass
         with job["io_lock"]:
             if job["output"]:
                 try:
@@ -296,6 +349,7 @@ class SpeechService:
         output = None
         buffer = job["buffer"]
         started = time.monotonic()
+        stage = "provider"
         try:
             job["state"] = "synthesizing"
             producer = threading.Thread(
@@ -306,9 +360,15 @@ class SpeechService:
             )
             job["producer"] = producer
             producer.start()
-            while (piece := buffer.get()) is not None:
-                if time.monotonic() - started > 180:
-                    raise TimeoutError("speech deadline")
+            deadline = min(started + self.first_audio_timeout, started + self.job_timeout)
+            while (
+                piece := buffer.get(
+                    deadline,
+                    "speech.provider_timeout" if output is None else "speech.audio_timeout",
+                )
+            ) is not None:
+                if time.monotonic() - started > self.job_timeout:
+                    raise TimeoutError("speech.deadline")
                 if output is None:
                     if self.resources:
                         lease = self.resources.acquire(
@@ -318,24 +378,30 @@ class SpeechService:
                         try:
                             self.voice.session_playback(True, owner=job["owner"])
                             gated = True
-                        except Exception:
-                            pass
+                        except Exception as error:
+                            if str(error) != "voice.not_owner":
+                                raise RuntimeError("speech.device_unavailable") from None
                     # Construction must not start playback. A late constructor can
                     # finish after advance; its cancelled job will never call start.
+                    stage = "device_open"
                     output = self.output_factory(piece.rate)
                     with job["io_lock"]:
                         job["output"] = output
                         if job["cancel"].is_set():
                             raise InterruptedError("speech cancelled")
+                        stage = "device_start"
                         output.start()
                         job["rate"] = piece.rate
                         job["state"] = "playing"
                 with job["io_lock"]:
                     if job["cancel"].is_set():
                         raise InterruptedError("speech cancelled")
+                    stage = "device_write"
                     output.write(piece.pcm)
                     job["bytes"] += len(piece.pcm)
                     job["submitted_audio_s"] = job["bytes"] / piece.rate / 2
+                stage = "provider"
+                deadline = min(time.monotonic() + self.audio_timeout, started + self.job_timeout)
             if job["cancel"].is_set():
                 raise InterruptedError("speech cancelled")
             job["metadata"]["alignment"] = getattr(job["provider"], "timings", None)
@@ -345,34 +411,37 @@ class SpeechService:
         except Exception as error:
             job["state"] = "cancelled" if job["cancel"].is_set() else "error"
             if not job["cancel"].is_set():
-                code = str(error)
-                job["error"] = (
-                    code if code.startswith("speech.") and len(code) < 100 else "speech.failed"
-                )
+                job["error"] = failure(error, stage)
         finally:
-            if job["cancel"].is_set():
-                self._abort(job)
-            # No new output can overlap this lease while the device drains/closes.
-            if output:
-                with job["io_lock"]:
-                    try:
-                        output.close()
-                    except Exception:
-                        pass
-            if gated:
-                try:
-                    self.voice.session_playback(False, owner=job["owner"])
-                except Exception:
-                    pass
-            if lease:
-                self.resources.release(job["owner"], lease)
             if job["state"] != "completed":
                 job["cancel"].set()
-            try:
-                job["provider"].close()
-            finally:
-                if job["producer"]:
-                    job["producer"].join(timeout=3)
+                self._abort(job)
+            # Every cleanup runs even if another one fails. Device facade always
+            # terminates its process after a bounded close/drain RPC.
+            cleanup = []
+            if output:
+
+                def close_output() -> None:
+                    with job["io_lock"]:
+                        output.close()
+
+                cleanup.append(close_output)
+            if gated:
+                cleanup.append(lambda: self.voice.session_playback(False, owner=job["owner"]))
+            if lease:
+                cleanup.append(lambda: self.resources.release(job["owner"], lease))
+            cleanup.append(job["provider"].close)
+            for close in cleanup:
+                try:
+                    close()
+                except Exception:
+                    if job["error"] is None and not job["cancel"].is_set():
+                        job["error"] = "speech.cleanup_failed"
+                        job["state"] = "error"
+                    job["cancel"].set()
+                    self._abort(job)
+            if job["producer"]:
+                job["producer"].join(timeout=3)
 
     def status(self, owner: Any, identifier: str | None = None) -> dict[str, Any]:
         with self.lock:
@@ -442,6 +511,15 @@ class SpeechService:
 
     def close(self) -> None:
         with self.lock:
+            self.closed = True
+            inventory = self.inventory_provider
             owners = {j["owner"] for j in self.jobs.values()} | set(self.generations)
         for owner in owners:
             self.release(owner)
+        if inventory is not None:
+            try:
+                inventory.close()
+            except Exception:
+                pass
+        if self.inventory_thread:
+            self.inventory_thread.join(timeout=3)

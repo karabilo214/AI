@@ -53,13 +53,14 @@ public sealed class CharacterVoiceViewModel : ObservableObject, IDisposable
     }
     private async Task StartAsync()
     {
+        var watch=++_watch;
         _ending = false; _lastReply = null; Error = ""; Partial = ""; SetState("starting");
         try
         {
             await _call("start", null).ConfigureAwait(true);
-            _ = WatchAsync(++_watch);
+            if(watch==_watch && !_ending && !_disposed) _ = WatchAsync(watch);
         }
-        catch (Exception e) when (Handled(e)) { SetState("error"); Error = Localizer.Current["character.voice_error"]; }
+        catch (Exception e) when (Handled(e)) { if(watch==_watch && !_disposed) {SetState("error"); Error = Localizer.Current["character.voice_error"];} }
     }
     private async Task WatchAsync(int watch)
     {
@@ -93,9 +94,13 @@ public sealed class CharacterVoiceViewModel : ObservableObject, IDisposable
     public async Task StopAsync()
     {
         if (!IsActive) return;
-        _ending = true; Partial = ""; SetState("stopping");
-        try { await _call("stop", null).ConfigureAwait(true); }
-        catch (Exception e) when (Handled(e)) { if (!_token.IsCancellationRequested) Error = Localizer.Current["character.voice_error"]; }
+        var watch=++_watch;
+        _ending=true;Partial="";SetState("stopping");
+        try {
+            await _call("stop",null).ConfigureAwait(true);
+            if(watch==_watch && !_disposed) _=WatchAsync(watch);
+        }
+        catch(Exception e) when(Handled(e)) { if(watch==_watch && !_disposed) {SetState("error");Error=Localizer.Current["character.voice_error"];} }
     }
     private static bool Handled(Exception e) => e is ApiException or HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException or OperationCanceledException or NotSupportedException;
     public void Dispose() { if (_disposed) return; _disposed = true; _watch++; _lifetime.Cancel(); _lifetime.Dispose(); }

@@ -2,6 +2,7 @@
 
 import queue
 import threading
+import time
 from typing import Any
 
 from ramvi_service.contracts.speech import AudioPiece
@@ -28,8 +29,12 @@ class PCMBuffer:
                 continue
         raise InterruptedError("speech cancelled")
 
-    def get(self) -> AudioPiece | None:
+    def get(
+        self, deadline: float | None = None, code: str = "speech.audio_timeout"
+    ) -> AudioPiece | None:
         while not self.cancel.is_set():
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError(code)
             try:
                 return self.queue.get(timeout=0.02)
             except queue.Empty:

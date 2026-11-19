@@ -1,0 +1,44 @@
+{
+  "runs": [
+    {
+      "fault": "voice",
+      "error": "speech.voice_missing",
+      "error_ms": 288.426,
+      "code": "104729",
+      "recovered_voice": "Milena",
+      "recovered_state": "completed",
+      "non_silent": true,
+      "sha256": "2e8221b413fd22ae2cb9d0865974b2dd1e0a65ee14f918d48ff38c86fcf9e7bb",
+      "starts": 1,
+      "leases_after": 0
+    },
+    {
+      "fault": "device",
+      "error": "speech.device_timeout",
+      "error_ms": 848.586,
+      "code": "393241",
+      "recovered_voice": "Albert",
+      "recovered_state": "completed",
+      "non_silent": true,
+      "sha256": "2e191d5b1fd25d6a6d338c2f107b482c99282a23b41dd8960782bb0c1ed46ae9",
+      "starts": 1,
+      "leases_after": 0
+    },
+    {
+      "fault": "provider",
+      "error": "speech.provider_timeout",
+      "error_ms": 179.63,
+      "code": "10000019",
+      "recovered_voice": "Milena",
+      "recovered_state": "completed",
+      "non_silent": true,
+      "sha256": "3a7e21aeaeea39a6380bb742c5516a742112369b16f9865bf5a574ad9b0c2cc7",
+      "starts": 1,
+      "leases_after": 0
+    }
+  ],
+  "hung_children_stopped": true,
+  "all_device_children_stopped": true,
+  "distinct_recovered_audio": 3,
+  "leases_after_close": 0
+}

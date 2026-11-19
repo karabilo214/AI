@@ -331,13 +331,13 @@ class CharacterModule:
             if not isinstance(args, dict):
                 raise ValueError("invalid speech arguments")
             if operation == "catalog":
-                return self._speech.catalog()
+                return self._speech.catalog(args.get("refresh", False))
             if operation == "configure":
                 return self._speech.configure(args["settings"])
             if operation == "resume":
                 return self._speech.arm()
             if operation == "stop":
-                return self._speech.cancel(pause=True)
+                return self._speech.pause()
             if operation == "key":
                 if self._speech.services is None:
                     raise RuntimeError("speech is unavailable")

@@ -57,7 +57,7 @@ def voices() -> list[dict[str, Any]]:
 def synthesize(payload: dict[str, Any]) -> tuple[bytes, int]:
     selected = payload.get("voice", "")
     if selected and selected not in {v["id"] for v in voices()}:
-        raise ValueError("voice is not installed")
+        raise ValueError("speech.voice_missing")
     path = Path(payload["path"])
     if sys.platform == "darwin":
         command = [
@@ -121,7 +121,9 @@ def main() -> None:
                 "id": request.get("id"),
                 "error": {
                     "type": type(error).__name__,
-                    "message": "system speech operation failed",
+                    "message": "speech.voice_missing"
+                    if str(error) == "speech.voice_missing"
+                    else "system speech operation failed",
                 },
             }
         print(json.dumps(response, ensure_ascii=False), flush=True)

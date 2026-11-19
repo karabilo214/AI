@@ -80,11 +80,11 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     private Task<JsonElement> CallAsync(string operation, JsonObject? arguments = null) => ModuleCallAsync("dialogue", operation, arguments);
     private async Task<JsonElement> ModuleCallAsync(string command, string operation, JsonObject? arguments = null)
     {
-        var serial=command=="speech" && operation is "stop" or "configure" or "preview";
-        if(serial) { InvalidateResponse(); await _commands.WaitAsync(_token).ConfigureAwait(true); }
+        var serial=(command=="speech" && operation is "stop" or "configure" or "preview") || (command=="voice" && operation is "start" or "stop");
+        if(serial) await _commands.WaitAsync(_token).ConfigureAwait(true);
         try {
             using var document=JsonDocument.Parse(new JsonObject { ["operation"]=operation,["arguments"]=arguments ?? new JsonObject() }.ToJsonString());
-            if(command=="voice" && operation=="start") await ConfigureAsync().ConfigureAwait(true);
+            if(command=="voice" && operation=="start") await CallAsync("configure",new JsonObject { ["draft"]=Draft,["model"]=Model?.Id }).ConfigureAwait(true);
             var result=await _api().ModuleCommandAsync("character",command,document.RootElement.Clone(),_token).ConfigureAwait(true);
             if(result.TryGetProperty("error",out var error) && error.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) && !result.TryGetProperty("state",out _)) throw new InvalidOperationException("Character request failed");
             return result;

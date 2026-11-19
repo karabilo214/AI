@@ -109,7 +109,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Sections.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(SectionsViewModel.IsChatSelected) && Voice.IsRecording) _ = Voice.CancelCommand.RunAsync();
-            if (e.PropertyName == nameof(SectionsViewModel.IsCharacterSelected) && !Sections.IsCharacterSelected) { _ = Character.Voice.StopAsync(); _ = Character.Speech.StopAsync(); }
+            if (e.PropertyName == nameof(SectionsViewModel.IsCharacterSelected) && !Sections.IsCharacterSelected) { if(Character.Stop.CanExecute(null)) _ = Character.StopAsync(); _ = Character.Voice.StopAsync(); _ = Character.Speech.StopAsync(); }
         };
         NewChatCommand = new Command(NewChatAsync, () => !IsGenerating && IsConnected);
         SendCommand = new Command(SendAsync, CanSend);

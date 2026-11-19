@@ -224,3 +224,30 @@ def test_empty_final_is_rejected_without_a_stuck_recognizing_turn() -> None:
     finally:
         session.stop()
         session.join()
+
+
+def test_all_owned_cleanup_runs_even_if_microphone_and_detector_close_fail() -> None:
+    mic = FakeMicrophone()
+    recognizer = FakeTranscriber(Path("test"))
+    calls = []
+
+    class Broken(Detector):
+        def close(self):
+            calls.append("detector")
+            raise OSError("driver disappeared")
+
+    session = VoiceSession(mic, Broken(), recognizer, on_close=lambda: calls.append("release"))
+    session.start()
+    assert mic.stream is not None
+
+    def fail():
+        calls.append("microphone")
+        raise OSError("close failed")
+
+    mic.stream.close = fail
+    session.stop()
+    session.join()
+    assert calls == ["microphone", "release", "detector"] and recognizer.closed
+    assert session.error == "voice.cleanup_failed" and not any(
+        t.is_alive() for t in session.threads
+    )

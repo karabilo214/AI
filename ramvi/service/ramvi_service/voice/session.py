@@ -106,6 +106,9 @@ class VoiceSession:
                 self.epoch += 1  # discard any queued transcription across the playback boundary
             self.playing = active
             self.suppressed_until = time.monotonic() + (0.5 if not active else 0)
+            flush = getattr(self.stream, "flush", None)
+            if callable(flush):
+                flush(self.suppressed_until)
             while not self.audio.empty():
                 try:
                     self.audio.get_nowait()
@@ -168,6 +171,8 @@ class VoiceSession:
                 try:
                     block = self.audio.get(timeout=0.1)
                 except queue.Empty:
+                    if self.stream is not None and getattr(self.stream, "error", None):
+                        raise ChatError("voice.device_error") from None
                     continue
                 if epoch != self.epoch:
                     epoch = self.epoch
@@ -233,6 +238,8 @@ class VoiceSession:
                 try:
                     kind, identifier, pcm, epoch, cuts = self.jobs.get(timeout=0.1)
                 except queue.Empty:
+                    if self.stream is not None and getattr(self.stream, "error", None):
+                        raise ChatError("voice.device_error") from None
                     continue
                 if epoch != self.epoch:
                     continue
@@ -294,22 +301,26 @@ class VoiceSession:
             self.stopped.set()
             self.state = "stopped"
             stream, self.stream = self.stream, None
-        try:
-            if stream:
-                stream.close()
-        finally:
-            self.on_close()  # release only this session's microphone; do not wait for inference
-            self.detector.close()
-            self.recognizer.close()
-            for channel in (self.audio, self.jobs):
-                while not channel.empty():
-                    try:
-                        channel.get_nowait()
-                    except queue.Empty:
-                        break
-            if self.error:
-                self._emit("error", code=self.error)
-            self._emit("session_stopped")
+        cleanup = ([stream.close] if stream else []) + [
+            self.on_close,
+            self.detector.close,
+            self.recognizer.close,
+        ]
+        for close in cleanup:
+            try:
+                close()
+            except Exception:
+                self.error = self.error or "voice.cleanup_failed"
+        for channel in (self.audio, self.jobs):
+            while not channel.empty():
+                try:
+                    channel.get_nowait()
+                except queue.Empty:
+                    break
+
+        if self.error:
+            self._emit("error", code=self.error)
+        self._emit("session_stopped")
 
     def join(self) -> None:
         for thread in self.threads:
