@@ -462,7 +462,9 @@ def test_wmi_driver_versions_and_missing_vc_runtime() -> None:
     """8.1: в WMI у NVIDIA своя запись версии; виртуальный драйвер Microsoft — не NVIDIA."""
     from ramvi_service.hardware import nvidia_driver_from_wmi, parse_wmi_json
 
-    assert nvidia_driver_from_wmi("32.0.16.1692") == "616.92"  # ноутбук с RTX 5060: nvidia-smi 616.92
+    assert (
+        nvidia_driver_from_wmi("32.0.16.1692") == "616.92"
+    )  # ноутбук с RTX 5060: nvidia-smi 616.92
     assert nvidia_driver_from_wmi("32.0.15.6692") == "566.92"
     assert nvidia_driver_from_wmi("10.0.26100.1150") is None  # Windows Sandbox
     assert nvidia_driver_from_wmi("junk") is None and nvidia_driver_from_wmi(None) is None

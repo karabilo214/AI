@@ -139,6 +139,7 @@ class Download:
             total = done + int(length) if length else self.size
             if self.size is None and total is not None:
                 self._check_space(total - done)
+            limit = self.size if self.size is not None else total
             digest = _hash_file(self.part) if done else hashlib.sha256()
             started, got = time.monotonic(), 0
             with self.part.open("ab" if done else "wb") as file:
@@ -150,6 +151,12 @@ class Download:
                     block = response.read(min(CHUNK, self.limit_bps or CHUNK))
                     if not block:
                         break
+                    if limit is not None and done + got + len(block) > limit:
+                        # 8.4: источник прислал больше объявленного — не забивать диск.
+                        # Предел — размер из каталога, заголовку сервера не доверяем.
+                        file.close()
+                        self.part.unlink()
+                        raise DownloadError("download.too_large", expected=limit)
                     file.write(block)
                     digest.update(block)
                     got += len(block)

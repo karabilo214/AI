@@ -631,5 +631,7 @@
   "settings.update_install": "Install from file…",
   "settings.update_restart": "Restart and update",
   "settings.update_note": "The package is checked against the RAMVI signature. Updates never touch chats, models or settings; if the new version does not start, the previous one comes back.",
-  "update.rollback_incomplete": "The rollback is incomplete: could not restore {files}. Close RAMVI and roll back again"
+  "update.rollback_incomplete": "The rollback is incomplete: could not restore {files}. Close RAMVI and roll back again",
+  "download.too_large": "The source sent more data than announced ({expected} bytes) — the download was stopped and the partial file deleted",
+  "voice.api_key_where": "The key is kept in this computer's protected store (Windows — DPAPI of your account, macOS — Keychain), not in the RAMVI folder. If you move RAMVI on a USB stick to another computer, enter the key again."
 }

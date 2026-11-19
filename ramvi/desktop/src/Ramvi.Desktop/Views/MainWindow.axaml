@@ -513,6 +513,8 @@
                     <TextBlock x:Name="VoiceApiKeyStatus" Classes="caption" VerticalAlignment="Center" Text="{Binding Settings.Sound.KeyStatus}" />
                     <Button x:Name="VoiceApiCheck" Content="{l:T voice.api_check}" Command="{Binding Settings.Sound.CheckCommand}" />
                   </StackPanel>
+                  <!-- 8.4: ключ не на флешке — честно говорим, где он и что будет на другом компьютере -->
+                  <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T voice.api_key_where}" />
                   <TextBlock x:Name="VoiceApiCheckResult" TextWrapping="Wrap" Text="{Binding Settings.Sound.CheckResult}"
                              IsVisible="{Binding Settings.Sound.HasCheckResult}" />
                 </StackPanel>

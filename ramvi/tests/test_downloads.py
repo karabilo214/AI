@@ -124,3 +124,16 @@ def test_symlink_escape(tmp_path: Path) -> None:
     with pytest.raises(dl.DownloadError):
         dl.safe_target(models, "link/x.gguf")
     assert dl.safe_target(models, "sub/x.gguf") == (models / "sub/x.gguf").resolve()
+
+
+def test_source_sending_more_than_announced_is_stopped(
+    server: tuple[Server, str], tmp_path: Path
+) -> None:
+    """8.4: размер из каталога — предел; заголовок сервера (здесь больше) не обходит его."""
+    _, url = server
+    announced = len(DATA) - 100_000
+    with pytest.raises(dl.DownloadError) as error:
+        dl.Download(url, tmp_path, "m.gguf", SHA, size=announced).run()
+    assert error.value.code == "download.too_large"
+    assert error.value.params == {"expected": announced}
+    assert not (tmp_path / "m.gguf.part").exists() and not (tmp_path / "m.gguf").exists()

@@ -34,6 +34,7 @@ from ramvi_service.model_fit import ModelFit
 from ramvi_service.model_library import ModelLibrary
 from ramvi_service.onboarding import Onboarding
 from ramvi_service.recommend import rank
+from ramvi_service.redact import mask_secrets, mask_value
 from ramvi_service.sections import ModuleDataApi, SectionRegistry
 from ramvi_service.updates import UpdateError
 from ramvi_service.voice.service import VoiceService
@@ -497,15 +498,21 @@ def _handler(server: UIServer) -> type[BaseHTTPRequestHandler]:
                     raise ChatError("api.not_found")
                 result = server.route(method, path[len(PREFIX) :], body)
             except ChatError as error:
+                # 8.4: в тексте ошибок сторонних сервисов и движка могут быть ключи.
                 self._json(
                     _STATUS.get(error.code, 400),
-                    {"error": {"code": error.code, "params": to_json(error.params)}},
+                    {"error": {"code": error.code, "params": mask_value(to_json(error.params))}},
                 )
                 return
             except Exception as error:  # сервис не падает из-за одного запроса
                 self._json(
                     500,
-                    {"error": {"code": "api.internal", "params": {"detail": str(error)}}},
+                    {
+                        "error": {
+                            "code": "api.internal",
+                            "params": {"detail": mask_secrets(str(error))},
+                        }
+                    },
                 )
                 return
             if isinstance(result, Generation):
