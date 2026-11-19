@@ -1,6 +1,6 @@
 # Переносимый комплект на чистой Windows (Windows Sandbox), 8.1
 
-Дата: 2026-11-18/19. Хост: ASUS (Windows 11 Pro 25H2, RTX 5060 Laptop, драйвер NVIDIA 616.92). Гость: Windows Sandbox — Windows 11 Enterprise 10.0.26100, 8 ГБ, сеть выключена, vGPU включён. Комплект — копия рабочего комплекта (4,3 ГБ: torch 2.15.0+cu132, numba 0.68.1, triton 3.9.0). Скрипты — [stage8_checks/](stage8_checks/).
+Дата: 2026-11-18/19. Хост: ноутбук (Windows 11 Pro 25H2, RTX 5060 Laptop, драйвер NVIDIA 616.92). Гость: Windows Sandbox — Windows 11 Enterprise 10.0.26100, 8 ГБ, сеть выключена, vGPU включён. Комплект — копия рабочего комплекта (4,3 ГБ: torch 2.15.0+cu132, numba 0.68.1, triton 3.9.0). Скрипты — [stage8_checks/](stage8_checks/).
 
 ## Система действительно чистая
 
