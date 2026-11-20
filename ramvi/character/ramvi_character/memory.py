@@ -33,12 +33,18 @@ FIELDS = (
     "origin",
     "source_ids",
     "expires_at",
+    "importance",
+    "unfinished",
+    "topics",
+    "entities",
 )
+JSON_FIELDS = frozenset({"source_ids", "topics", "entities"})
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 TYPE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 SOURCE = re.compile(r"[A-Za-z0-9_:.-]{1,96}\Z")
 STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 MAX_SOURCES = 32
+MAX_TAGS = 16
 STATE_SCHEMA = "ramvi.character.live_state/1"
 
 
@@ -68,6 +74,18 @@ def _sources(value: Any) -> list[str]:
     return list(dict.fromkeys(value))
 
 
+def _tags(value: Any) -> list[str]:
+    """Topics/entities are compared exactly, so they are case-folded here (SQLite lower() is ASCII)."""
+    if not isinstance(value, list) or len(value) > MAX_TAGS:
+        raise ValueError("invalid memory tags")
+    result = []
+    for tag in value:
+        if not isinstance(tag, str) or not tag.strip() or len(tag) > 64:
+            raise ValueError("invalid memory tag")
+        result.append(" ".join(tag.casefold().split()))
+    return list(dict.fromkeys(result))
+
+
 def validate(record: Any, now: str) -> dict[str, Any]:
     """Full validated record; missing occurrences/first/last seen are filled for a new fact."""
     if not isinstance(record, dict) or set(record) - set(FIELDS):
@@ -86,6 +104,10 @@ def validate(record: Any, now: str) -> dict[str, Any]:
         "origin": record.get("origin"),
         "source_ids": _sources(record.get("source_ids", [])),
         "expires_at": record.get("expires_at"),
+        "importance": record.get("importance", 0.5),
+        "unfinished": record.get("unfinished", False),
+        "topics": _tags(record.get("topics", [])),
+        "entities": _tags(record.get("entities", [])),
     }
     if not isinstance(item["id"], str) or not IDENTIFIER.fullmatch(item["id"]):
         raise ValueError("invalid memory id")
@@ -102,6 +124,17 @@ def validate(record: Any, now: str) -> dict[str, Any]:
     ):
         raise ValueError("invalid memory confidence")
     item["confidence"] = float(confidence)
+    importance = item["importance"]
+    if (
+        isinstance(importance, bool)
+        or not isinstance(importance, (int, float))
+        or not math.isfinite(importance)
+        or not 0 <= importance <= 1
+    ):
+        raise ValueError("invalid memory importance")
+    item["importance"] = float(importance)
+    if not isinstance(item["unfinished"], bool):
+        raise ValueError("invalid memory unfinished flag")
     occurrences = item["occurrences"]
     if isinstance(occurrences, bool) or not isinstance(occurrences, int) or occurrences < 1:
         raise ValueError("invalid memory occurrences")
@@ -153,7 +186,9 @@ class MemoryStore:
     @staticmethod
     def _row(row: dict[str, Any]) -> dict[str, Any]:
         item = {key: row[key] for key in FIELDS}
-        item["source_ids"] = json.loads(row["source_ids"])
+        for key in JSON_FIELDS:
+            item[key] = json.loads(row[key])
+        item["unfinished"] = bool(row["unfinished"])
         return item
 
     def put(self, record: dict[str, Any]) -> dict[str, Any]:
@@ -167,7 +202,14 @@ class MemoryStore:
             + ") ON CONFLICT (namespace_id, id) DO UPDATE SET "
             + ", ".join(f"{key} = excluded.{key}" for key in FIELDS[1:]),
             [self.namespace]
-            + [json.dumps(item[k]) if k == "source_ids" else item[k] for k in FIELDS],
+            + [
+                json.dumps(item[k], ensure_ascii=False)
+                if k in JSON_FIELDS
+                else int(item[k])
+                if k == "unfinished"
+                else item[k]
+                for k in FIELDS
+            ],
         )
         return copy.deepcopy(item)
 

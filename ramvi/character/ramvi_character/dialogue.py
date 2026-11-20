@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from ramvi_character.context import Budget, ContextOrchestrator, encode, text, tokenizer_counter
+from ramvi_character.recall import Recall
 from ramvi_character.response import ResponsePlanner, plain_segments, strip_service_phrases
 
 
@@ -265,8 +266,21 @@ class Dialogue:
                 emotions=emotions,
                 sources=["task", "current", *["recent:" + r["id"] for r in recent]],
             )
+            memory_source = None
+            store = getattr(self.owner, "_memory", None)
+            if store is not None:
+                recall = Recall(store)
+                scope, task = self.owner._scope, snapshot["task"]
+
+                def memory_source(_text: str, limit: int) -> list[dict[str, Any]]:
+                    # Indexed, bounded search; the orchestrator then fits the memory budget.
+                    return recall.context_items(user_input, task, scope, min(limit, 16))
+
             context = ContextOrchestrator(
-                self.owner._scope, self.counter, system_prompt=planner.prompt(streaming)
+                self.owner._scope,
+                self.counter,
+                memory_source=memory_source,
+                system_prompt=planner.prompt(streaming),
             )
             prepared = context.build(
                 task=snapshot["task"] or "Talk with the owner naturally, staying in character.",

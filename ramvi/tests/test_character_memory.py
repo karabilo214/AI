@@ -78,7 +78,7 @@ def test_record_has_every_spec_field_and_survives_reopen(tmp_path: Path) -> None
     second = open_db(tmp_path / "data")  # перезапуск: новое соединение, миграция не повторяется
     try:
         saved = MemoryStore(DataServices(second)).get("memory_001")
-        assert second.schema_version == 1
+        assert second.schema_version == 2
     finally:
         second.close()
     assert saved == {
@@ -95,6 +95,10 @@ def test_record_has_every_spec_field_and_survives_reopen(tmp_path: Path) -> None
         "origin": "user_said",
         "source_ids": ["event_14", "event_39"],
         "expires_at": None,
+        "importance": 0.5,
+        "unfinished": False,
+        "topics": [],
+        "entities": [],
     }
 
 

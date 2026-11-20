@@ -35,7 +35,15 @@ MAX_SQL = 100_000
 MAX_ROWS = 10_000
 MAX_PARAMS = 999
 _MIGRATION_FILE = re.compile(r"(\d{4})_([a-z0-9_]{1,48})\.sql")
-_READ_PRAGMAS = {"table_info", "table_xinfo", "index_list", "index_info", "foreign_key_list"}
+# data_version — счётчик изменений файла; его читает FTS5 внутри своих запросов.
+_READ_PRAGMAS = {
+    "table_info",
+    "table_xinfo",
+    "index_list",
+    "index_info",
+    "foreign_key_list",
+    "data_version",
+}
 _DDL = {
     sqlite3.SQLITE_CREATE_TABLE, sqlite3.SQLITE_CREATE_INDEX, sqlite3.SQLITE_CREATE_TRIGGER,
     sqlite3.SQLITE_CREATE_VIEW, sqlite3.SQLITE_CREATE_TEMP_TABLE, sqlite3.SQLITE_CREATE_TEMP_INDEX,
