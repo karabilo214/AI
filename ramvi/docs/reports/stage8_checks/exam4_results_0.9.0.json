@@ -66,10 +66,10 @@
     "blocked_total": 2,
     "blocked_besides_control": [],
     "commands": [
-      "-c C:\\anm\\release\\RAMVI\\runtime\\python\\python.exe -P -m ramvi_engine serve --model C:\\Users\\Владимир\\.ollama\\models\\blobs\\sha256-a3de86cd1c132c822487ededd47a324",
+      "-c C:\\anm\\release\\RAMVI\\runtime\\python\\python.exe -P -m ramvi_engine serve --model %USERPROFILE%\\.ollama\\models\\blobs\\sha256-a3de86cd1c132c822487ededd47a324",
       "-c C:\\anm\\release\\RAMVI\\runtime\\python\\python.exe -P -m ramvi_service.voice.worker --model C:\\anm\\offline_exam\\work\\app\\models\\stt\\ggml-large-v3-turbo-q5_0.bin ",
       "-m --model C:\\anm\\offline_exam\\work\\app\\models\\stt\\ggml-large-v3-turbo-q5_0.bin --threads 8 --vad C:\\anm\\offline_exam\\work\\app\\models\\stt\\ggml-silero-v5.1.2.bin",
-      "-m serve --model C:\\Users\\Владимир\\.ollama\\models\\blobs\\sha256-a3de86cd1c132c822487ededd47a324c50491393e6565cd14bafa40d0b8e686f --maxt 2048 --tokenizer C:\\anm\\r",
+      "-m serve --model %USERPROFILE%\\.ollama\\models\\blobs\\sha256-a3de86cd1c132c822487ededd47a324c50491393e6565cd14bafa40d0b8e686f --maxt 2048 --tokenizer C:\\anm\\r",
       "C:\\anm\\offline_exam\\exam4_offline.py --keep-model"
     ]
   },
