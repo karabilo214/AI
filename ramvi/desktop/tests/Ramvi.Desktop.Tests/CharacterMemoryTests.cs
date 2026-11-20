@@ -17,6 +17,19 @@ public sealed class CharacterMemoryTests
         public string Records { get; set; } = "[" + Record + "]";
         public bool NoMemory { get; set; }
         public int HistoryChanged { get; set; }
+        public bool Enabled { get; set; } = true;
+        public bool Reset { get; set; }
+
+        private string Adaptation(string operation, JsonObject? arguments)
+        {
+            if (operation == "adaptation_enable") Enabled = arguments!["enabled"]!.GetValue<bool>();
+            if (operation == "adaptation_reset") Reset = true;
+            if (operation == "adaptation_restore") Reset = false;
+            var corrections = Reset ? "{}" : """{"humor":-0.03}""";
+            return "{\"adaptation\":{\"enabled\":" + (Enabled ? "true" : "false") + ",\"profile\":\"sarcastic@1.0.0\",\"corrections\":" + corrections
+                + ",\"applied\":{},\"history\":[{\"id\":\"a1\",\"trait\":\"humor\",\"before\":0.0,\"after\":-0.03,\"action\":\"step\",\"snapshot_id\":\"s1\",\"created_at\":\"2026-11-20T10:00:00Z\",\"reason\":{}}]"
+                + ",\"snapshots\":[{\"id\":\"s2\",\"kind\":\"saved\",\"traits\":{\"humor\":-0.03},\"created_at\":\"2026-11-20T11:00:00Z\"},{\"id\":\"s1\",\"kind\":\"before_step\",\"traits\":{},\"created_at\":\"2026-11-20T10:00:00Z\"}]}}";
+        }
 
         public Task<JsonElement> Call(string operation, JsonObject? arguments)
         {
@@ -29,6 +42,7 @@ public sealed class CharacterMemoryTests
                 "history_forget" or "history_clear" => """{"history":{"removed":["t1"],"memory_forgotten":1}}""",
                 "feedback_view" => """{"feedback":{"preferences":[{"dimension":"humor","direction":-1,"agreement":1.0,"reliable":3,"unreliable":2,"responses":2,"established":true}],"signals":[]}}""",
                 "feedback_clear" => """{"feedback":{"preferences":[],"signals":[]}}""",
+                "adaptation" or "adaptation_enable" or "adaptation_save" or "adaptation_reset" or "adaptation_restore" => Adaptation(operation, arguments),
                 _ => "{\"memory\":{\"records\":" + Records + "}}",
             };
             return Task.FromResult(JsonDocument.Parse(json).RootElement.Clone());
@@ -135,5 +149,54 @@ public sealed class CharacterMemoryTests
         await model.ClearFeedbackCommand.RunAsync();
         Assert.True(model.NoPreferences);
         Assert.Contains(fake.Calls, c => c.Operation == "feedback_clear");
+    }
+
+    [Fact]
+    public async Task Adaptation_switch_history_reset_and_restore_send_the_right_commands()
+    {
+        var (model, fake) = Create();
+        await model.RefreshAsync();
+        Assert.True(model.AdaptationAvailable && model.AdaptationEnabled);
+        Assert.Equal("юмор: −0,03", Assert.Single(model.Corrections).Text);
+        var change = Assert.Single(model.AdaptationHistory);
+        Assert.Equal("юмор: 0,00 → −0,03 · подстройка · 2026-11-20T10:00:00Z", change.Text);
+        var point = Assert.Single(model.SavedPoints);  // автоматические снимки в список точек не попадают
+        Assert.True(model.HasSavedPoints);
+
+        model.AdaptationEnabled = false;
+        await Task.Yield();
+        Assert.Contains(fake.Calls, c => c.Operation == "adaptation_enable" && c.Arguments == """{"enabled":false}""");
+        Assert.False(model.AdaptationEnabled);
+        var sent = fake.Calls.Count;
+        fake.Enabled = true;  // включили в другом окне
+        await model.RefreshAsync();  // чтение состояния показывает его, но не шлёт переключение обратно
+        Assert.True(model.AdaptationEnabled);
+        Assert.DoesNotContain(fake.Calls.Skip(sent), c => c.Operation == "adaptation_enable");
+
+        await model.ResetAdaptationCommand.RunAsync();  // первое нажатие только спрашивает
+        Assert.True(model.ResetArmed);
+        Assert.DoesNotContain(fake.Calls, c => c.Operation == "adaptation_reset");
+        await model.ResetAdaptationCommand.RunAsync();
+        Assert.False(model.ResetArmed);
+        Assert.True(model.NoCorrections);
+        Assert.False(model.ResetAdaptationCommand.CanExecute(null));  // сбрасывать уже нечего
+
+        await change.RestoreCommand.RunAsync();
+        Assert.Contains(fake.Calls, c => c.Operation == "adaptation_restore" && c.Arguments == """{"snapshot_id":"s1"}""");
+        await point.RestoreCommand.RunAsync();
+        Assert.Contains(fake.Calls, c => c.Operation == "adaptation_restore" && c.Arguments == """{"snapshot_id":"s2"}""");
+        await model.UndoAdaptationCommand.RunAsync();
+        Assert.Contains(fake.Calls, c => c.Operation == "adaptation_restore" && c.Arguments == "{}");
+        await model.SaveAdaptationCommand.RunAsync();
+        Assert.Contains(fake.Calls, c => c.Operation == "adaptation_save");
+        Assert.Equal("", model.Error);
+
+        Localizer.Current = Localizer.Load("en");
+        try
+        {
+            model.Relocalize();
+            Assert.Equal("humor: −0.03", model.Corrections[0].Text);
+        }
+        finally { Localizer.Current = Localizer.Load("ru"); }
     }
 }

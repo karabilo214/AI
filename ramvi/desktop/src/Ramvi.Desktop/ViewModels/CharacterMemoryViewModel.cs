@@ -17,6 +17,10 @@ public sealed class CharacterMemoryViewModel : ObservableObject
     private bool _available;
     private bool _clearMemoryArmed;
     private bool _clearHistoryArmed;
+    private bool _resetArmed;
+    private bool _adaptationEnabled = true;
+    private bool _adaptationAvailable;
+    private bool _loadingAdaptation;
 
     public CharacterMemoryViewModel(Func<string, JsonObject?, Task<JsonElement>> call, Func<Task> historyChanged)
     {
@@ -26,7 +30,34 @@ public sealed class CharacterMemoryViewModel : ObservableObject
         ClearMemoryCommand = new Command(() => ArmOrRunAsync(true));
         ClearHistoryCommand = new Command(() => ArmOrRunAsync(false));
         ClearFeedbackCommand = new Command(() => FeedbackAsync("feedback_clear"));
-        CancelClearCommand = new Command(() => { ClearMemoryArmed = false; ClearHistoryArmed = false; return Task.CompletedTask; });
+        CancelClearCommand = new Command(() => { ClearMemoryArmed = false; ClearHistoryArmed = false; ResetArmed = false; return Task.CompletedTask; });
+        SaveAdaptationCommand = new Command(() => AdaptationAsync("adaptation_save", null));
+        UndoAdaptationCommand = new Command(() => AdaptationAsync("adaptation_restore", null), () => AdaptationHistory.Count > 0);
+        ResetAdaptationCommand = new Command(ResetOrArmAsync, () => Corrections.Count > 0);
+    }
+
+    // 9.20: подстройка характера — переключатель, текущие поправки, журнал, точки сохранения.
+    public ObservableCollection<CorrectionItem> Corrections { get; } = [];
+    public ObservableCollection<AdaptationChangeItem> AdaptationHistory { get; } = [];
+    public ObservableCollection<AdaptationPointItem> SavedPoints { get; } = [];
+    public Command SaveAdaptationCommand { get; }
+    public Command UndoAdaptationCommand { get; }
+    public Command ResetAdaptationCommand { get; }
+    public bool NoCorrections => Corrections.Count == 0;
+    public bool NoAdaptationHistory => AdaptationHistory.Count == 0;
+    public bool HasSavedPoints => SavedPoints.Count > 0;
+    public bool ResetArmed { get => _resetArmed; private set => Set(ref _resetArmed, value); }
+    public bool AdaptationAvailable { get => _adaptationAvailable; private set => Set(ref _adaptationAvailable, value); }
+
+    /// <summary>Выключение не сбрасывает ни поправки, ни память, ни профиль — они просто не применяются.</summary>
+    public bool AdaptationEnabled
+    {
+        get => _adaptationEnabled;
+        set
+        {
+            if (!Set(ref _adaptationEnabled, value) || _loadingAdaptation) return;
+            _ = AdaptationAsync("adaptation_enable", new JsonObject { ["enabled"] = value });
+        }
     }
 
     public ObservableCollection<MemoryRecordItem> Records { get; } = [];
@@ -51,6 +82,9 @@ public sealed class CharacterMemoryViewModel : ObservableObject
         base.Relocalize();
         foreach (var record in Records) record.Relocalize();
         foreach (var preference in Preferences) preference.Relocalize();
+        foreach (var item in Corrections) item.Relocalize();
+        foreach (var item in AdaptationHistory) item.Relocalize();
+        foreach (var item in SavedPoints) item.Relocalize();
     }
 
     /// <summary>Перечитать память и историю; status — уже полученный ответ, если есть.</summary>
@@ -60,7 +94,11 @@ public sealed class CharacterMemoryViewModel : ObservableObject
         try
         {
             ReadHistory(status ?? await _call("status", null).ConfigureAwait(true));
-            if (Available) await FeedbackAsync("feedback_view").ConfigureAwait(true);
+            if (Available)
+            {
+                await FeedbackAsync("feedback_view").ConfigureAwait(true);
+                await AdaptationAsync("adaptation", null).ConfigureAwait(true);
+            }
         }
         catch (Exception error) when (CharacterViewModel.Handled(error))
         { Error = Localizer.Current["character.memory_error"]; }
@@ -134,6 +172,60 @@ public sealed class CharacterMemoryViewModel : ObservableObject
         try { ReadPreferences((await _call(operation, null).ConfigureAwait(true)).GetProperty("feedback")); }
         catch (Exception error) when (CharacterViewModel.Handled(error)) { Error = Localizer.Current["character.memory_error"]; }
     }
+
+    private async Task ResetOrArmAsync()
+    {
+        // Сброс — в два нажатия; прежняя настройка остаётся в журнале и возвращается откатом.
+        if (!ResetArmed) { ResetArmed = true; return; }
+        ResetArmed = false;
+        await AdaptationAsync("adaptation_reset", null).ConfigureAwait(true);
+    }
+
+    private async Task AdaptationAsync(string operation, JsonObject? arguments)
+    {
+        try
+        {
+            var result = await _call(operation, arguments).ConfigureAwait(true);
+            if (!result.TryGetProperty("adaptation", out var view))
+            {
+                if (operation == "adaptation") AdaptationAvailable = false;
+                else Error = Localizer.Current["character.memory_error"];
+                return;
+            }
+            ReadAdaptation(view);
+            if (operation != "adaptation") { Status = Localizer.Current["character.memory_done"]; Error = ""; }
+        }
+        catch (Exception error) when (CharacterViewModel.Handled(error))
+        {
+            if (operation == "adaptation") AdaptationAvailable = false;
+            else Error = Localizer.Current["character.memory_error"];
+        }
+    }
+
+    /// <summary>Состояние подстройки от модуля: включена ли, поправки, журнал, точки сохранения.</summary>
+    public void ReadAdaptation(JsonElement view)
+    {
+        AdaptationAvailable = true;
+        _loadingAdaptation = true;
+        try { AdaptationEnabled = view.GetProperty("enabled").GetBoolean(); }
+        finally { _loadingAdaptation = false; }
+        Corrections.Clear();
+        foreach (var item in view.GetProperty("corrections").EnumerateObject())
+            Corrections.Add(new CorrectionItem(item.Name, item.Value.GetDouble()));
+        AdaptationHistory.Clear();
+        foreach (var item in view.GetProperty("history").EnumerateArray())
+            AdaptationHistory.Add(new AdaptationChangeItem(item, this));
+        SavedPoints.Clear();
+        foreach (var item in view.GetProperty("snapshots").EnumerateArray())
+            if (item.GetProperty("kind").GetString() == "saved") SavedPoints.Add(new AdaptationPointItem(item, this));
+        Raise(nameof(NoCorrections));
+        Raise(nameof(NoAdaptationHistory));
+        Raise(nameof(HasSavedPoints));
+        UndoAdaptationCommand.Refresh();
+        ResetAdaptationCommand.Refresh();
+    }
+
+    internal Task RestoreAsync(string snapshot) => AdaptationAsync("adaptation_restore", new JsonObject { ["snapshot_id"] = snapshot });
 
     /// <summary>Сводка оценок: куда указывают достоверные сигналы и установлено ли предпочтение.</summary>
     public void ReadPreferences(JsonElement feedback)
@@ -232,7 +324,7 @@ public sealed class HistoryTurnItem
 /// <summary>Одна сторона манеры: направление достоверных оценок, их число и установлено ли.</summary>
 public sealed class PreferenceItem : ObservableObject
 {
-    private static readonly Dictionary<string, string> Dimensions = new()
+    internal static readonly Dictionary<string, string> Dimensions = new()
     {
         ["overall"] = "character.dim_overall", ["warmth"] = "character.dim_warmth", ["humor"] = "character.dim_humor",
         ["sarcasm"] = "character.dim_sarcasm", ["strictness"] = "character.dim_strictness", ["curiosity"] = "character.dim_curiosity",
@@ -266,4 +358,70 @@ public sealed class PreferenceItem : ObservableObject
             return name + ": " + way + " · " + state + " · " + counts;
         }
     }
+}
+
+/// <summary>Число поправки по-человечески: «−0,03» по правилам языка интерфейса.</summary>
+internal static class Trait
+{
+    public static string Name(string trait) =>
+        PreferenceItem.Dimensions.TryGetValue(trait, out var key) ? Localizer.Current[key] : trait;
+
+    public static string Number(double value) =>
+        (value > 0 ? "+" : value < 0 ? "−" : "") + Math.Abs(value).ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo(Localizer.Current.Language));
+}
+
+/// <summary>Текущая поправка одной черты поверх профиля.</summary>
+public sealed class CorrectionItem(string trait, double value) : ObservableObject
+{
+    public string Text => Trait.Name(trait) + ": " + Trait.Number(value);
+}
+
+/// <summary>Одна запись журнала подстройки с возвратом к состоянию до неё.</summary>
+public sealed class AdaptationChangeItem : ObservableObject
+{
+    private static readonly Dictionary<string, string> Actions = new()
+    {
+        ["step"] = "character.adapt_action_step", ["reset"] = "character.adapt_action_reset", ["restore"] = "character.adapt_action_restore",
+    };
+    private readonly string _trait;
+    private readonly string _action;
+    private readonly double _before;
+    private readonly double _after;
+
+    public AdaptationChangeItem(JsonElement item, CharacterMemoryViewModel owner)
+    {
+        _trait = item.GetProperty("trait").GetString() ?? "";
+        _action = item.GetProperty("action").GetString() ?? "";
+        _before = item.GetProperty("before").GetDouble();
+        _after = item.GetProperty("after").GetDouble();
+        When = item.GetProperty("created_at").GetString() ?? "";
+        var snapshot = item.TryGetProperty("snapshot_id", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null;
+        RestoreCommand = new Command(() => snapshot is null ? Task.CompletedTask : owner.RestoreAsync(snapshot), () => snapshot is not null);
+    }
+
+    public string When { get; }
+    public Command RestoreCommand { get; }
+    public string Text =>
+        Trait.Name(_trait) + ": " + Trait.Number(_before) + " → " + Trait.Number(_after) + " · " +
+        (Actions.TryGetValue(_action, out var key) ? Localizer.Current[key] : _action) + " · " + When;
+}
+
+/// <summary>Точка, сохранённая владельцем, — к ней можно вернуться.</summary>
+public sealed class AdaptationPointItem : ObservableObject
+{
+    private readonly Dictionary<string, double> _traits = [];
+
+    public AdaptationPointItem(JsonElement item, CharacterMemoryViewModel owner)
+    {
+        var id = item.GetProperty("id").GetString()!;
+        When = item.GetProperty("created_at").GetString() ?? "";
+        foreach (var trait in item.GetProperty("traits").EnumerateObject()) _traits[trait.Name] = trait.Value.GetDouble();
+        RestoreCommand = new Command(() => owner.RestoreAsync(id));
+    }
+
+    public string When { get; }
+    public Command RestoreCommand { get; }
+    public string Text => When + " · " + (_traits.Count == 0
+        ? Localizer.Current["character.adapt_base"]
+        : string.Join(", ", _traits.Select(t => Trait.Name(t.Key) + " " + Trait.Number(t.Value))));
 }

@@ -174,3 +174,155 @@ def test_reactions_in_conversation_adapt_in_background(db: ModuleDatabase) -> No
     assert m.status()["personality"]["acquired"] == {"verbosity": -STEP}
     assert m.status()["memory"]["background"]["errors"] == 0
     m.dispose()
+
+
+# --- 9.20 (CHAR-20): выключение, история, точки сохранения, сброс и откат ----------------
+
+
+def grow(a: Adaptation, f: FeedbackStore, clock: Clock, trait: str, direction: int, n: int) -> None:
+    for step in range(n):
+        clock.hour += 7
+        settle(f, trait, direction, f"{trait}{direction}{clock.hour}{step}")
+        assert a.update(PROFILE, {}, {}), (trait, step)
+
+
+def test_restore_reproduces_the_earlier_state_exactly(db: ModuleDatabase) -> None:
+    a, f, clock = setup(db)
+    grow(a, f, clock, "humor", -1, 2)
+    grow(a, f, clock, "warmth", 1, 3)
+    saved_state = a.corrections(PROFILE)
+    saved = a.save(PROFILE)
+    assert saved["kind"] == "saved" and saved["traits"] == saved_state
+    grow(a, f, clock, "verbosity", -1, 1)
+    grow(a, f, clock, "humor", 1, 1)
+    before_reset = a.corrections(PROFILE)
+    assert before_reset != saved_state
+
+    clock.hour += 1
+    assert {c["trait"] for c in a.reset(PROFILE)} == set(before_reset)
+    assert a.corrections(PROFILE) == {}
+    assert a.reset(PROFILE) == []  # сбрасывать нечего — и в журнале ничего лишнего
+    clock.hour += 1
+    a.restore(PROFILE)  # «вернуть как было»: последнее изменение отменено
+    assert a.corrections(PROFILE) == before_reset
+    clock.hour += 1
+    a.restore(PROFILE, saved["id"])
+    assert a.corrections(PROFILE) == saved_state  # точь-в-точь, включая убранные черты
+    a.save(PROFILE)  # точка сохранения не мешает «вернуть как было»
+    clock.hour += 1
+    a.restore(PROFILE)  # и откат отката
+    assert a.corrections(PROFILE) == before_reset
+
+    history = a.history(PROFILE)
+    assert history[0]["action"] == "restore" and {h["action"] for h in history} == {
+        "step",
+        "reset",
+        "restore",
+    }
+    # Каждая запись журнала ведёт к снимку «как было до неё».
+    for entry in history:
+        (snap,) = [s for s in a.snapshots(PROFILE, 100) if s["id"] == entry["snapshot_id"]]
+        assert snap["traits"].get(entry["trait"], 0.0) == entry["before"]
+    with pytest.raises(ValueError):
+        a.restore(PROFILE, "s_missing")
+    with pytest.raises(ValueError):
+        a.restore("friendly@1.0.0", saved["id"])  # снимок чужого профиля не подходит
+    with pytest.raises(ConstraintError):
+        db.execute("UPDATE adaptation_change SET action = 'magic'")
+
+
+def test_owner_actions_are_not_undone_by_old_ratings(db: ModuleDatabase) -> None:
+    a, f, clock = setup(db)
+    grow(a, f, clock, "humor", -1, 1)
+    settle(f, "humor", -1, "fresh")  # свежие оценки, которые уже были до сброса
+    clock.hour += 7
+    a.reset(PROFILE)
+    clock.hour += 7
+    assert a.update(PROFILE, {}, {}) == [] and a.corrections(PROFILE) == {}
+    settle(f, "humor", -1, "after")
+    assert a.update(PROFILE, {}, {})  # новые оценки после сброса — снова можно
+
+
+def test_switch_off_keeps_corrections_and_ignores_ratings_given_meanwhile(
+    db: ModuleDatabase,
+) -> None:
+    a, f, clock = setup(db)
+    grow(a, f, clock, "humor", -1, 1)
+    a.set_enabled(False)
+    assert not a.enabled and a.applied(PROFILE) == {}
+    assert a.corrections(PROFILE) == {"humor": -STEP}  # хранится, просто не применяется
+    clock.hour += 7
+    settle(f, "humor", -1, "off")
+    assert a.update(PROFILE, {}, {}) == []
+    clock.hour += 1
+    a.set_enabled(True)
+    assert a.applied(PROFILE) == {"humor": -STEP}
+    clock.hour += 7
+    assert a.update(PROFILE, {}, {}) == []  # оценки, данные при выключенной подстройке, не в счёт
+    settle(f, "humor", -1, "on")
+    assert a.update(PROFILE, {}, {})
+    clock.hour += 7
+    settle(f, "humor", -1, "again")
+    clock.hour += 1
+    a.set_enabled(True)  # повторное включение не обнуляет уже собранные оценки
+    assert a.update(PROFILE, {}, {})
+
+
+def test_automatic_snapshots_are_bounded_saved_points_kept(db: ModuleDatabase) -> None:
+    from ramvi_character.adaptation import KEEP_SNAPSHOTS
+
+    a, f, clock = setup(db)
+    grow(a, f, clock, "humor", 1, 1)
+    saved = a.save(PROFILE)
+    for n in range(KEEP_SNAPSHOTS + 5):
+        clock.hour += 1
+        a.reset(PROFILE) if n % 2 == 0 else a.restore(PROFILE)
+    kinds = [s["kind"] for s in a.snapshots(PROFILE, 1000)]
+    assert kinds.count("saved") == 1 and len(kinds) == KEEP_SNAPSHOTS + 1
+    a.restore(PROFILE, saved["id"])
+    assert a.corrections(PROFILE) == {"humor": STEP}
+
+
+def test_module_switch_keeps_profile_memory_and_survives_restart(db: ModuleDatabase) -> None:
+    from test_character_consolidation import candidate
+
+    name = candidate("Владельца зовут Анна", subject="имя", quote="меня зовут Анна")
+    svc = Both(db, with_candidates(name))
+    m = active(svc)
+    m.dialogue("profile", {"id": "sarcastic"})
+    base = m.status()["personality"]["effective_traits"]
+    replies = [talk(m, f"Меня зовут Анна, реплика {n}") for n in range(3)]
+    for reply in replies:
+        m.dialogue("feedback", {"direction": -1, "dimension": "humor", "response_id": reply})
+    assert m._consolidator is not None and m._consolidator.wait()
+    memory = m.dialogue("memory")["memory"]["records"]
+    signals = m.dialogue("feedback_view")["feedback"]["signals"]
+    assert memory and m.status()["personality"]["acquired"] == {"humor": -STEP}
+
+    view = m.dialogue("adaptation_enable", {"enabled": False})["adaptation"]
+    assert view["enabled"] is False and view["corrections"] == {"humor": -STEP}
+    assert view["applied"] == {}
+    status = m.status()
+    assert status["personality"]["acquired"] == {}
+    assert status["personality"]["effective_traits"] == base
+    assert status["personality"]["base"]["id"] == "sarcastic"  # профиль на месте
+    assert m.dialogue("memory")["memory"]["records"] == memory  # память на месте
+    assert m.dialogue("feedback_view")["feedback"]["signals"] == signals
+    assert "error" in m.dialogue("adaptation_enable", {"enabled": "no"})
+    m.dispose()
+
+    restarted = active(svc)
+    restarted.dialogue("profile", {"id": "sarcastic"})
+    assert restarted.status()["personality"]["acquired"] == {}  # выключение пережило перезапуск
+    view = restarted.dialogue("adaptation_enable", {"enabled": True})["adaptation"]
+    assert restarted.status()["personality"]["acquired"] == {"humor": -STEP}
+    saved = restarted.dialogue("adaptation_save")["adaptation"]["snapshots"][0]
+    restarted.dialogue("adaptation_reset")
+    assert restarted.status()["personality"]["acquired"] == {}
+    view = restarted.dialogue("adaptation_restore", {"snapshot_id": saved["id"]})["adaptation"]
+    assert view["applied"] == {"humor": -STEP} and view["history"][0]["action"] == "restore"
+    assert restarted.status()["personality"]["acquired"] == {"humor": -STEP}
+    assert "error" in restarted.dialogue("adaptation_restore", {"snapshot_id": "s_x"})
+    exported = restarted.dialogue("memory_export")["memory"]["adaptation"]
+    assert exported["enabled"] and len(exported["snapshots"]) >= 3
+    restarted.dispose()

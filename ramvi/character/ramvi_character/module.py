@@ -21,6 +21,16 @@ MEMORY_OPERATIONS = frozenset(
     {"memory", "memory_confirm", "memory_correct", "memory_forget", "memory_clear", "memory_export"}
 )
 
+ADAPTATION_OPERATIONS = frozenset(
+    {
+        "adaptation",
+        "adaptation_enable",
+        "adaptation_save",
+        "adaptation_reset",
+        "adaptation_restore",
+    }
+)
+
 
 class CharacterModule:
     def __init__(self) -> None:
@@ -111,7 +121,7 @@ class CharacterModule:
     def _load_corrections(self) -> None:
         if self._adaptation is not None:
             key = self._personality.selected
-            self._personality.set_acquired(key, self._adaptation.corrections(key))
+            self._personality.set_acquired(key, self._adaptation.applied(key))
 
     def _adapt(self) -> list[dict[str, Any]]:
         """Fresh settled feedback -> at most one bounded step per trait, then apply it."""
@@ -120,8 +130,34 @@ class CharacterModule:
         key, view = self._personality.selected, self._personality.view()
         changes = self._adaptation.update(key, view["settings"], view["boundaries"])
         if changes:
-            self._personality.set_acquired(key, self._adaptation.corrections(key))
+            self._personality.set_acquired(key, self._adaptation.applied(key))
         return changes
+
+    def _adaptation_command(self, operation: str, args: dict[str, Any]) -> dict[str, Any]:
+        """The owner's controls over learned corrections of the selected profile."""
+        if self._adaptation is None:
+            raise ValueError("adaptation is not available")
+        key = self._personality.selected
+        if operation == "adaptation_enable":
+            self._adaptation.set_enabled(args["enabled"])
+        elif operation == "adaptation_save":
+            self._adaptation.save(key)
+        elif operation == "adaptation_reset":
+            self._adaptation.reset(key)
+        elif operation == "adaptation_restore":
+            snapshot = args.get("snapshot_id")
+            if snapshot is not None and not isinstance(snapshot, str):
+                raise ValueError("invalid snapshot id")
+            self._adaptation.restore(key, snapshot)
+        self._load_corrections()
+        return {
+            "enabled": self._adaptation.enabled,
+            "profile": key,
+            "corrections": self._adaptation.corrections(key),
+            "applied": self._adaptation.applied(key),
+            "history": self._adaptation.history(key, 30),
+            "snapshots": self._adaptation.snapshots(key, 20),
+        }
 
     def _stop_memory(self) -> None:
         # Background memory work never outlives the module's active state.
@@ -269,6 +305,7 @@ class CharacterModule:
             "character_state": self._memory.load_state(),
             "history": copy.deepcopy(self._dialogue.history),
             "feedback": self._feedback.signals(limit=1000) if self._feedback else [],
+            "adaptation": self._adaptation.export() if self._adaptation else None,
         }
 
     def _save_live_state(self) -> None:
@@ -467,6 +504,8 @@ class CharacterModule:
                 return {"memory": self._memory_command(operation, args)}
             elif operation in {"feedback", "feedback_view", "feedback_clear"}:
                 return {"feedback": self._feedback_command(operation, args)}
+            elif operation in ADAPTATION_OPERATIONS:
+                return {"adaptation": self._adaptation_command(operation, args)}
             elif operation in {"history_forget", "history_clear"}:
                 return {"history": self._history_command(operation, args)}
             elif operation not in {"status", "poll"}:

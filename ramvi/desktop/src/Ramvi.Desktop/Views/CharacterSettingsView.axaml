@@ -75,6 +75,42 @@
     <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:PreferenceItem"><TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,0,0,4"/></DataTemplate></ItemsControl.ItemTemplate>
    </ItemsControl>
    <WrapPanel><Button x:Name="FeedbackClear" Content="{l:T character.pref_clear}" Command="{Binding ClearFeedbackCommand}" IsEnabled="{Binding !NoPreferences}" Margin="0,0,8,8"/></WrapPanel>
+   <StackPanel x:Name="AdaptationSettings" IsVisible="{Binding AdaptationAvailable}" Spacing="8">
+    <TextBlock Text="{l:T character.adapt_title}" Classes="heading"/>
+    <TextBlock Text="{l:T character.adapt_hint}" TextWrapping="Wrap" Classes="muted"/>
+    <CheckBox x:Name="AdaptationEnabled" Content="{l:T character.adapt_enabled}" IsChecked="{Binding AdaptationEnabled}"/>
+    <TextBlock Text="{l:T character.adapt_off_hint}" IsVisible="{Binding !AdaptationEnabled}" TextWrapping="Wrap" Classes="muted"/>
+    <TextBlock Text="{l:T character.adapt_empty}" IsVisible="{Binding NoCorrections}" Classes="muted"/>
+    <ItemsControl x:Name="AdaptationCorrections" ItemsSource="{Binding Corrections}">
+     <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:CorrectionItem"><TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,0,0,4"/></DataTemplate></ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <WrapPanel>
+     <Button x:Name="AdaptationSave" Content="{l:T character.adapt_save}" Command="{Binding SaveAdaptationCommand}" Margin="0,0,8,8"/>
+     <Button x:Name="AdaptationUndo" Content="{l:T character.adapt_undo}" Command="{Binding UndoAdaptationCommand}" Margin="0,0,8,8"/>
+     <Button x:Name="AdaptationReset" Content="{l:T character.adapt_reset}" Command="{Binding ResetAdaptationCommand}" Margin="0,0,8,8"/>
+    </WrapPanel>
+    <StackPanel IsVisible="{Binding ResetArmed}" Spacing="8">
+     <TextBlock Text="{l:T character.adapt_reset_confirm}" TextWrapping="Wrap" Classes="error"/>
+     <WrapPanel><Button x:Name="AdaptationResetYes" Content="{l:T character.adapt_reset_yes}" Command="{Binding ResetAdaptationCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.memory_cancel}" Command="{Binding CancelClearCommand}" Margin="0,0,8,8"/></WrapPanel>
+    </StackPanel>
+    <TextBlock Text="{l:T character.adapt_points}" FontWeight="SemiBold" IsVisible="{Binding HasSavedPoints}"/>
+    <ItemsControl x:Name="AdaptationPoints" ItemsSource="{Binding SavedPoints}">
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="vm:AdaptationPointItem">
+       <WrapPanel Margin="0,0,0,6"><TextBlock Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0"/><Button Content="{l:T character.adapt_restore}" Command="{Binding RestoreCommand}"/></WrapPanel>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <TextBlock Text="{l:T character.adapt_history}" FontWeight="SemiBold"/>
+    <TextBlock Text="{l:T character.adapt_history_empty}" IsVisible="{Binding NoAdaptationHistory}" Classes="muted"/>
+    <ItemsControl x:Name="AdaptationHistory" ItemsSource="{Binding AdaptationHistory}">
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="vm:AdaptationChangeItem">
+       <WrapPanel Margin="0,0,0,6"><TextBlock Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0"/><Button Content="{l:T character.adapt_restore_before}" Command="{Binding RestoreCommand}"/></WrapPanel>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
    <TextBlock Text="{l:T character.history_title}" Classes="heading"/>
    <WrapPanel><Button x:Name="HistoryClear" Content="{l:T character.history_clear}" Command="{Binding ClearHistoryCommand}" Margin="0,0,8,8"/></WrapPanel>
    <StackPanel IsVisible="{Binding ClearHistoryArmed}" Spacing="8">
