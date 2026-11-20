@@ -134,13 +134,15 @@ class FeedbackStore:
         )
         return item
 
-    def signals(self, dimension: str | None = None, limit: int = WINDOW) -> list[dict[str, Any]]:
+    def signals(
+        self, dimension: str | None = None, limit: int = WINDOW, since: str | None = None
+    ) -> list[dict[str, Any]]:
         if dimension is not None and dimension not in DIMENSIONS:
             raise ValueError("invalid feedback dimension")
         rows = self.memory._query(
             "SELECT * FROM feedback_signal WHERE namespace_id = ? AND (? IS NULL OR dimension = ?)"
-            " ORDER BY created_at DESC, id LIMIT ?",
-            [self.namespace, dimension, dimension, limit],
+            " AND (? IS NULL OR created_at > ?) ORDER BY created_at DESC, id LIMIT ?",
+            [self.namespace, dimension, dimension, since, since, limit],
         )
         result = []
         for row in rows:
@@ -149,11 +151,12 @@ class FeedbackStore:
             result.append(row)
         return result
 
-    def preferences(self) -> list[dict[str, Any]]:
-        """Per dimension: which way the reliable evidence points and whether it is settled."""
+    def preferences(self, since: dict[str, str] | None = None) -> list[dict[str, Any]]:
+        """Per dimension: which way the reliable evidence points and whether it is settled.
+        since: dimension -> moment; only newer signals count (fresh evidence for a new step)."""
         result = []
         for dimension in DIMENSIONS:
-            signals = self.signals(dimension)
+            signals = self.signals(dimension, since=(since or {}).get(dimension))
             if not signals:
                 continue
             reliable = [s for s in signals if s["reliable"]]

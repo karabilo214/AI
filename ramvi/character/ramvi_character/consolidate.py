@@ -13,6 +13,7 @@ never replaces what is known. Only completed responses submit candidates.
 import hashlib
 import queue
 import threading
+from collections.abc import Callable
 from typing import Any
 
 from ramvi_character.feedback import FeedbackStore
@@ -52,8 +53,13 @@ def record_id(kind: str, subject: str, value: str) -> str:
 class Consolidator:
     """Applies candidates one by one off the response path; stops with the module."""
 
-    def __init__(self, store: MemoryStore, feedback: FeedbackStore | None = None) -> None:
-        self.store, self.feedback = store, feedback
+    def __init__(
+        self,
+        store: MemoryStore,
+        feedback: FeedbackStore | None = None,
+        after_feedback: Callable[[], Any] | None = None,
+    ) -> None:
+        self.store, self.feedback, self.after_feedback = store, feedback, after_feedback
         self._queue: queue.Queue[dict[str, Any]] = queue.Queue(QUEUE)
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
@@ -129,6 +135,12 @@ class Consolidator:
                     )
                     with self._lock:
                         self.stats["feedback"] += 1
+                except Exception:
+                    with self._lock:
+                        self.stats["errors"] += 1
+            if job["feedback"] and self.after_feedback is not None and not self._stopped.is_set():
+                try:
+                    self.after_feedback()
                 except Exception:
                     with self._lock:
                         self.stats["errors"] += 1

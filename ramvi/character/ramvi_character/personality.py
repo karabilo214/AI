@@ -145,6 +145,21 @@ class Personality:
             self._selected = key
             self._revision += 1
 
+    @property
+    def selected(self) -> str:
+        return self._selected
+
+    def set_acquired(self, profile: str, values: dict[str, float]) -> None:
+        """Bounded learned corrections (CHAR-19) for one profile version. Not an owner policy
+        change, so the revision stays and a response in progress is not cancelled."""
+        if profile not in self._profiles:
+            raise ValueError("corrections refer to unknown profile")
+        validated = traits(values, correction=True)
+        acquired = {k: v for k, v in self._acquired.items() if k != profile}
+        if validated:
+            acquired[profile] = validated
+        self._acquired = acquired  # replaced whole: readers on other threads see old or new
+
     def preferences(self, values: dict[str, float]) -> None:
         validated = traits(values)
         if self._overrides != validated:

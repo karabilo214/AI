@@ -4,6 +4,7 @@ import copy
 import json
 from typing import Any
 
+from ramvi_character.adaptation import Adaptation
 from ramvi_character.consolidate import Consolidator
 from ramvi_character.context import Budget, ContextOrchestrator, text
 from ramvi_character.dialogue import Dialogue
@@ -42,6 +43,7 @@ class CharacterModule:
         self._memory_error: str | None = None
         self._consolidator: Consolidator | None = None
         self._feedback: FeedbackStore | None = None
+        self._adaptation: Adaptation | None = None
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})
@@ -102,7 +104,24 @@ class CharacterModule:
     def _start_memory(self) -> None:
         if self._memory is not None:
             self._feedback = FeedbackStore(self._memory)
-            self._consolidator = Consolidator(self._memory, self._feedback)
+            self._adaptation = Adaptation(self._memory, self._feedback)
+            self._consolidator = Consolidator(self._memory, self._feedback, self._adapt)
+            self._load_corrections()
+
+    def _load_corrections(self) -> None:
+        if self._adaptation is not None:
+            key = self._personality.selected
+            self._personality.set_acquired(key, self._adaptation.corrections(key))
+
+    def _adapt(self) -> list[dict[str, Any]]:
+        """Fresh settled feedback -> at most one bounded step per trait, then apply it."""
+        if self._adaptation is None:
+            return []
+        key, view = self._personality.selected, self._personality.view()
+        changes = self._adaptation.update(key, view["settings"], view["boundaries"])
+        if changes:
+            self._personality.set_acquired(key, self._adaptation.corrections(key))
+        return changes
 
     def _stop_memory(self) -> None:
         # Background memory work never outlives the module's active state.
@@ -208,6 +227,7 @@ class CharacterModule:
             self._feedback.add(
                 target, args.get("dimension", "overall"), args["direction"], "explicit_ui"
             )
+            self._adapt()
         elif operation == "feedback_clear":
             self._feedback.clear()
             assert self._memory is not None
@@ -343,6 +363,7 @@ class CharacterModule:
         self._require_active()
         self._dialogue.cancel()
         self._personality.select(profile_id, version)
+        self._load_corrections()  # each profile keeps its own learned corrections
         return self.status()
 
     def add_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
