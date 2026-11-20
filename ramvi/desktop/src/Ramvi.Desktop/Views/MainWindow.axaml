@@ -25,10 +25,10 @@
                IsHitTestVisible="False" Text="{l:T app.title}" />
   </Border>
   <!-- Раскладка по иллюстрации ТЗ «Главный экран»: меню слева, чат справа (3.16, неоморфизм) -->
-  <Grid Grid.Row="1" ColumnDefinitions="288,*">
+  <Grid Grid.Row="1" ColumnDefinitions="288,*" RowDefinitions="Auto,*">
 
     <!-- Меню: логотип, разделы, диалоги, настройки -->
-    <Border Grid.Column="0" Classes="sidebar">
+    <Border Grid.Column="0" Grid.RowSpan="2" Classes="sidebar">
       <DockPanel Margin="14,18,14,14">
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="6,0,0,14">
           <Image Source="avares://RAMVI/Assets/ramvi-emblem.png" Width="36" Height="36" />
@@ -92,41 +92,14 @@
       </DockPanel>
     </Border>
 
-    <!-- Раздел модуля (Agent/Character): вид создаётся при первом открытии и хранится -->
-    <Border x:Name="ModuleSection" Grid.Column="1" Classes="card" Margin="8,4,16,16"
-            IsVisible="{Binding Sections.IsPlaceholderSelected}">
-      <StackPanel Margin="28" Spacing="8" DataContext="{Binding Sections.Current}" x:DataType="vm:ModuleSectionViewModel">
-        <TextBlock x:Name="ModuleTitle" Classes="title" Text="{Binding Title, FallbackValue=''}" />
-        <TextBlock x:Name="ModuleState" Classes="muted" Text="{Binding State, FallbackValue=''}" />
-        <TextBlock x:Name="ModuleError" Classes="error" TextWrapping="Wrap" Text="{Binding Error, FallbackValue=''}"
-                   IsVisible="{Binding HasError, FallbackValue=False}" />
-        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Placeholder, FallbackValue=''}" />
-      </StackPanel>
-    </Border>
-
-
-    <Border x:Name="AgentPanel" Grid.Column="1" Classes="card" Margin="8,4,16,16" IsVisible="{Binding Sections.IsAgentSelected}">
-      <views:AgentView DataContext="{Binding Agent}"/>
-    </Border>
-
-    <Border x:Name="CharacterPanel" Grid.Column="1" Classes="card" Margin="8,4,16,16" IsVisible="{Binding Sections.IsCharacterSelected}">
-      <Grid ColumnDefinitions="2*,3*">
-       <views:CharacterView DataContext="{Binding Sections.Current}" Response="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Presentation}"/>
-       <views:CharacterDialogueView Grid.Column="1" DataContext="{Binding Character}"/>
-      </Grid>
-    </Border>
-
-    <!-- Диалог -->
-    <DockPanel x:Name="ChatPanel" Grid.Column="1" Margin="8,4,16,16" IsVisible="{Binding Sections.IsChatSelected}">
-      <!-- Верхняя полоса: модель; справа значки «Очистить» и «Удалить» с подсказками -->
-      <Grid DockPanel.Dock="Top" Margin="0,0,0,8" ColumnDefinitions="Auto,*,Auto,Auto">
+    <Grid x:Name="SharedModelPicker" Grid.Column="1" Margin="8,4,16,4" HorizontalAlignment="Left">
         <Border Classes="chip" Margin="4">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock VerticalAlignment="Center" Classes="muted" Text="{l:T chat.model}" />
             <ComboBox x:Name="ModelBox" MinWidth="220" BorderThickness="0" Background="Transparent"
                       ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
                       IsDropDownOpen="{Binding IsModelPickerOpen}"
-                      IsEnabled="{Binding IsIdle}">
+                      IsEnabled="{Binding CanSelectModel}">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="api:ModelInfo">
                   <TextBlock Text="{Binding Id}" />
@@ -144,6 +117,36 @@
             </Border>
           </StackPanel>
         </Border>
+    </Grid>
+
+    <!-- Раздел модуля (Agent/Character): вид создаётся при первом открытии и хранится -->
+    <Border x:Name="ModuleSection" Grid.Column="1" Grid.Row="1" Classes="card" Margin="8,4,16,16"
+            IsVisible="{Binding Sections.IsPlaceholderSelected}">
+      <StackPanel Margin="28" Spacing="8" DataContext="{Binding Sections.Current}" x:DataType="vm:ModuleSectionViewModel">
+        <TextBlock x:Name="ModuleTitle" Classes="title" Text="{Binding Title, FallbackValue=''}" />
+        <TextBlock x:Name="ModuleState" Classes="muted" Text="{Binding State, FallbackValue=''}" />
+        <TextBlock x:Name="ModuleError" Classes="error" TextWrapping="Wrap" Text="{Binding Error, FallbackValue=''}"
+                   IsVisible="{Binding HasError, FallbackValue=False}" />
+        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Placeholder, FallbackValue=''}" />
+      </StackPanel>
+    </Border>
+
+
+    <Border x:Name="AgentPanel" Grid.Column="1" Grid.Row="1" Classes="card" Margin="8,4,16,16" IsVisible="{Binding Sections.IsAgentSelected}">
+      <views:AgentView DataContext="{Binding Agent}"/>
+    </Border>
+
+    <Border x:Name="CharacterPanel" Grid.Column="1" Grid.Row="1" Classes="card" Margin="8,4,16,16" IsVisible="{Binding Sections.IsCharacterSelected}">
+      <Grid ColumnDefinitions="2*,3*">
+       <views:CharacterView DataContext="{Binding Sections.Current}" Response="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Presentation}" Playback="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Playback}" PackPath="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.PackPath, Mode=TwoWay}"/>
+       <views:CharacterDialogueView Grid.Column="1" DataContext="{Binding Character}"/>
+      </Grid>
+    </Border>
+
+    <!-- Диалог -->
+    <DockPanel x:Name="ChatPanel" Grid.Column="1" Grid.Row="1" Margin="8,4,16,16" IsVisible="{Binding Sections.IsChatSelected}">
+      <!-- Верхняя полоса: модель; справа значки «Очистить» и «Удалить» с подсказками -->
+      <Grid DockPanel.Dock="Top" Margin="0,0,0,8" ColumnDefinitions="Auto,*,Auto,Auto">
         <Button x:Name="ClearButton" Grid.Column="2" Classes="icon" ToolTip.Tip="{l:T chat.clear_hint}"
                 Command="{Binding ClearCommand}">
           <PathIcon Data="{StaticResource icon-clear}" />
@@ -348,7 +351,7 @@
     <!-- Настройки (3.7): поверх окна; вкладки «Общие», «Звук», «Модели», «Подключения» и вкладки модулей.
          Шапка со значком «Закрыть» и низ с «Сохранить» не прокручиваются. -->
     <!-- 8.5: Tab ходит по кругу внутри открытого окна и не уходит на элементы под ним -->
-    <Border x:Name="SettingsPanel" Grid.ColumnSpan="2" ZIndex="9" Classes="overlay" IsVisible="{Binding Settings.IsOpen}"
+    <Border x:Name="SettingsPanel" Grid.RowSpan="2" Grid.ColumnSpan="2" ZIndex="9" Classes="overlay" IsVisible="{Binding Settings.IsOpen}"
             KeyboardNavigation.TabNavigation="Cycle">
       <Border x:Name="SettingsCard" Classes="card" MaxWidth="920" Margin="24" Padding="0"
               HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
@@ -752,6 +755,7 @@
               </StackPanel>
             </ScrollViewer>
             <!-- Вкладка модуля: модули добавляют свои настройки (этапы 6 и 9) -->
+            <Border IsVisible="{Binding Settings.IsCharacterTab}"><views:CharacterSettingsView DataContext="{Binding Character}"/></Border>
             <Border IsVisible="{Binding Settings.IsAgentTab}"><views:AgentSettingsView DataContext="{Binding Agent}"/></Border>
             <StackPanel x:Name="ModuleSettingsTab" Margin="28,8" Spacing="8" IsVisible="{Binding Settings.IsModuleTab}">
               <TextBlock Classes="muted" TextWrapping="Wrap" Text="{l:T settings.module_tab_note}" />
@@ -774,7 +778,7 @@
     </Border>
 
     <!-- Мастер первого запуска (UI-01, 3.6): поверх всего окна -->
-    <Border x:Name="Onboarding" Grid.ColumnSpan="2" ZIndex="10" Classes="overlay" IsVisible="{Binding Onboarding.IsOpen}"
+    <Border x:Name="Onboarding" Grid.RowSpan="2" Grid.ColumnSpan="2" ZIndex="10" Classes="overlay" IsVisible="{Binding Onboarding.IsOpen}"
             KeyboardNavigation.TabNavigation="Cycle">
       <ScrollViewer>
         <Border Classes="card" MaxWidth="680" Margin="24" Padding="28" HorizontalAlignment="Center" VerticalAlignment="Top">

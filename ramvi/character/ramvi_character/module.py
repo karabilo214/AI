@@ -30,6 +30,7 @@ class CharacterModule:
         self._emotion = "neutral"
         self._presentation: dict[str, Any] | None = None
         self._pack: dict[str, Any] | None = None
+        self._presentation_settings = {"pack_path": "", "show_avatar": True}
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})
@@ -62,6 +63,14 @@ class CharacterModule:
         self._speech = SpeechOutput(context.get("services"), context.get("session_id"))
         self._dialogue = Dialogue(self, context.get("services"))
         self._voice = VoiceConversation(self, context.get("services"))
+        preferences = saved.get("presentation_settings", self._presentation_settings)
+        if context.get("services") is not None:
+            stored = (
+                context["services"].call("data.get", {"path": "presentation.json"}).get("value")
+            )
+            if stored is not None:
+                preferences = stored
+        self._presentation_settings = self._validate_presentation(preferences)
         # Text activation does not import/load animation, STT, TTS or an LLM.
         self._state = "initialized"
         return self.status()
@@ -106,6 +115,7 @@ class CharacterModule:
             "draft": self._draft,
             "model": self._model,
             "emotion": self._emotion,
+            "presentation_settings": copy.deepcopy(self._presentation_settings),
             "personality": self._personality.checkpoint(),
             "emotional_state": self._emotions.checkpoint(),
             "task": self._task,
@@ -253,6 +263,18 @@ class CharacterModule:
         self._draft, self._model = draft, model
         return self.status()
 
+    @staticmethod
+    def _validate_presentation(value: Any) -> dict[str, Any]:
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"pack_path", "show_avatar"}
+            or not isinstance(value["pack_path"], str)
+            or len(value["pack_path"].encode()) > 4096
+            or type(value["show_avatar"]) is not bool
+        ):
+            raise ValueError("invalid presentation preferences")
+        return copy.deepcopy(value)
+
     def dialogue(
         self, operation: str = "status", arguments: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -274,11 +296,19 @@ class CharacterModule:
                 self.select_profile(args["id"])
             elif operation == "boundary":
                 self.set_boundary(args["name"], args["allowed"])
+            elif operation == "presentation":
+                preferences = self._validate_presentation(args["settings"])
+                if self._dialogue.services is not None:
+                    self._dialogue.services.call(
+                        "data.set", {"path": "presentation.json", "value": preferences}
+                    )
+                self._presentation_settings = preferences
             elif operation not in {"status", "poll"}:
                 raise ValueError("unknown dialogue operation")
             result = self._dialogue.view(args.get("response_id"), args.get("cursor", 0))
             if operation == "poll":
                 return {"job": result["job"]}
+            result["presentation_settings"] = copy.deepcopy(self._presentation_settings)
             result["character"] = {
                 "draft": self._draft,
                 "model": self._model,
@@ -330,6 +360,8 @@ class CharacterModule:
             args = arguments or {}
             if not isinstance(args, dict):
                 raise ValueError("invalid speech arguments")
+            if operation == "policy":
+                return self._speech.policy(args.get("settings"))
             if operation == "catalog":
                 return self._speech.catalog(args.get("refresh", False))
             if operation == "configure":

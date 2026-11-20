@@ -1,6 +1,7 @@
 """Character policy feeds only validated dialogue segments into optional output."""
 
 import threading
+from typing import Any
 
 from ramvi_character.speech import SEGMENT_QUEUE, SpeechOutput
 from test_character_dialogue import Services, active, finish
@@ -8,11 +9,11 @@ from test_speech import wait
 
 
 class SpeechServices(Services):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.enabled = False
-        self.starts = []
-        self.cancels = []
+        self.starts: list[dict[str, Any]] = []
+        self.cancels: list[dict[str, Any]] = []
 
     def call(self, method, payload):
         if method == "speech.catalog":

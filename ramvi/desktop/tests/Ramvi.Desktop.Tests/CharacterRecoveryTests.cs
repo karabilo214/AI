@@ -83,7 +83,6 @@ public sealed class CharacterRecoveryTests
             await model.InitializeAsync();model.Sections.Selected=model.Sections.Items.Single(x=>x.View=="character");
             await MainViewModelTests.Until(()=>model.Character.Speech.TextOnly,"text fallback banner");
             var dialogue=window.GetVisualDescendants().OfType<CharacterDialogueView>().Single();
-            dialogue.FindControl<Expander>("SpeechSettings")!.IsExpanded=true;
             model.Character.Draft=string.Join("\n",Enumerable.Repeat("Fresh 104729",25));
             window.UpdateLayout();Dispatcher.UIThread.RunJobs();AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             var input=dialogue.GetVisualDescendants().OfType<TextBox>().Single(x=>x.AcceptsReturn);

@@ -1,6 +1,6 @@
 {
   "schema": "ramvi.character.pack/1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "canvas": [
     768,
     768
@@ -1003,6 +1003,9 @@
       ]
     }
   ],
+  "effects": {
+    "pulse": { "kind": "opacity", "minimum": 0.7, "duration_ms": 1200 }
+  },
   "speech": "tts",
   "auto_blink": false
 }

@@ -1,0 +1,27 @@
+{
+  "runs": [
+    {
+      "category": "write",
+      "reaction": "Подберу формулировку.",
+      "reaction_audible_window": true,
+      "answer_completed": true,
+      "jobs": 2
+    },
+    {
+      "category": "calculate",
+      "reaction": "Сейчас посчитаю.",
+      "reaction_audible_window": true,
+      "answer_completed": true,
+      "jobs": 2
+    },
+    {
+      "category": "write",
+      "reaction": "Сейчас набросаю вариант.",
+      "reaction_audible_window": true,
+      "answer_completed": true,
+      "jobs": 2
+    }
+  ],
+  "workers_stopped": true,
+  "llm_context_selection": "not_tested"
+}

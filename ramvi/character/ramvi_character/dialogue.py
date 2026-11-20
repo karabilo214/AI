@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from ramvi_character.context import Budget, ContextOrchestrator, encode, text, tokenizer_counter
-from ramvi_character.response import ResponsePlanner, plain_segments
+from ramvi_character.response import ResponsePlanner, plain_segments, strip_service_phrases
 
 
 class Dialogue:
@@ -81,7 +81,9 @@ class Dialogue:
             }
             if job and (response_id is None or job["id"] == response_id):
                 result["job"] = {
-                    key: copy.deepcopy(value) for key, value in job.items() if key != "events"
+                    key: copy.deepcopy(value)
+                    for key, value in job.items()
+                    if key not in {"events", "started_at"}
                 }
                 result["job"]["events"] = copy.deepcopy(job["events"][cursor:])
                 result["job"]["cursor"] = len(job["events"])
@@ -124,6 +126,8 @@ class Dialogue:
                 "events": [],
                 "error": None,
                 "fallback": False,
+                "started_at": time.monotonic(),
+                "first_segment_ms": None,
             }
             snapshot = {
                 "personality": self.owner._personality.view(),
@@ -160,6 +164,10 @@ class Dialogue:
                 self._check(identifier, revision)
                 assert self.job is not None
                 generation = self.job["generation"]
+                if record["type"] == "segment" and self.job["first_segment_ms"] is None:
+                    self.job["first_segment_ms"] = (
+                        time.monotonic() - self.job["started_at"]
+                    ) * 1000
                 if record["type"] != "end":
                     self.job["events"].append(
                         {
@@ -171,6 +179,8 @@ class Dialogue:
                     )
             # Never wait for playback/backpressure while holding the dialogue lock:
             # Stop must be able to invalidate this generation and wake this producer.
+            if record["type"] == "start":
+                self.owner._speech.react(identifier, record, generation)
             if record["type"] == "segment":
                 self.owner._speech.offer(identifier, record, generation, self._keepalive)
             with self.lock:
@@ -241,11 +251,13 @@ class Dialogue:
                 self.counter = tokenizer_counter(tokenizer, path)
             recent = []
             for row in snapshot["history"]:
-                if row["status"] == "completed":
+                # Old replies may hold service phrases the model would copy back.
+                said = strip_service_phrases(row["assistant"])
+                if row["status"] == "completed" and said:
                     recent.extend(
                         [
                             {"id": row["id"] + "u", "role": "user", "text": row["user"]},
-                            {"id": row["id"] + "a", "role": "assistant", "text": row["assistant"]},
+                            {"id": row["id"] + "a", "role": "assistant", "text": said},
                         ]
                     )
             emotions = self.owner._emotions.identifiers()
@@ -257,7 +269,7 @@ class Dialogue:
                 self.owner._scope, self.counter, system_prompt=planner.prompt(streaming)
             )
             prepared = context.build(
-                task=snapshot["task"] or "Continue the conversation and help the owner.",
+                task=snapshot["task"] or "Talk with the owner naturally, staying in character.",
                 user_input=user_input,
                 personality=snapshot["personality"],
                 state=snapshot["state"],
@@ -306,6 +318,7 @@ class Dialogue:
                 with self.lock:
                     assert self.job is not None
                     self.job["fallback"] = True
+            self.owner._speech.finish(identifier, self.job["generation"] if self.job else -1)
             with self.lock:
                 self._check(identifier, revision)
                 assert self.job is not None

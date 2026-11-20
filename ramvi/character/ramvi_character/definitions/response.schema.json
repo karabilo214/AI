@@ -100,6 +100,25 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1
+        },
+        "reaction": {
+          "enum": [
+            "none",
+            "consider",
+            "explain",
+            "calculate",
+            "write",
+            "code",
+            "compare",
+            "plan",
+            "support"
+          ]
+        },
+        "reaction_language": {
+          "enum": [
+            "ru",
+            "en"
+          ]
         }
       },
       "required": [

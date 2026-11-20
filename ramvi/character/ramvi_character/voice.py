@@ -20,6 +20,7 @@ class VoiceConversation:
         self.last_reply: dict[str, Any] | None = None
         self.remote_host: str | None = None
         self.cursor = 0
+        self.recognition_ms: float | None = None
         self.last_contact = time.monotonic()
 
     def capabilities(self) -> dict[str, Any]:
@@ -40,6 +41,7 @@ class VoiceConversation:
             return copy.deepcopy(
                 {
                     "state": self.state,
+                    "recognition_ms": self.recognition_ms,
                     "error": self.error,
                     "partial": self.partial,
                     "reply": self.last_reply,
@@ -125,6 +127,7 @@ class VoiceConversation:
                             and event["utterance_id"] == latest_utterance
                             and event["utterance_id"] not in seen
                         ):
+                            self.recognition_ms = event.get("recognition_ms")
                             seen.add(event["utterance_id"])
                             if len(seen) > 256 or len(pending) >= 2:
                                 raise RuntimeError("voice.session_overflow")

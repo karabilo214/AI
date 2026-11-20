@@ -4,12 +4,10 @@
  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="20" RowSpacing="10">
   <StackPanel Spacing="8">
    <TextBlock Classes="title" Text="{l:T section.agent}"/>
-   <Grid ColumnDefinitions="*,Auto,240" ColumnSpacing="8">
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
     <TextBox x:Name="AgentWorkspace" AutomationProperties.AutomationId="AgentWorkspace" Text="{Binding Workspace}" PlaceholderText="{l:T agent.workspace}"/>
     <Button Grid.Column="1" Content="{l:T agent.browse}" Command="{Binding BrowseCommand}"/>
-    <ComboBox x:Name="AgentModel" AutomationProperties.AutomationId="AgentModel" Grid.Column="2" ItemsSource="{Binding Models}" SelectedItem="{Binding Model}" HorizontalAlignment="Stretch">
-     <ComboBox.ItemTemplate><DataTemplate x:DataType="api:ModelInfo"><TextBlock Text="{Binding Id}"/></DataTemplate></ComboBox.ItemTemplate>
-    </ComboBox>
+
    </Grid>
    <TextBlock Text="{Binding Status}" Classes="muted"/>
    <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap"/>

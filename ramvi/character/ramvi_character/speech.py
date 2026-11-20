@@ -9,6 +9,9 @@ from collections import deque
 from collections.abc import Callable
 from typing import Any
 
+from ramvi_character.delivery import ReactionBank
+from ramvi_character.delivery import settings as delivery_settings
+
 SEGMENT_QUEUE = 3
 SAFE_ERROR = re.compile(
     r"speech\.(?:disabled|remote_text_disabled|key_missing|secrets_unavailable|voice_not_supported|voice_missing|busy|device_unavailable|device_lost|device_timeout|device_close_failed|provider_timeout|audio_timeout|deadline|provider_failed|cleanup_failed|failed|closed|api_http_[1-5]\d\d)\b"
@@ -38,8 +41,24 @@ class SpeechOutput:
         self.mode = "off"
         self.error: str | None = None
         self.last: dict[str, Any] | None = None
+        self.sync: dict[str, Any] | None = None
+        self.sync_at = 0.0
         self.preview_mode = False
         self.high_water = self.backpressure_waits = 0
+        self.delivery = delivery_settings({})
+        self.bank = ReactionBank()
+        self.pending: deque[tuple[int, str, dict[str, Any]]] = deque()
+        self.finished = False
+        self.began_at = 0.0
+        self.reaction: dict[str, Any] | None = None
+        self.reaction_used = False
+        self.local_provider = True
+        if services is not None:
+            saved = services.call("data.get", {"path": "delivery.json"}).get("value")
+            if saved is not None:
+                self.delivery = delivery_settings(saved)
+            recent = services.call("data.get", {"path": "reaction_history.json"}).get("value")
+            self.bank = ReactionBank(recent)
 
     def catalog(self, refresh: bool = False) -> dict[str, Any]:
         if self.services is None:
@@ -80,9 +99,14 @@ class SpeechOutput:
             generation = self.audio_generation
             self.audio_response_id = identifier
             self.queue.clear()
+            self.pending.clear()
+            self.finished = False
+            self.reaction = None
+            self.reaction_used = False
             self.offered.clear()
             self.preview_mode = False
             self.last = None
+            self.sync = None
             if pause:
                 self.armed = False
             if future_only:
@@ -120,6 +144,7 @@ class SpeechOutput:
         result = self.services.call("speech.configure", {"settings": settings})
         with self.lock:
             self.enabled = result["settings"]["enabled"]
+            self.local_provider = result["settings"].get("provider", "system") == "system"
         self._arm()
         return {**result, **self.view()}
 
@@ -137,6 +162,7 @@ class SpeechOutput:
         catalog = self.catalog()
         with self.lock:
             self.enabled = catalog.get("settings", {}).get("enabled", False)
+            self.local_provider = catalog.get("settings", {}).get("provider", "system") == "system"
         self._arm()
         return self.view()
 
@@ -193,6 +219,7 @@ class SpeechOutput:
             self.response_id = response_id
             generation = self.generation
         self._audio_fence(response_id)
+        self.began_at = time.monotonic()
         return generation
 
     def offer(
@@ -220,9 +247,10 @@ class SpeechOutput:
                     return True
                 if len(self.offered) >= 8:
                     raise ValueError("speech.segment_limit")
-                if len(self.queue) < SEGMENT_QUEUE:
+                if self.delivery["mode"] == "complete" or len(self.queue) < SEGMENT_QUEUE:
                     self.offered[record["id"]] = copy.deepcopy(record)
-                    self.queue.append((self.audio_generation, response_id, copy.deepcopy(record)))
+                    target = self.pending if self.delivery["mode"] == "complete" else self.queue
+                    target.append((self.audio_generation, response_id, copy.deepcopy(record)))
                     self.high_water = max(self.high_water, len(self.queue))
                     self.changed.notify_all()
                     return True
@@ -231,6 +259,72 @@ class SpeechOutput:
             if on_wait is not None and time.monotonic() >= keepalive:
                 on_wait()
                 keepalive = time.monotonic() + 1
+
+    def policy(self, proposed: dict[str, Any] | None = None) -> dict[str, Any]:
+        if proposed is not None:
+            result = delivery_settings({**self.delivery, **proposed})
+            self.pause()
+            if self.services is not None:
+                self.services.call("data.set", {"path": "delivery.json", "value": result})
+            with self.lock:
+                self.delivery = result
+        return {"settings": copy.deepcopy(self.delivery), "reaction_provider": "system"}
+
+    def react(self, response_id: str, record: dict[str, Any], generation: int) -> None:
+        with self.changed:
+            if (
+                not self.current(response_id, generation)
+                or not self.delivery["reactions"]
+                or not self.local_provider
+                or not self.enabled
+                or not self.armed
+                or generation < self.minimum_generation
+            ):
+                return
+            chosen = self.bank.choose(
+                record.get("reaction", "none"), record.get("reaction_language", "")
+            )
+            if chosen is not None and self.reaction is None:
+                self.reaction = {
+                    "id": "~reaction",
+                    "text": chosen[1],
+                    "emotion": record["emotion"],
+                    "intensity": record["intensity"],
+                    "voice_style": "neutral",
+                    "animation": "idle",
+                    "_preface": True,
+                    "_reaction_id": chosen[0],
+                }
+                self.changed.notify_all()
+
+    def finish(self, response_id: str, generation: int) -> None:
+        with self.changed:
+            if not self.current(response_id, generation):
+                return
+            self.finished = True
+            self.changed.notify_all()
+
+    def _next(self) -> tuple[int, str, dict[str, Any]] | None:
+        if not self.armed:
+            return None
+        if self.finished:
+            while self.pending and len(self.queue) < SEGMENT_QUEUE:
+                self.queue.append(self.pending.popleft())
+        ready = self.finished or len(self.queue) >= self.delivery["buffer"]
+        if self.queue and (ready or self.preview_mode):
+            self.reaction_used = True  # A fast answer suppresses the waiting phrase.
+            return self.queue.popleft()
+        # This is a configured grace period, not a measured response latency.
+        if (
+            self.reaction
+            and not self.reaction_used
+            and time.monotonic() - self.began_at >= 0.6
+            and self.audio_response_id
+        ):
+            self.reaction_used = True
+            self.bank.used(self.reaction["_reaction_id"])
+            return self.audio_generation, self.audio_response_id, self.reaction
+        return None
 
     def cancel(self, pause: bool = False) -> dict[str, Any]:
         with self.lock:
@@ -249,8 +343,20 @@ class SpeechOutput:
 
     def view(self) -> dict[str, Any]:
         with self.lock:
+            sync = copy.deepcopy(self.sync)
+            if sync is not None:
+                age = (time.monotonic() - self.sync_at) * 1000
+                for window in sync["playback"].get("windows", []):
+                    window["start_ms"] -= age
+                    window["end_ms"] -= age
+                sync["playback"]["windows"] = [
+                    w for w in sync["playback"].get("windows", []) if w["end_ms"] > 0
+                ]
             return copy.deepcopy(
                 {
+                    "sync": sync,
+                    "delivery": copy.deepcopy(self.delivery),
+                    "held": len(self.pending),
                     "session_id": self.session_id,
                     "enabled": self.enabled,
                     "armed": self.armed,
@@ -280,12 +386,40 @@ class SpeechOutput:
                         self.pause()
                     if job_id:
                         operation_generation = job_generation
+                        requested_at = time.monotonic()
                         packet = self.services.call("speech.status", {"job_id": job_id})["job"]
                         if packet:
                             with self.lock:
                                 current = job_generation == self.audio_generation
                                 if current:
                                     self.state = packet["state"]
+                                    record = (
+                                        self.reaction
+                                        if packet.get("segment_id") == "~reaction"
+                                        else self.offered.get(packet.get("segment_id", ""))
+                                    )
+                                    self.sync = None
+                                    if (
+                                        record is not None
+                                        and packet.get("response_id") == self.audio_response_id
+                                    ):
+                                        self.sync = {
+                                            "generation": job_generation,
+                                            "response_id": packet["response_id"],
+                                            "segment_id": record["id"],
+                                            "emotion": record["emotion"],
+                                            "animation": record.get("animation", "idle"),
+                                            "reaction_label": record.get("_reaction_id", "").split(
+                                                ":"
+                                            )[0],
+                                            "playback": copy.deepcopy(
+                                                packet.get(
+                                                    "playback",
+                                                    {"clock": "unavailable", "windows": []},
+                                                )
+                                            ),
+                                        }
+                                        self.sync_at = requested_at
                                     metadata = packet["metadata"]
                                     self.last = {
                                         k: copy.deepcopy(v)
@@ -314,7 +448,7 @@ class SpeechOutput:
                             job_id = None
                     if not job_id:
                         with self.changed:
-                            item = self.queue.popleft() if self.armed and self.queue else None
+                            item = self._next()
                             self.changed.notify_all()
                             if item is None and self.error is None:
                                 self.state = "idle" if self.armed else "off"
@@ -323,6 +457,11 @@ class SpeechOutput:
                             operation_generation = generation
                             if not self._audio_current(identifier, generation):
                                 continue
+                            if record.get("_preface"):
+                                self.services.call(
+                                    "data.set",
+                                    {"path": "reaction_history.json", "value": self.bank.recent},
+                                )
                             request = {
                                 "text": record["text"],
                                 "language": "auto",
@@ -339,6 +478,7 @@ class SpeechOutput:
                                         "response_id": identifier,
                                         "segment_id": record["id"],
                                         "preview": record["id"] == "preview",
+                                        "preface": bool(record.get("_preface")),
                                     },
                                 )
                                 job_id, job_generation, failed = result["job_id"], generation, False
@@ -349,7 +489,7 @@ class SpeechOutput:
                     self._degrade(error, operation_generation)
                     job_id = None
                 with self.changed:
-                    self.changed.wait(0.05)
+                    self.changed.wait(0.02)
         finally:
             if self.services is not None:
                 try:
@@ -359,4 +499,5 @@ class SpeechOutput:
             with self.changed:
                 self.armed = False
                 self.queue.clear()
+                self.pending.clear()
                 self.changed.notify_all()

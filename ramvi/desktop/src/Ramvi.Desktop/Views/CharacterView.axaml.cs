@@ -15,11 +15,31 @@ public sealed partial class CharacterView : UserControl, IDisposable
 {
     public static readonly StyledProperty<CharacterDirective?> ResponseProperty = AvaloniaProperty.Register<CharacterView,CharacterDirective?>(nameof(Response));
     public CharacterDirective? Response { get => GetValue(ResponseProperty); set => SetValue(ResponseProperty,value); }
+    public static readonly StyledProperty<CharacterPlayback?> PlaybackProperty = AvaloniaProperty.Register<CharacterView,CharacterPlayback?>(nameof(Playback));
+    public CharacterPlayback? Playback { get => GetValue(PlaybackProperty); set => SetValue(PlaybackProperty,value); }
+    public static readonly StyledProperty<string> PackPathProperty = AvaloniaProperty.Register<CharacterView, string>(nameof(PackPath), "");
+    public string PackPath { get => GetValue(PackPathProperty); set => SetValue(PackPathProperty, value); }
+    public static readonly StyledProperty<bool> AvatarEnabledProperty = AvaloniaProperty.Register<CharacterView, bool>(nameof(AvatarEnabled), true);
+    public bool AvatarEnabled { get => GetValue(AvatarEnabledProperty); set => SetValue(AvatarEnabledProperty, value); }
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
+        if (change.Property == AvatarEnabledProperty) Refresh();
+        if (change.Property == PackPathProperty && _packPath != (PackPath.Length == 0 ? null : PackPath))
+        {
+            if (PackPath.Length == 0) { _packPath = null; Release(); Refresh(); }
+            else if (!_attached || !IsEffectivelyVisible || !AvatarEnabled) { _packPath = PackPath; Release(); }
+            else
+            {
+                try { LoadPack(PackPath); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException)
+                { CharacterError.Text = Localizer.Current["character.pack_error"]; }
+            }
+        }
+        if (change.Property == PlaybackProperty && Playback is {} playback) _player?.SetPlayback(playback);
         if(change.Property==ResponseProperty && Response is {} directive) {
-            _player?.Apply(directive); CharacterSurface?.InvalidateVisual();
+            _player?.Apply(directive);
+            CharacterSurface?.InvalidateVisual();
         }
     }
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(33) };
@@ -28,20 +48,50 @@ public sealed partial class CharacterView : UserControl, IDisposable
     private CharacterPlayer? _player;
     private ModuleSectionViewModel? _model;
     private bool _attached;
+    private string? _packPath;
     private string _emotion = "neutral";
+    public void LoadPack(string path)
+    {
+        // Validate the replacement before touching the current surface.
+        var next = new CharacterPack(path);
+        var previous = _pack;
+        if (_player is not null)
+        {
+            if (_clock.IsRunning) _player.Tick(_clock.Elapsed.TotalMilliseconds);
+            _player.ReplacePack(next);
+        }
+        else
+        {
+            _player = new CharacterPlayer(next);
+            if (Response is {} directive) _player.Apply(directive);
+            if (Playback is {} playback) _player.SetPlayback(playback);
+        }
+        _packPath = Path.GetFullPath(path);
+        SetCurrentValue(PackPathProperty, _packPath);
+        _pack = next;
+        CharacterSurface.Pack = next; CharacterSurface.Player = _player;
+        previous?.Dispose();
+        if (!_attached || !IsEffectivelyVisible || !AvatarEnabled || _model?.CanPresent != true) Release();
+        else { CharacterError.Text = ""; _clock.Restart(); _timer.Start(); }
+    }
     private readonly List<Visual> _visibilityOwners = [];
     internal bool IsAnimationRunning => _timer.IsEnabled;
     public CharacterView()
     {
         InitializeComponent();
-        CharacterSurface.ResourceFailed += (_, _) => Dispatcher.UIThread.Post(() =>
+        CharacterSurface.ResourceFailed += (_, _) =>
         {
-            Release(); CharacterError.Text = Localizer.Current["character.pack_error"];
-        });
+            var failed = _pack;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!ReferenceEquals(failed, _pack)) return;
+                Release(); CharacterError.Text = Localizer.Current["character.pack_error"];
+            });
+        };
         _timer.Tick += (_, _) =>
         {
             if (_player is null) return;
-            _player.Tick(Math.Min(_clock.Elapsed.TotalMilliseconds, 100));
+            _player.Tick(_clock.Elapsed.TotalMilliseconds);
             _clock.Restart();
             CharacterSurface.InvalidateVisual();
         };
@@ -52,25 +102,8 @@ public sealed partial class CharacterView : UserControl, IDisposable
             if (_model is not null) _model.PropertyChanged += ModelChanged;
             Refresh();
         };
-        CharacterEmotion.SelectionChanged += (_, _) =>
-        {
-            if (CharacterEmotion.SelectedItem is EmotionItem item && _player is not null)
-            {
-                _emotion = item.Id;
-                _player.Present(item.Id, _player.Animation);
-            }
-        };
-        CharacterIdle.Click += (_, _) => Motion("idle");
-        CharacterBlink.Click += (_, _) => Motion("blink");
-        CharacterTalk.Click += (_, _) => Motion("talk");
-        CharacterNod.Click += (_, _) => Motion("nod");
-        CharacterShake.Click += (_, _) => Motion("shake");
     }
     private void ModelChanged(object? sender, PropertyChangedEventArgs e) => Refresh();
-    private void Motion(string name)
-    {
-        if (_player is not null) _player.Present(_player.Emotion, name);
-    }
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -105,17 +138,17 @@ public sealed partial class CharacterView : UserControl, IDisposable
     }
     private void Refresh()
     {
-        if (!_attached || !IsEffectivelyVisible || _model?.CanPresent != true) { Release(); return; }
+        if (!_attached || !IsEffectivelyVisible || !AvatarEnabled || _model?.CanPresent != true) { Release(); return; }
         if (_pack is not null) return;
         try
         {
             var root = ServiceOptions.FromEnvironment().RamviRoot;
-            _pack = new CharacterPack(Path.Combine(root, "character", "ramvi_character", "assets", "pack.json"));
+            _pack = new CharacterPack(_packPath ?? Path.Combine(root, "character", "ramvi_character", "assets", "pack.json"));
             _player = new CharacterPlayer(_pack);
+            if (_pack.Emotions.Contains(_emotion, StringComparer.Ordinal)) _player.Present(_emotion, "idle");
             if(Response is {} directive) _player.Apply(directive);
+            if (Playback is {} playback) _player.SetPlayback(playback);
             CharacterSurface.Pack = _pack; CharacterSurface.Player = _player;
-            CharacterEmotion.ItemsSource = _pack.Emotions.Select(id => new EmotionItem(id)).ToArray();
-            CharacterEmotion.SelectedIndex = _pack.Emotions.ToList().IndexOf(_emotion);
             CharacterError.Text = "";
             _clock.Restart(); _timer.Start();
         }
@@ -128,9 +161,5 @@ public sealed partial class CharacterView : UserControl, IDisposable
     {
         _timer.Stop(); _clock.Stop(); CharacterSurface.Release();
         _player = null; _pack?.Dispose(); _pack = null;
-    }
-    private sealed record EmotionItem(string Id)
-    {
-        public override string ToString() => Localizer.Current["character.emotion." + Id];
     }
 }

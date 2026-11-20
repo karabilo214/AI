@@ -4,6 +4,7 @@ import base64
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ class SoundOutput:
         self.rate, self.timeout = rate, timeout
         self.stopped = threading.Event()
         self.opened = False
+        self.telemetry: tuple[dict[str, Any], float] | None = None
         service = Path(__file__).resolve().parents[2]
         paths = [str(service), str(service.parent / "engine"), str(service.parent / "storage")]
         paths.extend(p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p)
@@ -33,7 +35,12 @@ class SoundOutput:
         if self.stopped.is_set():
             raise InterruptedError("audio stopped")
         try:
-            self.worker.request(method, payload, timeout=self.timeout)
+            result = self.worker.request(method, payload, timeout=self.timeout)
+            if isinstance(result, dict) and result.get("playback") is not None:
+                self.telemetry = (
+                    result["playback"],
+                    result["playback"].get("observed_monotonic", time.monotonic()),
+                )
         except TimeoutError:
             self.interrupt()
             raise TimeoutError("speech.device_timeout") from None
@@ -56,6 +63,19 @@ class SoundOutput:
         if not pcm or len(pcm) > 8192 or len(pcm) % 2:
             raise ValueError("invalid PCM block")
         self._request("write", {"pcm": base64.b64encode(pcm).decode()}, "speech.device_lost")
+
+    def playback_view(self, alignment: Any = None) -> dict[str, Any]:
+        from ramvi_service.speech.clock import playback_view
+
+        snapshot = self.telemetry
+        return (
+            playback_view(snapshot[0], time.monotonic() - snapshot[1], alignment)
+            if snapshot
+            else playback_view(None, 0)
+        )
+
+    def drain(self) -> None:
+        self._request("drain", {}, "speech.device_lost")
 
     def interrupt(self) -> None:
         # Does not wait for an in-flight RPC lock. Job/process-group termination

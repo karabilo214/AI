@@ -56,16 +56,19 @@ class PCMBuffer:
                     raise ValueError("speech format changed midstream")
                 rate = piece.rate
                 pcm = carry + piece.pcm
-                carry = pcm[len(pcm) // 2 * 2 :]
-                pcm = pcm[: len(pcm) // 2 * 2]
-                total += len(pcm)
+                total += len(piece.pcm)
                 if total > rate * 2 * 120:
                     raise ValueError("speech duration exceeds limit")
                 size = rate * 2 * PCM_BLOCK_MS // 1000
-                for offset in range(0, len(pcm), size):
+                complete = len(pcm) // size * size
+                carry = pcm[complete:]
+                for offset in range(0, complete, size):
                     self.put(AudioPiece(pcm[offset : offset + size], rate))
-            if carry or not total:
+            if len(carry) % 2 or not total:
                 raise ValueError("truncated or empty speech audio")
+            if carry:
+                assert rate is not None
+                self.put(AudioPiece(carry, rate))
         except Exception as error:
             self.error = error
         finally:

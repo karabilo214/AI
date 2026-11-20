@@ -130,3 +130,41 @@ def test_pack_rejects_paths_outside_its_directory(tmp_path: Path) -> None:
     path.write_text(json.dumps(pack))
     with pytest.raises(ValueError, match="resource"):
         load_pack(path)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("version", "2.0.0"),
+        ("version", "bad"),
+        ("auto_blink", True),
+        ("speech", "sound"),
+    ],
+)
+def test_pack_rejects_incompatible_policy(tmp_path: Path, field: str, value: Any) -> None:
+    pack = load_pack()
+    pack[field] = value
+    path = tmp_path / "pack.json"
+    path.write_text(json.dumps(pack))
+    with pytest.raises(ValueError):
+        load_pack(path)
+
+
+@pytest.mark.parametrize("duration", [0, -1, float("nan"), float("inf"), True, 60001])
+def test_pack_rejects_invalid_clock(tmp_path: Path, duration: float) -> None:
+    pack = load_pack()
+    pack["animations"]["idle"]["duration_ms"] = duration
+    path = tmp_path / "pack.json"
+    path.write_text(json.dumps(pack))
+    with pytest.raises(ValueError, match="duration"):
+        load_pack(path)
+
+
+@pytest.mark.parametrize("minimum", [-1, 0, 1.1, float("nan"), True])
+def test_pack_rejects_invalid_effect(tmp_path: Path, minimum: float) -> None:
+    pack = load_pack()
+    pack["effects"]["pulse"]["minimum"] = minimum
+    path = tmp_path / "pack.json"
+    path.write_text(json.dumps(pack))
+    with pytest.raises(ValueError, match="effect"):
+        load_pack(path)

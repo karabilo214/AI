@@ -133,3 +133,40 @@ def test_plain_fallback_is_validated_and_splits_at_utf8_boundaries() -> None:
     )
     with pytest.raises(ValueError):
         plain_segments("{unvalidated JSON}")
+
+
+def test_service_offers_are_removed_and_segments_renumbered() -> None:
+    items = records()
+    items[1]["text"] = "Привет! Как я могу помочь вам сегодня?"
+    only_offer = {**items[1], "id": "s2", "seq": 2, "text": "Чем ещё я могу помочь?"}
+    items.insert(2, only_offer)
+    items[3]["last_seq"] = 2
+    p = planner()
+    out = p.feed("\n".join(json.dumps(r, ensure_ascii=False) for r in items) + "\n")
+    assert [r["type"] for r in out] == ["start", "segment", "end"]
+    assert out[1]["text"] == "Привет!" and out[2]["last_seq"] == 1
+    assert [s["text"] for s in p.segments] == ["Привет!"]
+
+
+def test_meaningful_sentences_with_help_word_are_kept() -> None:
+    from ramvi_character.response import strip_service_phrases
+
+    kept = "Если хочешь, могу подобрать что-то конкретное."
+    assert strip_service_phrases(kept) == kept
+    assert strip_service_phrases("Hi! How can I help you today?") == "Hi!"
+
+
+def test_profiles_give_different_style_instructions() -> None:
+    from ramvi_character.personality import Personality
+
+    styles = {}
+    for name in ("neutral", "friendly", "sarcastic", "strict", "curious"):
+        p = Personality()
+        p.select(name)
+        styles[name] = tuple(p.view()["style"])
+    assert len(set(styles.values())) == 5
+    assert any("sarcasm" in line for line in styles["sarcastic"])
+    no_teasing = Personality()
+    no_teasing.select("sarcastic")
+    no_teasing.boundary("teasing", False)
+    assert not any("sarcasm" in line for line in no_teasing.view()["style"])

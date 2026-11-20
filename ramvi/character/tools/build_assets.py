@@ -17,7 +17,7 @@ def build() -> None:
     sounds = json.loads((audio / "manifest.json").read_text(encoding="utf-8"))["files"]
     pack: dict[str, Any] = {
         "schema": "ramvi.character.pack/1",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "canvas": source["canvas"],
         "body": source["character_base"],
         "eyes": {Path(x).stem: x for x in source["eye_parts"]},
@@ -26,6 +26,7 @@ def build() -> None:
         "turns": source["turns"],
         "animations": {},
         "sounds": [],
+        "effects": {"pulse": {"kind": "opacity", "minimum": 0.7, "duration_ms": 1200}},
         "speech": "tts",
         "auto_blink": False,
     }

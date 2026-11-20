@@ -161,15 +161,21 @@ class SpeechService:
             "segment_id",
             "preview",
             "generation",
+            "preface",
         }:
             raise ValueError("invalid speech job")
         if not isinstance(payload.get("preview", False), bool):
             raise ValueError("invalid preview flag")
+        preface = payload.get("preface", False)
+        if not isinstance(preface, bool):
+            raise ValueError("invalid speech preface")
         request = SpeechRequest(**payload["request"])
         config = self.settings(data)
         if not config["enabled"] and not payload.get("preview", False):
             raise RuntimeError("speech.disabled")
         info = copy.deepcopy(next(p for p in CATALOG["providers"] if p["id"] == config["provider"]))
+        if preface and info["external"]:
+            raise PermissionError("speech.preface_local_only")
         if info["external"] and not config["remote_text_enabled"]:
             raise PermissionError("speech.remote_text_disabled")
         key = ""
@@ -202,7 +208,9 @@ class SpeechService:
         adapted = replace(request, voice=voice, style=request.style if applied == "prompt" else "")
         generation = payload.get("generation")
         fingerprint = hashlib.sha256(
-            json.dumps({"request": adapted.to_dict(), "config": config}, sort_keys=True).encode()
+            json.dumps(
+                {"request": adapted.to_dict(), "config": config, "preface": preface}, sort_keys=True
+            ).encode()
         ).hexdigest()
         with self.lock:
             if self.closed:
@@ -234,7 +242,13 @@ class SpeechService:
                     "metadata": copy.deepcopy(old["metadata"]),
                     "duplicate": True,
                 }
-            if len(fence["seen"]) >= 8:
+            preface_id = fence.get("preface")
+            if (
+                preface
+                and preface_id is not None
+                or not preface
+                and len(fence["seen"]) - int(preface_id is not None) >= 8
+            ):
                 raise RuntimeError("speech.segment_limit")
             if any(j["owner"] == owner and not self._settled(j) for j in self.jobs.values()):
                 raise RuntimeError("speech.busy")
@@ -279,6 +293,8 @@ class SpeechService:
             job["thread"] = thread
             self.jobs[identifier] = job
             fence["seen"][segment_id] = (fingerprint, identifier)
+            if preface:
+                fence["preface"] = segment_id
             thread.start()
             return {"job_id": identifier, "metadata": copy.deepcopy(job["metadata"])}
 
@@ -369,7 +385,9 @@ class SpeechService:
             ) is not None:
                 if time.monotonic() - started > self.job_timeout:
                     raise TimeoutError("speech.deadline")
+                job["metadata"]["alignment"] = getattr(job["provider"], "timings", None)
                 if output is None:
+                    job["metadata"]["first_pcm_ms"] = (time.monotonic() - started) * 1000
                     if self.resources:
                         lease = self.resources.acquire(
                             job["owner"], {SPEAKER: 1}, timeout=10, cancel=job["cancel"]
@@ -398,12 +416,30 @@ class SpeechService:
                         raise InterruptedError("speech cancelled")
                     stage = "device_write"
                     output.write(piece.pcm)
+                    telemetry = getattr(output, "telemetry", None)
+                    if (
+                        telemetry is not None
+                        and telemetry[0].get("windows")
+                        and "first_dac_ms" not in job["metadata"]
+                    ):
+                        raw, observed = telemetry
+                        job["metadata"]["first_dac_ms"] = max(
+                            0,
+                            (observed + raw["windows"][0][0] - raw["device_time"] - started) * 1000,
+                        )
                     job["bytes"] += len(piece.pcm)
                     job["submitted_audio_s"] = job["bytes"] / piece.rate / 2
                 stage = "provider"
                 deadline = min(time.monotonic() + self.audio_timeout, started + self.job_timeout)
             if job["cancel"].is_set():
                 raise InterruptedError("speech cancelled")
+            drain = getattr(output, "drain", None)
+            if callable(drain):
+                with job["io_lock"]:
+                    if job["cancel"].is_set():
+                        raise InterruptedError("speech cancelled")
+                    stage = "device_write"
+                    drain()
             job["metadata"]["alignment"] = getattr(job["provider"], "timings", None)
             job["state"] = "completed"
         except InterruptedError:
@@ -470,6 +506,12 @@ class SpeechService:
                     "submitted_audio_s",
                 ]
             }
+            view = getattr(job["output"], "playback_view", None)
+            result["playback"] = (
+                view(job["metadata"].get("alignment"))
+                if callable(view) and job["state"] == "playing" and not job["cancel"].is_set()
+                else {"clock": "unavailable", "windows": []}
+            )
             result["settled"] = self._settled(job)
             result["pcm_buffer"] = {
                 "blocks": job["buffer"].queue.qsize(),

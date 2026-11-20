@@ -4,6 +4,7 @@ import base64
 import json
 import threading
 import time
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -13,7 +14,7 @@ from ramvi_service.speech.cloud import CloudSpeech, validate_alignment
 from ramvi_service.speech.service import SpeechService
 
 
-def wait(predicate):
+def wait(predicate: Callable[[], bool]) -> None:
     until = time.monotonic() + 4
     while not predicate():
         assert time.monotonic() < until
@@ -32,7 +33,7 @@ class Provider:
 
     def synthesize(self, request, cancel):
         self.requests.append(request)
-        yield AudioPiece(b"\0" * 3, 16000)
+        yield AudioPiece(b"\0" * (640 if self.block else 3), 16000)
         if self.block:
             self.stopped.wait(3)
         if not cancel.is_set():

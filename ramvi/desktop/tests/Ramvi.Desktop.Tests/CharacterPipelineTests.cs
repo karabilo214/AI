@@ -73,7 +73,7 @@ public sealed class CharacterPipelineTests
     {
         using var pack=new CharacterPack(Path.Combine(ServiceOptions.FromEnvironment().RamviRoot,"character","ramvi_character","assets","pack.json"));
         var player=new CharacterPlayer(pack);
-        Assert.True(player.Apply(new(1,"old","s1","neutral","talk")));Assert.Equal("talk",player.Animation);
+        Assert.True(player.Apply(new(1,"old","s1","neutral","talk")));Assert.Equal("idle",player.Animation);
         Assert.True(player.Apply(new(2,null,null,"neutral","idle")));Assert.Equal("idle",player.Animation);
         Assert.False(player.Apply(new(1,"old","s2","neutral","nod")));
         Assert.False(player.Apply(new(2,"old","s3","neutral","shake")));

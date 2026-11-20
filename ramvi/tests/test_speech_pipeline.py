@@ -289,6 +289,7 @@ def test_first_validated_segment_plays_before_llm_finishes(rig):
     svc = Connected()
     m = active(svc)
     try:
+        m.speech("policy", {"settings": {"buffer": 1}})
         m.speech("configure", {"settings": {"enabled": True}})
         m.dialogue("start", {"text": "Fresh 104729", "model": "one"})
         wait(lambda: outputs and outputs[0].closed)
@@ -311,6 +312,14 @@ def test_sound_device_construction_cannot_start_playback(monkeypatch):
     class Stream:
         def __init__(self, **kwargs):
             calls.append("open")
+            self.callback = kwargs["callback"]
+            self.time = 1.0
+
+        @property
+        def active(self):
+            calls.append("write")
+            self.callback(bytearray(640), 320, SimpleNamespace(outputBufferDacTime=1.02), False)
+            return True
 
         def start(self):
             calls.append("start")

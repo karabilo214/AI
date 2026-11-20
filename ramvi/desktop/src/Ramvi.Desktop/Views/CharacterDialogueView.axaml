@@ -1,55 +1,51 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:l="using:Ramvi.Desktop.Localization" xmlns:vm="using:Ramvi.Desktop.ViewModels"
- xmlns:api="using:Ramvi.Desktop.Api" x:Class="Ramvi.Desktop.Views.CharacterDialogueView" x:DataType="vm:CharacterViewModel">
- <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="12,24,24,24" RowSpacing="12">
-  <Grid x:Name="CharacterSelectors" ColumnDefinitions="*,*" ColumnSpacing="8">
-   <StackPanel><TextBlock Text="{l:T character.model}"/><ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding Model}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="api:ModelInfo"><TextBlock Text="{Binding Id}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
-   <StackPanel Grid.Column="1"><TextBlock Text="{l:T character.profile}"/><ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding Profile}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:CharacterProfile"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
-  </Grid>
-  <ScrollViewer x:Name="DialogueScroll" Grid.Row="1"><SelectableTextBlock x:Name="DialogueText" Text="{Binding Transcript}" TextWrapping="Wrap"/></ScrollViewer>
-  <ScrollViewer x:Name="CharacterControls" Grid.Row="2" MaxHeight="320">
+ xmlns:api="using:Ramvi.Desktop.Api" xmlns:conv="using:Avalonia.Data.Converters" x:Class="Ramvi.Desktop.Views.CharacterDialogueView" x:DataType="vm:CharacterViewModel">
+ <Grid RowDefinitions="*,Auto,Auto" Margin="12,24,24,24" RowSpacing="12">
+  <ScrollViewer x:Name="DialogueScroll" Grid.Row="0"><SelectableTextBlock x:Name="DialogueText" Text="{Binding Transcript}" TextWrapping="Wrap"/></ScrollViewer>
+  <ScrollViewer x:Name="CharacterControls" Grid.Row="1" MaxHeight="320">
   <StackPanel Spacing="6">
-   <TextBlock Text="{Binding Error}" Classes="error" TextWrapping="Wrap"/>
+
+   <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" Classes="error" TextWrapping="Wrap"/>
    <StackPanel x:Name="SpeechRecovery" DataContext="{Binding Speech}" x:DataType="vm:CharacterSpeechViewModel" IsVisible="{Binding TextOnly}" Spacing="6">
-    <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
+    <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Classes="error"/>
     <TextBlock Text="{l:T character.speech_text_only}" TextWrapping="Wrap" Classes="muted"/>
     <Button Content="{l:T character.speech_resume}" Command="{Binding ResumeCommand}"/>
    </StackPanel>
-   <TextBlock Text="{l:T character.voice_hint}" TextWrapping="Wrap" Classes="muted"/>
+   <WrapPanel>
+    <Button Content="{l:T character.text_mode}" Command="{Binding TextModeCommand}" Margin="0,0,8,6"/>
+    <Button Content="{l:T character.disconnect}" Command="{Binding DisconnectCommand}" Margin="0,0,8,6"/>
+   </WrapPanel>
    <StackPanel DataContext="{Binding Voice}" x:DataType="vm:CharacterVoiceViewModel" Spacing="6">
-    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"><Button Content="{Binding ButtonText}" Command="{Binding ToggleCommand}"/><TextBlock Grid.Column="1" Text="{Binding Status}" VerticalAlignment="Center" TextWrapping="Wrap"/></Grid>
     <TextBlock IsVisible="{Binding HasRemote}" Text="{Binding RemoteText}" TextWrapping="Wrap" Classes="muted"/>
     <ScrollViewer IsVisible="{Binding HasPartial}" MaxHeight="72"><TextBlock Text="{Binding Partial}" TextWrapping="Wrap" Classes="muted"/></ScrollViewer>
     <TextBlock IsVisible="{Binding HasError}" Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
    </StackPanel>
-   <Expander x:Name="SpeechSettings" Header="{l:T character.speech_title}" DataContext="{Binding Speech}" x:DataType="vm:CharacterSpeechViewModel" HorizontalAlignment="Stretch">
-    <ScrollViewer MaxHeight="250">
-     <StackPanel Spacing="8" Margin="0,8,0,0">
-      <CheckBox Content="{l:T character.speech_enable}" IsChecked="{Binding Enabled}"/>
-      <TextBlock Text="{l:T character.speech_ai}" Classes="muted" TextWrapping="Wrap"/>
-      <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding Provider}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:SpeechProvider"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
-      <ComboBox ItemsSource="{Binding Voices}" SelectedItem="{Binding Voice}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:SpeechVoice"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
-      <StackPanel IsVisible="{Binding IsExternal}" Spacing="8">
-       <CheckBox Content="{l:T character.speech_remote}" IsChecked="{Binding RemoteText}"/>
-       <TextBox Text="{Binding Key}" PasswordChar="●" PlaceholderText="{l:T character.speech_key}"/>
-       <Button Content="{l:T character.speech_save_key}" Command="{Binding KeyCommand}"/>
-      </StackPanel>
-      <Button Content="{l:T character.speech_refresh}" Command="{Binding RefreshCommand}"/>
-      <TextBlock Text="{Binding InventoryStatus}" TextWrapping="Wrap" Classes="muted"/>
-      <TextBlock Text="{Binding Price}" TextWrapping="Wrap" Classes="muted"/>
-      <SelectableTextBlock Text="{Binding Source}" TextWrapping="Wrap" Classes="muted"/>
-      <WrapPanel><Button Content="{l:T character.speech_save}" Command="{Binding SaveCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.speech_preview}" Command="{Binding PreviewCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.speech_pause}" Command="{Binding StopCommand}" Margin="0,0,8,8"/></WrapPanel>
-      <TextBlock Text="{Binding Status}" TextWrapping="Wrap"/>
-      <TextBlock Text="{Binding Fallback}" TextWrapping="Wrap" Classes="muted"/>
-      <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
-     </StackPanel>
-    </ScrollViewer>
-   </Expander>
+   <StackPanel IsVisible="{Binding Diagnostics}" Spacing="4">
+    <TextBlock Text="{Binding TextTiming}" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding Voice.Timing}" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding Speech.Timing}" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding Speech.SyncState}" TextWrapping="Wrap"/>
+   </StackPanel>
   </StackPanel>
   </ScrollViewer>
-  <Grid x:Name="CharacterComposer" Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-   <TextBox Text="{Binding Draft}" PlaceholderText="{l:T character.input}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" MaxHeight="180"/>
-   <StackPanel Grid.Column="1" Spacing="8"><Button Content="{l:T character.send}" Command="{Binding Send}"/><Button Content="{l:T character.stop}" Command="{Binding Stop}"/></StackPanel>
-  </Grid>
+  <Border x:Name="CharacterComposer" Grid.Row="2" Classes="composer" Margin="4,8,4,0">
+   <Grid RowDefinitions="Auto,Auto">
+    <TextBox x:Name="CharacterInput" Classes="bare" MinHeight="40" MaxHeight="200" Text="{Binding Draft}" PlaceholderText="{l:T chat.input_placeholder}" AcceptsReturn="True" TextWrapping="Wrap"/>
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
+     <StackPanel DataContext="{Binding Voice}" x:DataType="vm:CharacterVoiceViewModel"><Button x:Name="CharacterMicrophone" Classes="icon" ToolTip.Tip="{Binding ButtonText}" AutomationProperties.Name="{Binding ButtonText}" Command="{Binding ToggleCommand}">
+     <Grid Width="24" Height="24">
+      <PathIcon Data="{StaticResource icon-microphone}"/>
+      <Path x:Name="MicrophoneSlash" IsVisible="{Binding !IsActive}" Data="M 2,2 L 22,22" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2"/>
+     </Grid>
+    </Button></StackPanel>
+     <TextBlock Grid.Column="1" Text="{Binding Voice.Status}" VerticalAlignment="Center" Margin="6,0" Classes="caption" TextWrapping="Wrap"/>
+     <StackPanel Grid.Column="2" Orientation="Horizontal">
+      <Button x:Name="CharacterSend" Classes="accent" Command="{Binding Send}" IsVisible="{Binding !Busy}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource icon-send}"/><TextBlock Text="{l:T chat.send}" VerticalAlignment="Center"/></StackPanel></Button>
+      <Button x:Name="CharacterStop" Command="{Binding Stop}" IsVisible="{Binding Busy}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource icon-stop}"/><TextBlock Text="{l:T chat.stop}" VerticalAlignment="Center"/></StackPanel></Button>
+     </StackPanel>
+    </Grid>
+   </Grid>
+  </Border>
  </Grid>
 </UserControl>

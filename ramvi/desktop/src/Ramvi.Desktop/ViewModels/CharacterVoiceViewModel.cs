@@ -33,6 +33,8 @@ public sealed class CharacterVoiceViewModel : ObservableObject, IDisposable
     public bool HasPartial => !string.IsNullOrEmpty(Partial);
     public bool HasRemote => _remoteHost is not null;
     public string Error { get => _error; private set { if (Set(ref _error, value)) Raise(nameof(HasError)); } }
+    private string _timing = "";
+    public string Timing { get => _timing; private set => Set(ref _timing, value); }
     public bool HasError => !string.IsNullOrEmpty(Error);
     public string RemoteText => _remoteHost is null ? "" : Localizer.Current.Format("voice.api_sending", ("host", _remoteHost));
     public async Task LoadAsync()
@@ -70,6 +72,8 @@ public sealed class CharacterVoiceViewModel : ObservableObject, IDisposable
             {
                 var result = await _call("status", null).ConfigureAwait(true);
                 if (watch != _watch || _token.IsCancellationRequested) return;
+                if (result.TryGetProperty("recognition_ms", out var timing) && timing.ValueKind == JsonValueKind.Number)
+                    Timing = Localizer.Current.Format("character.stt_ms", ("ms", timing.GetDouble().ToString("0", System.Globalization.CultureInfo.InvariantCulture)));
                 var state = result.GetProperty("state").GetString() ?? "error";
                 SetState(_ending && state is not ("inactive" or "error") ? "stopping" : state);
                 Partial = _ending ? "" : result.GetProperty("partial").GetString() ?? "";

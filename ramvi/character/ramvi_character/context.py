@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ramvi_character.personality import BOUNDARIES, number
+from ramvi_character.personality import BOUNDARIES, number, style_guide
 
 SYSTEM = """You are the context and understanding stage of a conversational Character.
 Keep the owner's current task and explicit boundaries.
@@ -282,13 +282,17 @@ class ContextOrchestrator:
         revision = integer(personality["policy_revision"], 0, 1_000_000_000_000)
         sections = {
             "system": self.system_prompt,
-            "personality": encode(
-                {
-                    "section": "personality",
-                    "id": personality["base"]["id"],
-                    "version": personality["base"]["version"],
-                    "traits": personality["effective_traits"],
-                }
+            "personality": "\n".join(
+                [
+                    "YOUR PERSONALITY (profile "
+                    + personality["base"]["id"]
+                    + "). It defines your tone in every reply:",
+                    *[
+                        "- " + line
+                        for line in personality.get("style")
+                        or style_guide(personality["effective_traits"], personality["boundaries"])
+                    ],
+                ]
             ),
             "state": encode(
                 {

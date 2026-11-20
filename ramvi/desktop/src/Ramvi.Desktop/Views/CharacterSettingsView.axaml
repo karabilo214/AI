@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:l="using:Ramvi.Desktop.Localization" xmlns:vm="using:Ramvi.Desktop.ViewModels"
+ xmlns:api="using:Ramvi.Desktop.Api" xmlns:conv="using:Avalonia.Data.Converters" x:Class="Ramvi.Desktop.Views.CharacterSettingsView" x:DataType="vm:CharacterViewModel">
+ <ScrollViewer Margin="24,8,24,16">
+ <StackPanel Spacing="16">
+  <TextBlock Text="{l:T character.profile}"/>
+  <ComboBox x:Name="CharacterProfile" ItemsSource="{Binding Profiles}" SelectedItem="{Binding Profile}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:CharacterProfile"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+  <WrapPanel>
+   <Button x:Name="CharacterChoosePack" Content="{l:T character.choose_pack}" Margin="0,0,8,8"/>
+   <Button x:Name="CharacterDefaultPack" Content="{l:T character.default_pack}" Margin="0,0,8,8"/>
+  </WrapPanel>
+  <TextBlock Text="{Binding PackPath}" IsVisible="{Binding PackPath, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Classes="muted"/>
+  <TextBlock x:Name="PackError" IsVisible="False" Classes="error" TextWrapping="Wrap"/>
+   <StackPanel x:Name="SpeechSettings" DataContext="{Binding Speech}" x:DataType="vm:CharacterSpeechViewModel" HorizontalAlignment="Stretch">
+     <TextBlock Text="{l:T character.speech_title}" Classes="heading"/>
+     <StackPanel Spacing="8" Margin="0,8,0,0">
+      <TextBlock Text="{l:T character.delivery_title}"/>
+      <ComboBox x:Name="CharacterDelivery" ItemsSource="{Binding DeliveryModes}" SelectedItem="{Binding DeliveryMode}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:VoiceOption"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+      <TextBlock Text="{l:T character.delivery_buffer}"/>
+      <ComboBox x:Name="CharacterBuffer" ItemsSource="{Binding Buffers}" SelectedItem="{Binding Buffer}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:VoiceOption"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+      <CheckBox Content="{l:T character.reactions}" IsChecked="{Binding Reactions}" IsEnabled="{Binding !IsExternal}"/>
+      <TextBlock Text="{l:T character.reactions_hint}" TextWrapping="Wrap" Classes="muted"/>
+      <CheckBox Content="{l:T character.speech_enable}" IsChecked="{Binding Enabled}"/>
+      <TextBlock Text="{l:T character.speech_ai}" Classes="muted" TextWrapping="Wrap"/>
+      <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding Provider}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:SpeechProvider"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+      <ComboBox ItemsSource="{Binding Voices}" SelectedItem="{Binding Voice}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:SpeechVoice"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+      <StackPanel IsVisible="{Binding IsExternal}" Spacing="8">
+       <CheckBox Content="{l:T character.speech_remote}" IsChecked="{Binding RemoteText}"/>
+       <TextBox Text="{Binding Key}" PasswordChar="●" PlaceholderText="{l:T character.speech_key}"/>
+       <Button Content="{l:T character.speech_save_key}" Command="{Binding KeyCommand}"/>
+      </StackPanel>
+      <Button Content="{l:T character.speech_refresh}" Command="{Binding RefreshCommand}"/>
+      <TextBlock Text="{Binding InventoryStatus}" TextWrapping="Wrap" Classes="muted"/>
+      <TextBlock Text="{Binding Price}" TextWrapping="Wrap" Classes="muted"/>
+      <SelectableTextBlock Text="{Binding Source}" TextWrapping="Wrap" Classes="muted"/>
+      <WrapPanel><Button Content="{l:T character.speech_save}" Command="{Binding SaveCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.speech_pause}" Command="{Binding StopCommand}" Margin="0,0,8,8"/></WrapPanel>
+      <TextBlock Text="{Binding Status}" TextWrapping="Wrap"/>
+      <TextBlock Text="{Binding Fallback}" TextWrapping="Wrap" Classes="muted"/>
+      <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
+     </StackPanel>
+   </StackPanel>
+  <CheckBox Content="{l:T character.diagnostics}" IsChecked="{Binding Diagnostics}"/>
+ </StackPanel>
+ </ScrollViewer>
+</UserControl>

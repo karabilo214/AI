@@ -14,6 +14,7 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
 {
     private readonly Func<string, JsonObject?, Task<JsonElement>> _call;
     private readonly Action<long,string?,string?>? _generationChanged;
+    private readonly Action<JsonElement,double>? _playbackChanged;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _token;
     private SpeechProvider? _provider;
@@ -22,9 +23,9 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
     private string _key = "", _error = "", _state = "off", _fallback = "", _inventory = "";
     private int _watch, _catalogVersion, _selectionVersion;
     private Task _selectionStop = Task.CompletedTask;
-    public CharacterSpeechViewModel(Func<string, JsonObject?, Task<JsonElement>> call, Action<long,string?,string?>? generationChanged = null)
+    public CharacterSpeechViewModel(Func<string, JsonObject?, Task<JsonElement>> call, Action<long,string?,string?>? generationChanged = null, Action<JsonElement,double>? playbackChanged = null)
     {
-        _call=call; _generationChanged=generationChanged; _token=_lifetime.Token;
+        _call=call; _generationChanged=generationChanged; _playbackChanged=playbackChanged; _token=_lifetime.Token;
         SaveCommand=new Command(()=>ApplyAsync(false),()=>_available && Provider is not null);
         KeyCommand=new Command(SaveKeyAsync,()=>IsExternal);
         PreviewCommand=new Command(()=>ApplyAsync(true),()=>_available && Provider is not null);
@@ -40,6 +41,18 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
     public Command StopCommand { get; }
     public Command ResumeCommand { get; }
     public Command RefreshCommand { get; }
+    private VoiceOption? _deliveryMode;
+    private VoiceOption? _buffer;
+    private bool _reactions = true;
+    private string _timing = "";
+    private string _syncState = "";
+    public string Timing { get => _timing; private set => Set(ref _timing, value); }
+    public string SyncState { get => _syncState; private set => Set(ref _syncState, value); }
+    public List<VoiceOption> DeliveryModes { get; private set; } = [new("sentences", Localizer.Current["character.delivery.sentences"]), new("complete", Localizer.Current["character.delivery.complete"])];
+    public List<VoiceOption> Buffers { get; } = [new("1", "1"), new("2", "2"), new("3", "3")];
+    public VoiceOption? DeliveryMode { get => _deliveryMode ?? DeliveryModes[0]; set => Set(ref _deliveryMode, value); }
+    public VoiceOption? Buffer { get => _buffer ?? Buffers[1]; set => Set(ref _buffer, value); }
+    public bool Reactions { get => _reactions; set => Set(ref _reactions, value); }
     public bool Enabled { get=>_enabled;set { if(Set(ref _enabled,value)) { RefreshCommands(); if(!value && !_loading) QueueStop(); } } }
     public bool RemoteText { get=>_remoteText;set=>Set(ref _remoteText,value); }
     public bool TextOnly { get=>_textOnly;private set=>Set(ref _textOnly,value); }
@@ -88,7 +101,16 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
     {
         await ReadCatalogAsync(false,false).ConfigureAwait(true);
         if(!_available || _disposed) return;
-        try { await _call("resume",null).ConfigureAwait(true);Watch(); }
+        try {
+            var policy = await _call("policy", null).ConfigureAwait(true);
+            if (policy.TryGetProperty("settings", out var saved))
+            {
+                DeliveryMode = DeliveryModes.FirstOrDefault(x => x.Code == saved.GetProperty("mode").GetString());
+                Buffer = Buffers.FirstOrDefault(x => x.Code == saved.GetProperty("buffer").ToString());
+                Reactions = saved.GetProperty("reactions").GetBoolean();
+            }
+            await _call("resume",null).ConfigureAwait(true);Watch();
+        }
         catch(Exception e) when(Handled(e)) { SetError("character.speech_error");TextOnly=true; }
     }
     private async Task ReadCatalogAsync(bool refresh,bool preserve)
@@ -135,6 +157,8 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
         try {
             await _selectionStop.ConfigureAwait(true);
             if(selection!=_selectionVersion || _disposed) return;
+            await _call("policy", new JsonObject { ["settings"] = new JsonObject { ["mode"] = DeliveryMode?.Code ?? "sentences", ["buffer"] = int.Parse(Buffer?.Code ?? "2", System.Globalization.CultureInfo.InvariantCulture), ["reactions"] = Reactions } }).ConfigureAwait(true);
+            if(selection!=_selectionVersion || _disposed) return;
             await _call("configure",new JsonObject { ["settings"]=settings }).ConfigureAwait(true);
             if(selection!=_selectionVersion || _disposed) return;
             if(preview) await _call("preview",null).ConfigureAwait(true);
@@ -161,27 +185,55 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
     {
         try {
             while(!_token.IsCancellationRequested && watch==_watch) {
+                var requestedAt = System.Diagnostics.Stopwatch.GetTimestamp();
                 var result=await _call("status",null).ConfigureAwait(true);
                 if(watch!=_watch || _token.IsCancellationRequested) return;
                 if(result.TryGetProperty("generation",out var generation))
                     _generationChanged?.Invoke(generation.GetInt64(),result.TryGetProperty("response_id",out var response) && response.ValueKind==JsonValueKind.String ? response.GetString() : null,result.TryGetProperty("session_id",out var session) ? session.GetString() : null);
+                _playbackChanged?.Invoke(result, System.Diagnostics.Stopwatch.GetElapsedTime(requestedAt).TotalMilliseconds);
                 _state=result.GetProperty("state").GetString()!;Raise(nameof(Status));
                 TextOnly=result.TryGetProperty("mode",out var mode) && mode.GetString()=="text";
                 if(result.TryGetProperty("error",out var error) && error.ValueKind==JsonValueKind.String) SetError(ErrorKey(error.GetString()));
                 if(result.TryGetProperty("last",out var last) && last.ValueKind==JsonValueKind.Object)
+                {
                     Fallback=last.GetProperty("fallback").GetBoolean() ? Localizer.Current["character.speech_fallback"] : "";
-                await Task.Delay(200,_token).ConfigureAwait(true);
+                    var values = new List<string>();
+                    if (last.TryGetProperty("first_pcm_ms", out var pcm)) values.Add(Localizer.Current.Format("character.tts_ms", ("ms", pcm.GetDouble().ToString("0", System.Globalization.CultureInfo.InvariantCulture))));
+                    if (last.TryGetProperty("first_dac_ms", out var dac)) values.Add(Localizer.Current.Format("character.dac_ms", ("ms", dac.GetDouble().ToString("0", System.Globalization.CultureInfo.InvariantCulture))));
+                    Timing = string.Join(" · ", values);
+                }
+                else Timing = "";
+                SyncState = result.TryGetProperty("sync", out var sync) && sync.ValueKind == JsonValueKind.Object
+                    ? sync.GetProperty("emotion").GetString() + " · " + sync.GetProperty("segment_id").GetString() : "";
+                if (sync.ValueKind == JsonValueKind.Object && sync.TryGetProperty("reaction_label", out var reason) && reason.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(reason.GetString()))
+                    SyncState += " · " + Localizer.Current["character.reaction_label." + reason.GetString()];
+                await Task.Delay(40,_token).ConfigureAwait(true);
             }
         }
-        catch(Exception e) when(Handled(e)) { if(!_token.IsCancellationRequested) {SetError("character.speech_error");TextOnly=true;} }
+        catch(Exception e) when(Handled(e)) { if(!_token.IsCancellationRequested) { _playbackChanged?.Invoke(default, 0); SetError("character.speech_error");TextOnly=true;} }
+    }
+    public async Task TextModeAsync()
+    {
+        Enabled = false;
+        await StopAsync().ConfigureAwait(true);
+        if (_available && Provider is not null) await ApplyAsync(false).ConfigureAwait(true);
     }
     public async Task StopAsync()
     {
         _watch++;
+        _playbackChanged?.Invoke(default, 0);
         if(!_available) return;
         try { await _call("stop",null).ConfigureAwait(true);_state="off";TextOnly=Enabled;Raise(nameof(Status)); }
         catch(Exception e) when(Handled(e)) { if(!_token.IsCancellationRequested) SetError("character.speech_error"); }
     }
     private static bool Handled(Exception e)=>e is ApiException or HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException or OperationCanceledException or NotSupportedException;
+    public override void Relocalize()
+    {
+        var mode = DeliveryMode?.Code;
+        DeliveryModes = [new("sentences", Localizer.Current["character.delivery.sentences"]), new("complete", Localizer.Current["character.delivery.complete"])];
+        Raise(nameof(DeliveryModes));
+        DeliveryMode = DeliveryModes.FirstOrDefault(x => x.Code == mode);
+        base.Relocalize();
+    }
     public void Dispose() { if(_disposed) return;_disposed=true;_watch++;_catalogVersion++;_lifetime.Cancel();_lifetime.Dispose();Key=""; }
 }

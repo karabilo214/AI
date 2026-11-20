@@ -11,10 +11,11 @@ namespace Ramvi.Desktop.ViewModels;
 public sealed class CharacterViewModel : ObservableObject, IDisposable
 {
     private readonly Func<IChatApi> _api;
+    private readonly Func<ModelInfo?>? _sharedModel;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _token;
     private string _draft = "", _transcript = "", _error = "";
-    private bool _busy, _loading, _disposed, _ignoreEvents;
+    private bool _busy, _loading, _disposed, _ignoreEvents, _initialized;
     private ModelInfo? _model;
     private CharacterProfile? _profile;
     private string? _responseId, _serverSession;
@@ -23,11 +24,30 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     private long _requestRevision, _presentationEpoch, _serverGeneration = -1;
     private readonly HashSet<string> _segments = [];
     private CharacterDirective? _presentation;
-    public CharacterDirective? Presentation { get => _presentation; private set => Set(ref _presentation,value); }
+    private bool _syncEnabled;
+    private CharacterPlayback? _playback;
+    public CharacterPlayback? Playback { get => _playback; private set => Set(ref _playback, value); }
+    public CharacterDirective? Presentation
+    {
+        get => _presentation;
+        private set
+        {
+            if (Set(ref _presentation, value) && value is not null && (Playback?.Epoch != value.Epoch || Playback?.ResponseId != value.ResponseId))
+                Playback = CharacterPlayback.Waiting(value.Epoch, value.ResponseId, _syncEnabled);
+        }
+    }
+    private void ObservePlayback(JsonElement packet, double transportMs)
+    {
+        _syncEnabled = packet.ValueKind == JsonValueKind.Object && packet.TryGetProperty("enabled", out var enabled) && enabled.GetBoolean()
+            && packet.TryGetProperty("armed", out var armed) && armed.GetBoolean()
+            && packet.TryGetProperty("mode", out var mode) && mode.GetString() == "speech";
+        if (Presentation is not {} directive) return;
+        Playback = CharacterPlayback.Read(packet, directive.Epoch, _ignoreEvents ? null : _responseId, _syncEnabled, transportMs);
+    }
     private long InvalidateResponse()
     {
         _requestRevision++;
-        _responseId=null; _ignoreEvents=true; _segments.Clear(); Busy=false;
+        _responseId=null; _ignoreEvents=true; _segments.Clear(); Busy=false; TextTiming="";
         Presentation=new(++_presentationEpoch,null,null,"neutral","idle");
         Stop.Refresh(); return _requestRevision;
     }
@@ -48,12 +68,14 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         _serverGeneration=generation;
         if(_responseId is not null && _responseId!=response) { InvalidateResponse(); Busy=false; }
     }
-    public CharacterViewModel(Func<IChatApi> api, ObservableCollection<ModelInfo> models)
+    public CharacterViewModel(Func<IChatApi> api, ObservableCollection<ModelInfo> models, Func<ModelInfo?>? sharedModel = null)
     {
         _token = _lifetime.Token;
-        _api = api; Models = models;
+        _api = api; Models = models; _sharedModel = sharedModel;
         Voice = new CharacterVoiceViewModel((operation, args) => ModuleCallAsync("voice", operation, args), () => Model is not null, FollowVoiceReply);
-        Speech = new CharacterSpeechViewModel((operation, args) => ModuleCallAsync("speech", operation, args), ObserveGeneration);
+        Speech = new CharacterSpeechViewModel((operation, args) => ModuleCallAsync("speech", operation, args), ObserveGeneration, ObservePlayback);
+        TextModeCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await Speech.TextModeAsync().ConfigureAwait(true); });
+        DisconnectCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await StopAsync().ConfigureAwait(true); await Speech.StopAsync().ConfigureAwait(true); });
         Send = new Command(SendAsync, () => !string.IsNullOrWhiteSpace(Draft) && Model is not null);
         Stop = new Command(StopAsync, () => Busy || _responseId is not null);
     }
@@ -61,6 +83,21 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     public ObservableCollection<CharacterProfile> Profiles { get; } = [];
     public CharacterVoiceViewModel Voice { get; }
     public CharacterSpeechViewModel Speech { get; }
+    public Command TextModeCommand { get; }
+    public Command DisconnectCommand { get; }
+    private bool _showAvatar = true;
+    private string _packPath = "";
+    public bool ShowAvatar { get => _showAvatar; set { if (Set(ref _showAvatar, value) && !_loading) _ = SavePresentationAsync(); } }
+    public string PackPath { get => _packPath; set { if (Set(ref _packPath, value) && !_loading) _ = SavePresentationAsync(); } }
+    private async Task SavePresentationAsync()
+    {
+        try { await ModuleCallAsync("dialogue", "presentation", new JsonObject { ["settings"] = new JsonObject { ["pack_path"] = PackPath, ["show_avatar"] = ShowAvatar } }).ConfigureAwait(true); }
+        catch (Exception error) when (Handled(error)) { Error = Localizer.Current["character.request_error"]; }
+    }
+    private bool _diagnostics;
+    private string _textTiming = "";
+    public bool Diagnostics { get => _diagnostics; set => Set(ref _diagnostics, value); }
+    public string TextTiming { get => _textTiming; private set => Set(ref _textTiming, value); }
     public Command Send { get; }
     public Command Stop { get; }
     public string Draft { get => _draft; set { if (Set(ref _draft, value)) Send.Refresh(); } }
@@ -70,7 +107,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     public ModelInfo? Model
     {
         get => _model;
-        set { if (Set(ref _model, value)) { Send.Refresh(); Voice.Refresh(); if (!_loading) { InvalidateResponse(); _ = ConfigureAsync(); } } }
+        set { if (Set(ref _model, value)) { Send.Refresh(); Voice.Refresh(); if (!_loading && _initialized) { InvalidateResponse(); _ = ConfigureAsync(); } } }
     }
     public CharacterProfile? Profile
     {
@@ -80,7 +117,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     private Task<JsonElement> CallAsync(string operation, JsonObject? arguments = null) => ModuleCallAsync("dialogue", operation, arguments);
     private async Task<JsonElement> ModuleCallAsync(string command, string operation, JsonObject? arguments = null)
     {
-        var serial=(command=="speech" && operation is "stop" or "configure" or "preview") || (command=="voice" && operation is "start" or "stop");
+        var serial=(command=="dialogue" && operation=="presentation") || (command=="speech" && operation is "stop" or "configure" or "preview") || (command=="voice" && operation is "start" or "stop");
         if(serial) await _commands.WaitAsync(_token).ConfigureAwait(true);
         try {
             using var document=JsonDocument.Parse(new JsonObject { ["operation"]=operation,["arguments"]=arguments ?? new JsonObject() }.ToJsonString());
@@ -91,7 +128,15 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         } finally { if(serial) _commands.Release(); }
     }
 
-    public async Task LoadAsync()
+    public async Task RefreshInputAsync()
+    {
+        if (!_initialized) return;
+        await Voice.StopAsync().ConfigureAwait(true);
+        await Voice.LoadAsync().ConfigureAwait(true);
+    }
+    public Task LoadAsync() => LoadCoreAsync(false);
+    public Task LoadSettingsAsync() => LoadCoreAsync(true);
+    private async Task LoadCoreAsync(bool preserveDraft)
     {
         var load=++_loadVersion;
         try
@@ -99,13 +144,19 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
             var result = await CallAsync("status").ConfigureAwait(true);
             if(load!=_loadVersion || _token.IsCancellationRequested) return;
             ReadSession(result);
+            _initialized = true;
             _loading = true;
             try
             {
+                if (result.TryGetProperty("presentation_settings", out var preferences))
+                {
+                    ShowAvatar = true;
+                    PackPath = preferences.GetProperty("pack_path").GetString() ?? "";
+                }
                 var character = result.GetProperty("character");
                 var selected = character.GetProperty("model").GetString();
-                Model = Models.FirstOrDefault(m => m.Id == selected) ?? Models.FirstOrDefault();
-                if (!Busy) Draft = character.GetProperty("draft").GetString() ?? "";
+                Model = _sharedModel is not null ? _sharedModel() : Models.FirstOrDefault(m => m.Id == selected) ?? Models.FirstOrDefault();
+                if (!Busy && !preserveDraft) Draft = character.GetProperty("draft").GetString() ?? "";
                 Profiles.Clear();
                 foreach (var item in result.GetProperty("profiles").EnumerateArray())
                     Profiles.Add(new(item.GetProperty("id").GetString()!, item.GetProperty("name").GetString()!));
@@ -193,6 +244,8 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
                 var job = result.GetProperty("job");
                 if (job.ValueKind != JsonValueKind.Object) break;
                 ReadSession(job);
+                if (job.TryGetProperty("first_segment_ms", out var timing) && timing.ValueKind == JsonValueKind.Number)
+                    TextTiming = Localizer.Current.Format("character.first_text_ms", ("ms", timing.GetDouble().ToString("0", System.Globalization.CultureInfo.InvariantCulture)));
                 if(_responseId!=id) break;
                 if(job.TryGetProperty("generation",out var generation)) {
                     if(generation.GetInt64()<_serverGeneration) break;

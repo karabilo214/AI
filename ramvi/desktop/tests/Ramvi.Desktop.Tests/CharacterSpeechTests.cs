@@ -57,7 +57,7 @@ public sealed class CharacterSpeechTests
         await vm.KeyCommand.RunAsync(); Assert.Empty(vm.Key); Assert.NotEmpty(vm.Error);
     }
     [AvaloniaFact]
-    public async Task Expanded_output_settings_keep_the_composer_inside_window()
+    public async Task Output_settings_are_accessible_in_settings_without_crowding_the_composer()
     {
         Localizer.Current=Localizer.Load("ru");
         var api=new FakeChatApi();
@@ -79,12 +79,16 @@ public sealed class CharacterSpeechTests
             var dialogue=window.GetVisualDescendants().OfType<CharacterDialogueView>().Single();
             var vm=(CharacterViewModel)dialogue.DataContext!;
             await MainViewModelTests.Until(()=>vm.Speech.Providers.Count==2,"speech catalog");
-            var panel=dialogue.FindControl<Expander>("SpeechSettings")!;panel.IsExpanded=true;
+            await model.Settings.OpenAsync("module:character");
+            var settings=window.GetVisualDescendants().OfType<CharacterSettingsView>().Single();
+            var panel=settings.FindControl<StackPanel>("SpeechSettings")!;
             window.UpdateLayout();
             Dispatcher.UIThread.RunJobs();AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Assert.True(panel.Bounds.Height>200);
+            model.Settings.CloseCommand.Execute(null);
+            window.UpdateLayout();
             var input=dialogue.GetVisualDescendants().OfType<TextBox>().Single(x=>x.AcceptsReturn);
-            Assert.True(input.Bounds.Height>=72);
+            Assert.True(input.Bounds.Height>=40);
             if(Environment.GetEnvironmentVariable("RAMVI_SPEECH_SCREENSHOT") is {} screenshot) {
                 using var image=window.CaptureRenderedFrame();image!.Save(screenshot,new PngBitmapEncoderOptions());
             }

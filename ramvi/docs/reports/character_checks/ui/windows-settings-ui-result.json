@@ -1,0 +1,10 @@
+{
+    "pack_in_settings":  true,
+    "no_preview_controls":  true,
+    "settings_tab":  true,
+    "tts_in_settings":  true,
+    "stt_in_settings":  true,
+    "no_avatar_toggle":  true,
+    "ok":  true,
+    "microphone_button":  true
+}

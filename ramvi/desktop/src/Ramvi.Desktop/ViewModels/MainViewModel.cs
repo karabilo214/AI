@@ -75,7 +75,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _connect = connect;
         _loadPoll = loadPoll ?? TimeSpan.FromMilliseconds(300);
         Agent = new AgentViewModel(() => _api, pickFolder ?? (_ => Task.FromResult<string?>(null)), Models, pickFiles);
-        Character = new CharacterViewModel(() => _api, Models);
+        Character = new CharacterViewModel(() => _api, Models, () => SelectedModel);
+        Agent.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AgentViewModel.IsRunning)) Raise(nameof(CanSelectModel)); };
+        Character.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterViewModel.Busy)) Raise(nameof(CanSelectModel)); };
+        PropertyChanged += (_, e) => { if (e.PropertyName == nameof(IsIdle)) Raise(nameof(CanSelectModel)); };
         Sections = new SectionsViewModel(() => _api, Agent.LoadAsync, Character.LoadAsync);
         ModelsScreen = new ModelsViewModel(() => _api, ReloadModelListAsync);
         _pickFolder = pickFolder;
@@ -91,10 +94,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Models,
             () => ModelsScreen.LoadAsync(),
             ReloadModelListAsync,
-            () => Voice!.LoadAsync(),
+            async () =>
+            {
+                await Voice!.LoadAsync().ConfigureAwait(true);
+                await Character.RefreshInputAsync().ConfigureAwait(true);
+            },
             Agent.LoadAsync,
             copy: text => _copy!(text),
-            pickFile: pickModelFile);
+            pickFile: pickModelFile,
+            characterLoad: async () =>
+            {
+                try
+                {
+                    await _api.OpenSectionAsync("character").ConfigureAwait(true);
+                    await Character.LoadSettingsAsync().ConfigureAwait(true);
+
+                }
+                catch (Exception error) when (error is ApiException or HttpRequestException)
+                { ShowError(error); }
+            });
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -272,15 +290,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool CanSelectModel => IsIdle && !Agent.IsRunning && !Character.Busy;
+
     public ModelInfo? SelectedModel
     {
         get => _selectedModel;
         set
         {
-            if (Set(ref _selectedModel, value) && !_ignoreModelChange && value is not null)
-            {
-                _ = ChangeModelAsync(value);
-            }
+            if (!Set(ref _selectedModel, value)) return;
+            Agent.Model = value;
+            Character.Model = value;
+            if (!_ignoreModelChange && value is not null) _ = ChangeModelAsync(value);
         }
     }
 
@@ -356,6 +376,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             var onboarding = await _api.OnboardingAsync().ConfigureAwait(true);
             await Sections.LoadAsync().ConfigureAwait(true);
             if (Sections.Items.Any(s => s.View == "agent")) Settings.AddTab("agent", "section.agent");
+            if (Sections.Items.Any(s => s.View == "character")) Settings.AddTab("character", "section.character");
             SelectedChat = Chats.FirstOrDefault();
             if (SelectedChat is null)
             {

@@ -61,6 +61,7 @@ public sealed class SettingsViewModel : ObservableObject
     private SettingsTab? _selectedTab;
     private readonly Func<Task>? _soundChanged;
     private readonly Func<Task>? _agentLoad;
+    private readonly Func<Task>? _characterLoad;
 
     public SettingsViewModel(
         Func<IChatApi> api,
@@ -76,7 +77,8 @@ public sealed class SettingsViewModel : ObservableObject
         Func<Task>? soundChanged = null,
         Func<Task>? agentLoad = null,
         Func<string, Task>? copy = null,
-        Func<Task<string?>>? pickFile = null)
+        Func<Task<string?>>? pickFile = null,
+        Func<Task>? characterLoad = null)
     {
         _pickFile = pickFile ?? (() => Task.FromResult<string?>(null));
         InstallUpdateCommand = new Command(InstallUpdateAsync);
@@ -84,6 +86,7 @@ public sealed class SettingsViewModel : ObservableObject
         Connections = new ConnectionsViewModel(api, copy);
         _soundChanged = soundChanged;
         _agentLoad = agentLoad;
+        _characterLoad = characterLoad;
         _api = api;
         Sound = new SoundSettingsViewModel(api);
         _models = models ?? [];
@@ -146,11 +149,12 @@ public sealed class SettingsViewModel : ObservableObject
                 return;
             }
 
-            foreach (var name in new[] { nameof(IsGeneralTab), nameof(IsSoundTab), nameof(IsModelsTab), nameof(IsConnectionsTab), nameof(IsModuleTab), nameof(IsAgentTab), nameof(HasFooter) })
+            foreach (var name in new[] { nameof(IsGeneralTab), nameof(IsSoundTab), nameof(IsModelsTab), nameof(IsConnectionsTab), nameof(IsModuleTab), nameof(IsAgentTab), nameof(IsCharacterTab), nameof(HasFooter) })
             {
                 Raise(name);
             }
 
+            if (value.Id == "module:character" && IsOpen && _characterLoad is not null) _ = _characterLoad();
             if (value.Id == "module:agent" && IsOpen && _agentLoad is not null) _ = _agentLoad();
             if (value.Id == "connections" && IsOpen) _ = Connections.LoadAsync();
             if (value.Id == "models" && IsOpen && _openModels is not null)
@@ -171,7 +175,8 @@ public sealed class SettingsViewModel : ObservableObject
 
     public ConnectionsViewModel Connections { get; }
 
-    public bool IsModuleTab => _selectedTab?.Id.StartsWith("module:", StringComparison.Ordinal) == true && !IsAgentTab;
+    public bool IsModuleTab => _selectedTab?.Id.StartsWith("module:", StringComparison.Ordinal) == true && !IsAgentTab && !IsCharacterTab;
+    public bool IsCharacterTab => _selectedTab?.Id == "module:character";
     public bool IsAgentTab => _selectedTab?.Id == "module:agent";
 
     /// <summary>«Сохранить» — у вкладок с полями; у «Модели» свои кнопки на карточках.</summary>
@@ -406,6 +411,8 @@ public sealed class SettingsViewModel : ObservableObject
             _ = _openModels();
         }
 
+        if (target == _selectedTab && target.Id == "module:character" && _characterLoad is not null)
+            _ = _characterLoad();
         SelectedTab = target;
         if (target.Id == "connections")
         {
@@ -555,7 +562,9 @@ public sealed class SettingsViewModel : ObservableObject
             var info = await _api().SaveSettingsAsync(update).ConfigureAwait(true);
             Show(info);
             Sound.Show(info.Settings);
-            if (_soundChanged is not null)
+            if (_soundChanged is not null && (update.VoiceDevice is not null || update.VoiceLanguage is not null
+                || update.VoiceModel is not null || update.VoiceBackend is not null || update.VoiceApiUrl is not null
+                || update.VoiceApiModel is not null || update.VoiceAutoSend is not null))
             {
                 await _soundChanged().ConfigureAwait(true); // 5.7: метка «звук отправляется в …»
             }

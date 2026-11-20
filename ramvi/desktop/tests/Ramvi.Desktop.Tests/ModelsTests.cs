@@ -244,7 +244,8 @@ public sealed class ModelsTests
         Assert.True(model.Settings.IsAgentTab && !model.Settings.IsModuleTab && !model.Settings.HasFooter);
         model.Settings.AddTab("character", "section.character");
         model.Settings.SelectedTab = model.Settings.Tabs[^1];
-        Assert.True(model.Settings.IsModuleTab && !model.Settings.IsAgentTab && !model.Settings.HasFooter);
+        // У персонажа тоже свой экран настроек (9.13).
+        Assert.True(model.Settings.IsCharacterTab && !model.Settings.IsModuleTab && !model.Settings.IsAgentTab && !model.Settings.HasFooter);
         Assert.Equal("Общие", model.Settings.Tabs[0].Title);
     }
 

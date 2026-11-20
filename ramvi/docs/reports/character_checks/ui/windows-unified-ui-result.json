@@ -1,0 +1,15 @@
+{
+    "microphone_button":  true,
+    "tts_visible_without_expanding":  true,
+    "no_agent_picker":  true,
+    "shared_picker_in_agent":  true,
+    "settings_tab":  true,
+    "no_stt_duplicate":  true,
+    "shared_picker_in_chat":  true,
+    "no_preview_controls":  true,
+    "pack_in_settings":  true,
+    "no_avatar_toggle":  true,
+    "shared_picker_in_character":  true,
+    "ok":  true,
+    "composer_input":  true
+}

@@ -243,6 +243,7 @@ class VoiceSession:
                     continue
                 if epoch != self.epoch:
                     continue
+                recognize_at = time.monotonic()
                 try:
                     texts: list[str] = []
                     languages: list[str] = []
@@ -287,6 +288,7 @@ class VoiceSession:
                         language=result.get("language"),
                         languages=languages,
                         provisional=kind == "partial",
+                        recognition_ms=(time.monotonic() - recognize_at) * 1000,
                     )
         except Exception as error:
             if not self.stopped.is_set():

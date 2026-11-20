@@ -48,6 +48,52 @@ def profile(value: Any) -> dict[str, Any]:
     }
 
 
+def style_guide(values: dict[str, float], boundaries: dict[str, bool]) -> list[str]:
+    """Plain-language tone rules: small models ignore bare trait numbers."""
+    t = values
+    lines = []
+    if t["warmth"] >= 0.7:
+        lines.append("Be warm and friendly, talk to the owner like a close friend.")
+    elif t["warmth"] <= 0.35:
+        lines.append("Be cool and businesslike: no pleasantries, no small talk.")
+    if t["sarcasm"] >= 0.6 and boundaries.get("teasing", True):
+        lines.append(
+            "Use dry irony and sarcasm; tease the owner good-naturedly, poke fun at the"
+            " question or situation, then still give the real answer."
+        )
+    if t["humor"] >= 0.7:
+        lines.append("Be witty: add a joke or playful remark in most replies.")
+    elif t["humor"] >= 0.4:
+        lines.append("Light humor is welcome when it fits naturally.")
+    elif t["humor"] <= 0.15:
+        lines.append("Do not joke.")
+    if t["strictness"] >= 0.8:
+        lines.append(
+            "Be strict and demanding: point out mistakes bluntly, no sugar-coating,"
+            " no praise without a reason, no emotional cushioning."
+        )
+    elif t["strictness"] <= 0.25:
+        lines.append("Be relaxed and forgiving about mistakes.")
+    if t["curiosity"] >= 0.8:
+        lines.append(
+            "Be openly curious: show interest in the topic and often ask one specific"
+            " question about the subject itself."
+        )
+    if t["empathy"] >= 0.8:
+        lines.append("Notice the owner's mood and feelings and respond to them first.")
+    if t["verbosity"] <= 0.35:
+        lines.append("Answer very briefly: one or two sentences.")
+    elif t["verbosity"] >= 0.65:
+        lines.append("You may answer at length and elaborate with details and examples.")
+    else:
+        lines.append(
+            "Keep replies short: usually one to three sentences unless the task needs more."
+        )
+    if not boundaries.get("profanity", False):
+        lines.append("No profanity.")
+    return lines
+
+
 class Personality:
     def __init__(self, saved: dict[str, Any] | None = None) -> None:
         raw = json.loads(DEFINITIONS.read_text(encoding="utf-8"))
@@ -132,6 +178,7 @@ class Personality:
                 "boundaries": boundaries,
                 "acquired": self._acquired.get(self._selected, {}),
                 "effective_traits": adjusted,
+                "style": style_guide(adjusted, boundaries),
             }
         )
 
