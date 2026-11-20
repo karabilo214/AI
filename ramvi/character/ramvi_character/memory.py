@@ -237,6 +237,17 @@ class MemoryStore:
         )
         return [self._row(row) for row in rows]
 
+    def by_subject(self, subject: str, kind: str | None = None) -> list[dict[str, Any]]:
+        """Exact subject lookup through its index (consolidation compares within a subject)."""
+        if kind is not None and kind not in KINDS:
+            raise ValueError("invalid memory filter")
+        rows = self._query(
+            "SELECT * FROM memory_record WHERE namespace_id = ? AND subject = ?"
+            " AND (? IS NULL OR kind = ?) ORDER BY last_seen DESC, id LIMIT 100",
+            [self.namespace, _text(subject, 256, "subject"), kind, kind],
+        )
+        return [self._row(row) for row in rows]
+
     def observe(self, identifier: str, source_ids: list[str]) -> dict[str, Any]:
         """The same knowledge met again: occurrences + 1, last_seen now, sources merged."""
         added = _sources(source_ids)

@@ -346,6 +346,13 @@ class Dialogue:
                     }
                 )
                 status = "completed"
+            consolidator = getattr(self.owner, "_consolidator", None)
+            if consolidator is not None and candidates:
+                # Only a fully completed response reaches memory, and off the speech path.
+                owner_words = {"current": user_input}
+                for row in snapshot["history"]:
+                    owner_words["recent:" + row["id"] + "u"] = row["user"]
+                consolidator.submit(identifier, candidates, owner_words)
         except InterruptedError:
             status = "cancelled"
         except Exception as error:

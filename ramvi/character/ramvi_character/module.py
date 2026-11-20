@@ -4,6 +4,7 @@ import copy
 import json
 from typing import Any
 
+from ramvi_character.consolidate import Consolidator
 from ramvi_character.context import Budget, ContextOrchestrator, text
 from ramvi_character.dialogue import Dialogue
 from ramvi_character.emotions import EmotionalState
@@ -34,6 +35,7 @@ class CharacterModule:
         self._presentation_settings = {"pack_path": "", "show_avatar": True}
         self._memory: MemoryStore | None = None
         self._memory_error: str | None = None
+        self._consolidator: Consolidator | None = None
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})
@@ -91,7 +93,18 @@ class CharacterModule:
         self._state = "initialized"
         return self.status()
 
+    def _start_memory(self) -> None:
+        if self._memory is not None:
+            self._consolidator = Consolidator(self._memory)
+
+    def _stop_memory(self) -> None:
+        # Background memory work never outlives the module's active state.
+        if self._consolidator is not None:
+            self._consolidator.stop(wait=True)
+            self._consolidator = None
+
     def activate(self) -> dict[str, Any]:
+        self._start_memory()
         self._state = "active"
         return self.status()
 
@@ -100,6 +113,7 @@ class CharacterModule:
         self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         self._initiative.end()
+        self._stop_memory()
         self._presentation = None
         self._pack = None
         self._state = "inactive"
@@ -109,11 +123,13 @@ class CharacterModule:
         self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         self._initiative.end()
+        self._stop_memory()
         self._presentation = None
         self._pack = None
         self._state = "suspended"
 
     def resume(self) -> dict[str, Any]:
+        self._start_memory()
         self._state = "active"
         return self.status()
 
@@ -139,6 +155,23 @@ class CharacterModule:
             "initiative": self._initiative.checkpoint(),
         }
 
+    def _memory_command(self, operation: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Owner-only memory control: list, confirm a candidate, forget a record."""
+        if self._memory is None:
+            raise ValueError("memory is not available")
+        if operation == "memory_confirm":
+            if self._consolidator is None:
+                raise ValueError("memory is not available")
+            self._consolidator.confirm(args["id"])
+        elif operation == "memory_forget":
+            if not self._memory.forget(args["id"]):
+                raise ValueError("unknown memory record")
+        return {
+            "records": self._memory.records(
+                kind=args.get("kind"), status=args.get("status"), limit=args.get("limit", 100)
+            )
+        }
+
     def _save_live_state(self) -> None:
         if self._memory is not None:
             self._memory.save_state({"emotional_state": self._emotions.checkpoint()})
@@ -157,6 +190,7 @@ class CharacterModule:
                 "available": self._memory is not None,
                 "namespace": self._memory.namespace if self._memory else None,
                 "error": self._memory_error,
+                "background": dict(self._consolidator.stats) if self._consolidator else None,
             },
             "task": self._task,
             "initiative": self._initiative.status(),
@@ -329,6 +363,8 @@ class CharacterModule:
                         "data.set", {"path": "presentation.json", "value": preferences}
                     )
                 self._presentation_settings = preferences
+            elif operation in {"memory", "memory_confirm", "memory_forget"}:
+                return {"memory": self._memory_command(operation, args)}
             elif operation not in {"status", "poll"}:
                 raise ValueError("unknown dialogue operation")
             result = self._dialogue.view(args.get("response_id"), args.get("cursor", 0))
