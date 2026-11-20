@@ -8,6 +8,7 @@ from ramvi_character.context import Budget, ContextOrchestrator, text
 from ramvi_character.dialogue import Dialogue
 from ramvi_character.emotions import EmotionalState
 from ramvi_character.initiative import InitiativeGate
+from ramvi_character.memory import MemoryStore
 from ramvi_character.pack import load_pack, presentation
 from ramvi_character.personality import Personality
 from ramvi_character.speech import SpeechOutput
@@ -31,6 +32,8 @@ class CharacterModule:
         self._presentation: dict[str, Any] | None = None
         self._pack: dict[str, Any] | None = None
         self._presentation_settings = {"pack_path": "", "show_avatar": True}
+        self._memory: MemoryStore | None = None
+        self._memory_error: str | None = None
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})
@@ -71,6 +74,19 @@ class CharacterModule:
             if stored is not None:
                 preferences = stored
         self._presentation_settings = self._validate_presentation(preferences)
+        self._memory, self._memory_error = None, None
+        if context.get("services") is not None:
+            try:
+                self._memory = MemoryStore(
+                    context["services"], user_id=context.get("user_id", "owner")
+                )
+            except Exception as error:  # no own database (old package or test host)
+                self._memory_error = type(error).__name__
+        if self._memory is not None:
+            # Character State in the module database outranks the older JSON checkpoint.
+            live = self._memory.load_state()
+            if live is not None:
+                self._emotions = EmotionalState(live.get("emotional_state"))
         # Text activation does not import/load animation, STT, TTS or an LLM.
         self._state = "initialized"
         return self.status()
@@ -110,6 +126,7 @@ class CharacterModule:
         self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         # No sound, animation queue or unfinished response resumes after a restart.
+        self._save_live_state()
         return {
             "schema": "ramvi.character.state/3",
             "draft": self._draft,
@@ -122,6 +139,10 @@ class CharacterModule:
             "initiative": self._initiative.checkpoint(),
         }
 
+    def _save_live_state(self) -> None:
+        if self._memory is not None:
+            self._memory.save_state({"emotional_state": self._emotions.checkpoint()})
+
     def status(self) -> dict[str, Any]:
         return {
             "mode": "text",
@@ -132,6 +153,11 @@ class CharacterModule:
             "presentation": copy.deepcopy(self._presentation),
             "personality": self._personality.view(),
             "emotional_state": self._emotions.view(),
+            "memory": {
+                "available": self._memory is not None,
+                "namespace": self._memory.namespace if self._memory else None,
+                "error": self._memory_error,
+            },
             "task": self._task,
             "initiative": self._initiative.status(),
             "devices_open": self._voice.state in {"listening", "hearing", "recognizing", "stopping"}
