@@ -261,6 +261,7 @@ def build(
         ApiOptions.from_settings(current_settings()),
     )
     server.api.host = host
+    server.api.cloud, server.api.models = cloud, Models(db)  # 7.9: транслятор облачных моделей
     if root is not None:
         server.updater = Updater(root, data_dir)  # 8.3: обновления комплекта
     # Закрывается в обратном порядке: сначала загрузки, потом база

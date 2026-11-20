@@ -13,6 +13,13 @@
    поток), ответ возвращается клиенту по мере генерации. Клиент оборвал связь — запрос
    в движке отменяется.
 
+**Облачные модели (7.9).** Если `model` в запросе — включённая облачная модель (полный id
+`cloud:<подключение>:<модель>` или её имя у сервиса, если оно одно и не совпадает с локальной),
+запрос переводится в общий формат (`cloud_api`), уходит облачному сервису с облачным ключом
+RAMVI и возвращается клиенту в его формате. Нужно отдельное право ключа клиента `cloud`
+(запросы платные); без него — 403, облачные модели не видны в списке. Очередь локального
+движка не нужна, ворота клиента и учёт токенов — те же; отзыв ключа обрывает облачный ответ.
+
 **Очередь (7.3).** Общая очередь модели строго по порядку прихода, поэтому перед
 ней у каждого клиента свои «ворота»: в общей очереди не больше одного его запроса,
 остальные ждут у ворот. Так клиенты чередуются, и приславший десять запросов не
@@ -275,6 +282,8 @@ class ApiServer:
         self._lock = threading.Lock()
         self.gate = FairGate()
         self.host: Any = None  # ModuleHost — для описания возможностей (7.6)
+        self.cloud: Any = None  # 7.9: CloudConnections — облачные модели для внешних клиентов
+        self.models: Any = None  # 7.9: Models — какие облачные модели включены
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -427,15 +436,45 @@ class ApiServer:
             self.llm.release_owner(owner)
             self.llm.authority.revoke(owner)
 
-    def models_payload(self, path: str) -> dict[str, Any]:
-        model_id, _ = self.loaded()
-        if path == "/api/tags":
-            return {"models": [{"name": model_id, "model": model_id}]}
+    def cloud_models(self) -> list[Any]:
+        """7.9: включённые облачные модели (строки `models` с provider=cloud)."""
+        if self.cloud is None or self.models is None:
+            return []
+        return [m for m in self.models.all() if m.provider == "cloud"]
+
+    def resolve_cloud(self, asked: Any) -> Any:
+        """Облачная модель по имени из запроса: полный id `cloud:<подключение>:<модель>` или
+        имя модели у сервиса, если оно одно среди включённых и не совпадает с локальной."""
+        if not isinstance(asked, str) or not asked:
+            return None
+        models = self.cloud_models()
+        for model in models:
+            if model.id == asked:
+                return model
+        local = {str(self.engines.model_id or "").lower()}
+        if asked.lower() in local:
+            return None
+        named = [m for m in models if m.path == asked]
+        return named[0] if len(named) == 1 else None
+
+    def models_payload(self, path: str, client: Any = None) -> dict[str, Any]:
         if path == "/api/version":
             return {"version": "ramvi"}
+        names: list[tuple[str, str]] = []
+        try:
+            model_id, _ = self.loaded()
+            names.append((model_id, "ramvi"))
+        except ApiError:
+            pass
+        if client is not None and "cloud" in client.permissions:
+            names += [(m.id, "cloud") for m in self.cloud_models()]
+        if not names:
+            raise ApiError(503, "api.no_model", "no model is loaded in RAMVI")
+        if path == "/api/tags":
+            return {"models": [{"name": n, "model": n} for n, _ in names]}
         return {
             "object": "list",
-            "data": [{"id": model_id, "object": "model", "owned_by": "ramvi"}],
+            "data": [{"id": n, "object": "model", "owned_by": owner} for n, owner in names],
         }
 
     def check_model(self, body: dict[str, Any], model_id: str, served: str) -> None:
@@ -486,11 +525,11 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                 address = self._admit()
                 if path == "/" and is_local(address):
                     return self._send_json(200, {"service": "ramvi", "status": "ok"})
-                api.authorize(self.headers, path, address)
+                client = api.authorize(self.headers, path, address)
                 if path == "/":
                     return self._send_json(200, {"service": "ramvi", "status": "ok"})
                 if path in ("/v1/models", "/api/tags", "/api/version"):
-                    return self._send_json(200, api.models_payload(path))
+                    return self._send_json(200, api.models_payload(path, client))
                 if path == "/ramvi/v1/capabilities":
                     return self._send_json(200, describe(api.host, api, external=True))
                 raise ApiError(404, "api.not_found", f"unknown route {path}")
@@ -529,6 +568,16 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                     )
 
         def _generate(self, client: Any, path: str, body: dict[str, Any]) -> None:
+            remote = api.resolve_cloud(body.get("model"))
+            if remote is not None:
+                if "cloud" not in client.permissions:
+                    raise ApiError(
+                        403,
+                        "api.cloud_forbidden",
+                        "this key may not use cloud models (paid requests)",
+                        model=remote.id,
+                    )
+                return self._cloud(client, path, body, remote)
             model_id, provider = api.loaded()
             api.check_model(body, model_id, provider.model)
             active = api.track(client.id)
@@ -549,6 +598,80 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                 raise ApiError(401, "api.unauthorized", "the key was revoked") from None
             finally:
                 api.untrack(active)
+
+        def _cloud(self, client: Any, path: str, body: dict[str, Any], model: Any) -> None:
+            """7.9: облачная модель — перевод формата, облачный ключ остаётся в RAMVI. Очередь
+            локального движка не нужна; ворота клиента (справедливость, лимиты) — те же."""
+            from ramvi_service.chat import ChatError
+            from ramvi_service.cloud_api import Writer, to_request
+
+            request, stream = to_request(path, body)
+            writer = Writer(path, model.id, stream, body)
+            active = api.track(client.id)
+            started = time.monotonic()
+            sent = failed = False
+            try:
+                with api.gate.turn(client.id, api.options, active.cancel):
+                    if active.cancel.is_set():
+                        raise InterruptedError("revoked")
+                    provider = api.cloud.provider(model)
+                    try:
+                        for chunk in provider.stream(request, active.cancel):
+                            data = writer.feed(chunk)
+                            if not stream or not data:
+                                continue
+                            if not sent:
+                                self.send_response(200)
+                                self.send_header("Content-Type", writer.content_type)
+                                self.end_headers()
+                                sent = True
+                            try:
+                                self.wfile.write(data)
+                                self.wfile.flush()
+                            except (TimeoutError, BrokenPipeError, ConnectionResetError):
+                                failed = True  # клиент ушёл: выход из цикла закрывает поток облака
+                                return
+                    except ChatError as error:
+                        failed = True
+                        if sent:
+                            return  # поток уже начат: клиент видит обрыв
+                        raise ApiError(
+                            502,
+                            "api.cloud_error",
+                            error.code,
+                            cloud_code=error.code,
+                            cloud=error.params,
+                        ) from None
+                    if not stream:
+                        self._send_json(200, writer.complete())
+                        sent = True
+            except InterruptedError:
+                failed = True
+                if not sent:
+                    raise ApiError(401, "api.unauthorized", "the key was revoked") from None
+            finally:
+                api.untrack(active)
+                seconds = time.monotonic() - started
+                usage = writer.done.usage
+                api.keys.add_usage(
+                    client.id,
+                    usage["prompt_tokens"],
+                    usage["completion_tokens"],
+                    seconds,
+                    error=failed,
+                )
+                if api.on_usage is not None:
+                    api.on_usage(
+                        client.id,
+                        {
+                            "path": path,
+                            "model": model.id,
+                            "seconds": seconds,
+                            "prompt_tokens": usage["prompt_tokens"],
+                            "completion_tokens": usage["completion_tokens"],
+                            "error": failed,
+                        },
+                    )
 
         def _proxy(
             self, client: Any, path: str, body: dict[str, Any], provider: Any, active: _Active

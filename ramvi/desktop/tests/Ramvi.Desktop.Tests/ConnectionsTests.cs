@@ -81,6 +81,20 @@ public sealed class ConnectionsTests
     }
 
     [Fact]
+    public async Task Cloud_models_are_a_separate_permission_off_by_default()
+    {
+        var (api, model, _) = await Open();
+        var connections = model.Settings.Connections;
+        var cloud = connections.NewPermissions.Single(p => p.Code == "cloud");
+        Assert.False(cloud.Enabled); // платные запросы — только по явному выбору
+        Assert.Equal(Ru["connections.permission.cloud"], cloud.Label);
+        connections.NewName = "IDE";
+        cloud.Enabled = true;
+        await connections.CreateCommand.RunAsync();
+        Assert.Equal(["chat", "models", "cloud"], api.CreatedKeys[0].Permissions);
+    }
+
+    [Fact]
     public async Task Key_needs_at_least_one_permission()
     {
         var (api, model, _) = await Open();

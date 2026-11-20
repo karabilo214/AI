@@ -120,6 +120,7 @@ public sealed class ConnectionsViewModel : ObservableObject
         NewPermissions =
         [
             new("chat", true), new("models", true), new("agent", false), new("remote", false),
+            new("cloud", false), // 7.9: облачные модели — платные запросы, по умолчанию выключено
         ];
         CreateCommand = new Command(CreateAsync, () => NewName.Trim().Length > 0);
         CopyKeyCommand = new Command(() => _newKey is { } key ? _copy(key) : Task.CompletedTask, () => HasNewKey);

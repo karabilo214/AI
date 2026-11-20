@@ -914,5 +914,8 @@
   "cloud.filter": "Найти модель",
   "cloud.tag": "облако",
   "cloud.sending": "запросы уходят в {host}",
-  "cloud.sending_unknown": "запросы уходят в облачный сервис"
+  "cloud.sending_unknown": "запросы уходят в облачный сервис",
+  "connections.permission.cloud": "облачные модели (платно)",
+  "api.cloud_forbidden": "Этому ключу нельзя пользоваться облачными моделями: запросы к ним платные. Разрешите «облачные модели» у ключа",
+  "api.cloud_error": "Облачный сервис не ответил: {cloud_code}"
 }

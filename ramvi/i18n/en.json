@@ -914,5 +914,8 @@
   "cloud.filter": "Find a model",
   "cloud.tag": "cloud",
   "cloud.sending": "requests go to {host}",
-  "cloud.sending_unknown": "requests go to a cloud service"
+  "cloud.sending_unknown": "requests go to a cloud service",
+  "connections.permission.cloud": "cloud models (paid)",
+  "api.cloud_forbidden": "This key may not use cloud models: their requests are paid. Allow “cloud models” for the key",
+  "api.cloud_error": "The cloud service did not answer: {cloud_code}"
 }

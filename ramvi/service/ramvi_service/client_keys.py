@@ -21,7 +21,7 @@ from ramvi_service.i18n import UserError
 
 PREFIX = "ramvi-"
 # remote (7.4) — ключ можно использовать из сети; без него ключ работает только локально.
-PERMISSIONS = frozenset({"chat", "models", "agent", "remote"})
+PERMISSIONS = frozenset({"chat", "models", "agent", "remote", "cloud"})  # cloud — 7.9, деньги
 
 
 class ClientKeyError(UserError, ValueError):
