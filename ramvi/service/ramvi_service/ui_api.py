@@ -87,6 +87,7 @@ class UIServer:
         self.api: Any = None  # 7.1: внешний API (ApiServer), запускается в main
         self.updater: Any = None  # 8.3: Updater комплекта (только при папке приложения)
         self.app_dir: Path | None = None
+        self.cloud: Any = None  # 7.7: CloudConnections — облачные модели по API
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
         self.packages: Any = None  # 8.8: ModulePackages (пакеты модулей в папке приложения)
@@ -166,6 +167,8 @@ class UIServer:
             return describe(host, self.api)
         if path == "/updates" or path.startswith("/updates/"):
             return self._updates_route(method, path, body)
+        if path == "/cloud" or path.startswith("/cloud/"):
+            return self._cloud_route(method, path, body)
         if path == "/connections" or path.startswith("/connections/"):
             return self._connections_route(method, path, body)
         if method == "GET" and path == "/recommendations":
@@ -222,6 +225,9 @@ class UIServer:
             model_id = _required_str(body, "model_id")
             if not self.chat.has_model(model_id):
                 raise ChatError("chat.model_not_found", model_id=model_id)
+            if self.chat.models_repo.get(model_id).provider == "cloud":
+                # 7.7: облачной модели загрузка не нужна; локальная в движке остаётся.
+                return {"started": False, "cloud": True, "engine": self._status()}
             started = control.load(model_id)
             return {"started": started, "engine": self._status()}
         unloaded = control.unload()
@@ -401,11 +407,36 @@ class UIServer:
                 entry["compat"] = self.fit.for_entry(entry)
         return view
 
+    def _cloud_route(self, method: str, path: str, body: dict[str, Any]) -> Any:
+        """7.7: подключения к облачным сервисам; ключ уходит в хранилище ОС, в ответах — has_key."""
+        cloud = self.cloud
+        if cloud is None:
+            raise ChatError("api.not_found")
+        if method == "GET" and path == "/cloud":
+            return cloud.view()
+        if method == "POST" and path == "/cloud/connections":
+            return {"connection": cloud.save(body)}
+        if method == "POST" and path == "/cloud/models":  # проверка ключа по значениям формы
+            return {"models": cloud.remote_models(body)}
+        match = re.fullmatch(r"/cloud/connections/([a-z0-9][a-z0-9_-]{0,31})(/models)?", path)
+        if match is not None and method == "DELETE" and match.group(2) is None:
+            cloud.delete(match.group(1))
+            return {"deleted": match.group(1)}
+        if match is not None and method == "POST" and match.group(2):
+            enabled = body.get("enabled")
+            if set(body) - {"model", "enabled"} or not isinstance(enabled, bool):
+                raise ChatError("api.bad_request", field="enabled")
+            return cloud.enable(match.group(1), body.get("model"), enabled)
+        raise ChatError("api.not_found")
+
     def _with_fit(self, models: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """4.4: статус каждой установленной модели (заголовок из файла, без сети)."""
         if self.fit is None:
             return models
         for item in models:
+            if item.get("provider") == "cloud":  # 7.7: считает сервис, видеопамять не нужна
+                item["compat"] = {"status": "cloud"}
+                continue
             stored = resolve_model(self.chat.models_repo.get(item["id"]), self.app_dir)
             item["compat"] = self.fit.for_file(stored.path, item["id"], item["id"])
         return models

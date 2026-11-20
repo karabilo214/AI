@@ -869,5 +869,17 @@
   "character.agent_cancelled": "отменено",
   "character.agent_failed": "не выполнено",
   "character.agent_cancel": "Отменить задачу",
-  "agent.from_character": "Задача от персонажа"
+  "agent.from_character": "Задача от персонажа",
+  "cloud.only_https": "Адрес облачного сервиса {host} должен начинаться с https:// (http — только для этого компьютера)",
+  "cloud.no_key": "Для облачного сервиса {host} не задан ключ API. Укажите его в «Подключения» → «Облачные модели»",
+  "cloud.key_rejected": "Облачный сервис {host} не принял ключ API ({status}). Проверьте ключ и права ключа",
+  "cloud.rate_limited": "Облачный сервис {host} ограничил запросы или закончились средства: {detail}",
+  "cloud.service_error": "Облачный сервис {host} ответил ошибкой {status}: {detail}",
+  "cloud.unreachable": "Нет связи с облачным сервисом {host} ({detail}). Проверьте интернет",
+  "cloud.redirect_refused": "Облачный сервис {host} перенаправил запрос ({status}) — RAMVI не отправляет ключ на другой адрес",
+  "cloud.stream_cut": "Облачный сервис {host} оборвал ответ на середине",
+  "cloud.image_not_inline": "Картинку можно отправить в облачную модель только из самого сообщения, не по ссылке",
+  "cloud.not_found": "Подключение {connection} не найдено",
+  "cloud.secrets_unavailable": "Хранилище ключей системы недоступно, ключ не сохранён",
+  "engine.cloud_model": "Модель {model_id} облачная: её считает сервис, загружать в движок не нужно"
 }

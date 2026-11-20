@@ -869,5 +869,17 @@
   "character.agent_cancelled": "cancelled",
   "character.agent_failed": "not completed",
   "character.agent_cancel": "Cancel task",
-  "agent.from_character": "Task from the character"
+  "agent.from_character": "Task from the character",
+  "cloud.only_https": "The cloud service address {host} must start with https:// (http only for this computer)",
+  "cloud.no_key": "No API key is set for the cloud service {host}. Enter it in Connections → Cloud models",
+  "cloud.key_rejected": "The cloud service {host} rejected the API key ({status}). Check the key and its permissions",
+  "cloud.rate_limited": "The cloud service {host} limited requests or funds ran out: {detail}",
+  "cloud.service_error": "The cloud service {host} returned error {status}: {detail}",
+  "cloud.unreachable": "No connection to the cloud service {host} ({detail}). Check the internet",
+  "cloud.redirect_refused": "The cloud service {host} redirected the request ({status}) — RAMVI does not send the key to another address",
+  "cloud.stream_cut": "The cloud service {host} cut the answer off midway",
+  "cloud.image_not_inline": "An image can be sent to a cloud model only inside the message, not as a link",
+  "cloud.not_found": "Connection {connection} not found",
+  "cloud.secrets_unavailable": "The system key store is unavailable, the key was not saved",
+  "engine.cloud_model": "Model {model_id} is a cloud model: the service runs it, no need to load it into the engine"
 }

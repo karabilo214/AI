@@ -1,6 +1,6 @@
 {
   "module_id": "character",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "entrypoint": "ramvi_character.module:create",
   "ui": {
     "section": {
@@ -20,6 +20,7 @@
     "llm",
     "voice",
     "speech",
-    "agent"
+    "agent",
+    "egress.text"
   ]
 }

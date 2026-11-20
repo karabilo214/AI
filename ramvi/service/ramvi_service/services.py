@@ -25,6 +25,12 @@ Handler = Callable[["ScopedServices", Payload], Payload]
 Permission = Callable[[Payload], tuple[str, str]]
 
 
+def _capabilities(provider: Any, request: dict[str, Any]) -> Any:
+    """Возможности модели этого запроса; провайдер без выбора модели — общие."""
+    choose = getattr(provider, "capabilities_for", None)
+    return choose(request) if callable(choose) else provider.capabilities
+
+
 @dataclass(frozen=True)
 class Route:
     """Обработчик метода Scoped Services и право, которое проверяется до него."""
@@ -272,7 +278,7 @@ class ScopedServices:
         request = payload["request"]
         if not isinstance(request, dict):
             raise ValueError("LLM request must be an object")
-        capabilities = self.llm.provider.capabilities
+        capabilities = _capabilities(self.llm.provider, request)
         if request.get("tools") and not capabilities.tools:
             raise NotImplementedError("Provider did not declare tools")
         if request.get("response_format") and not capabilities.json_schema:
@@ -316,9 +322,11 @@ class ScopedServices:
     def _llm_capabilities(self, payload: dict[str, Any]) -> dict[str, Any]:
         from dataclasses import asdict
 
+        model = payload.get("model")  # 7.7: возможности выбранной модели (облачная — внешняя)
+        request = {"ramvi_model_id": model} if isinstance(model, str) else {}
         return {
             "available": self.llm is not None,
-            "capabilities": asdict(self.llm.provider.capabilities) if self.llm else {},
+            "capabilities": asdict(_capabilities(self.llm.provider, request)) if self.llm else {},
         }
 
     @handler("llm.complete", permission="llm", active=True)

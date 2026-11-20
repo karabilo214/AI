@@ -35,6 +35,7 @@ from ramvi_service.catalog import Catalog
 from ramvi_service.catalog.support import capabilities
 from ramvi_service.chat import ChatService
 from ramvi_service.client_keys import KeyStore
+from ramvi_service.cloud import CloudConnections, CloudProvider, is_cloud
 from ramvi_service.context import ContextProvider
 from ramvi_service.contracts.modules import Authority
 from ramvi_service.control_run import ControlRun
@@ -121,13 +122,23 @@ def build(
     )
     catalog = Catalog(data_dir) if catalog is None else catalog
     authority = Authority()
-    llm = SharedLLM(authority, SwitchableProvider(engines))
+    shared_secrets = (voice_options or {}).get("secrets") or os_secrets(data_dir)
+    cloud = CloudConnections(data_dir, shared_secrets, Models(db))
+
+    def cloud_for(model_id: str) -> CloudProvider | None:
+        """7.7: облачная модель идёт в свой сервис, локальный движок не нужен."""
+        try:
+            model = Models(db).get(model_id)
+        except NotFound:
+            return None
+        return cloud.provider(model) if is_cloud(model) else None
+
+    llm = SharedLLM(authority, SwitchableProvider(engines, cloud_for))
     onboarding = Onboarding(data_dir, Models(db), app_dir=root)
     chat = ChatService(
         db, llm, default_model=lambda: engines.model_id or onboarding.default_model()
     )
     control = ModelControl(engines, llm, chat.stop_all)
-    shared_secrets = (voice_options or {}).get("secrets") or os_secrets(data_dir)
     host = ModuleHost(data_dir, llm=llm, secrets=shared_secrets)
     host.agent = AgentGateway(host.authority, host.grants)
     host.context = ContextProvider(host.authority, host.grants, SystemContextAdapter())
@@ -192,6 +203,7 @@ def build(
         lambda model_id: runs.status(model_id)["state"] in ("queued", "running"),
     )
     server.app_dir = root
+    server.cloud = cloud  # 7.7: подключения к облачным сервисам
 
     def current_settings() -> app_settings.Settings:
         try:

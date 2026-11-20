@@ -227,6 +227,8 @@ class EngineManager:
                 model = resolve_model(self.models.get(model_id), self.model_root)
             except NotFound:
                 raise EngineError("engine.model_not_found", model_id=model_id) from None
+            if model.provider == "cloud":  # 7.7: облачную модель считает сервис, не движок
+                raise EngineError("engine.cloud_model", model_id=model_id)
             refused = self.preflight(model)  # до остановки текущей: рабочая модель остаётся
             if refused is not None:
                 code, detail = refused
@@ -370,15 +372,35 @@ class SwitchableProvider:
 
     capabilities = ProviderCapabilities(streaming=True)
 
-    def __init__(self, manager: EngineManager) -> None:
+    def __init__(
+        self, manager: EngineManager, cloud: Callable[[str], Any | None] | None = None
+    ) -> None:
         self.manager = manager
-        self._active: LocalEngineProvider | None = None
+        # 7.7: провайдер облачной модели по её id (None — модель локальная).
+        self.cloud = cloud or (lambda model_id: None)
+        self._active: Any = None
         self._lock = threading.Lock()
+
+    def capabilities_for(self, request: dict[str, Any]) -> ProviderCapabilities:
+        """Возможности той модели, куда уйдёт запрос: облачная — внешняя (egress-права)."""
+        model_id = request.get(MODEL_FIELD)
+        remote = None if not isinstance(model_id, str) else self.cloud(model_id)
+        chosen: ProviderCapabilities = self.capabilities if remote is None else remote.capabilities
+        return chosen
 
     def complete(self, request: dict[str, Any], cancel: threading.Event) -> dict[str, Any]:
         request = dict(request)
         model_id = request.pop(MODEL_FIELD, None)
         minimum = request.pop("ramvi_min_context", 0)
+        remote = None if model_id is None else self.cloud(model_id)
+        if remote is not None:  # облако: локальный движок не трогается
+            with self._lock:
+                self._active = remote
+            try:
+                return remote.complete(request, cancel)  # type: ignore[no-any-return]
+            finally:
+                with self._lock:
+                    self._active = None
         if model_id is not None:
             self.manager.ensure(model_id, **({"minimum_context": minimum} if minimum else {}))
         provider = self.manager.provider()
@@ -394,6 +416,16 @@ class SwitchableProvider:
         request = dict(request)
         model_id = request.pop(MODEL_FIELD, None)
         minimum = request.pop("ramvi_min_context", 0)
+        remote = None if model_id is None else self.cloud(model_id)
+        if remote is not None:
+            with self._lock:
+                self._active = remote
+            try:
+                yield from remote.stream(request, cancel)
+            finally:
+                with self._lock:
+                    self._active = None
+            return
         if model_id is not None:
             if self.manager.model_id != model_id or self.manager.status()["state"] != "ready":
                 yield {"type": "status", "state": "loading", "model_id": model_id}

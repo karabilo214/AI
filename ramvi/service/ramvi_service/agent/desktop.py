@@ -225,6 +225,7 @@ class AgentDesktop:
     ) -> tuple[str, Workspace]:
         """One workspace binding with the user's policy, tools, confirmations and journal."""
         model = Models(self.runs.db).get(model_id)
+        remote = model.provider == "cloud"  # 7.7: модель считает облачный сервис
         policy = self._policy
         ws = Workspace(
             Path(folder),
@@ -267,7 +268,7 @@ class AgentDesktop:
                     target["application"],
                     target["window_id"],
                     cast(ControlAdapter, self.host.context.adapter),
-                    external=self.llm.provider.capabilities.external,
+                    external=remote or self.llm.provider.capabilities.external,
                 ).register(tools)
             return AgentRuntime(
                 LLMStrategy(
@@ -303,7 +304,9 @@ class AgentDesktop:
             owner,
             factory,
             model_id=model_id,
-            facts=self._facts(model, context)
+            facts=ModelFacts(True, context)  # облачные модели вызывают инструменты сами
+            if remote
+            else self._facts(model, context)
             if self._facts
             else ModelFacts("tools" in capabilities("gguf", model.architecture), context),
             context_data=context_data,

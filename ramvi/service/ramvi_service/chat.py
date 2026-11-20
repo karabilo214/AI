@@ -127,6 +127,7 @@ class ChatService:
         return [
             {
                 "id": m.id,
+                "provider": m.provider,
                 "architecture": m.architecture,
                 "quant": m.quant,
                 "bytes": m.bytes,
