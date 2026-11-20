@@ -12,6 +12,18 @@
     <TextBlock Text="{l:T character.speech_text_only}" TextWrapping="Wrap" Classes="muted"/>
     <Button Content="{l:T character.speech_resume}" Command="{Binding ResumeCommand}"/>
    </StackPanel>
+   <StackPanel x:Name="CharacterRating" IsVisible="{Binding CanRate}" Spacing="4">
+    <TextBlock Text="{l:T character.rate_title}" Classes="muted"/>
+    <WrapPanel>
+     <Button Content="{l:T character.rate_good}" Command="{Binding RateCommand}" CommandParameter="overall:1" Margin="0,0,6,6"/>
+     <Button Content="{l:T character.rate_bad}" Command="{Binding RateCommand}" CommandParameter="overall:-1" Margin="0,0,6,6"/>
+     <Button Content="{l:T character.rate_shorter}" Command="{Binding RateCommand}" CommandParameter="verbosity:-1" Margin="0,0,6,6"/>
+     <Button Content="{l:T character.rate_longer}" Command="{Binding RateCommand}" CommandParameter="verbosity:1" Margin="0,0,6,6"/>
+     <Button Content="{l:T character.rate_less_humor}" Command="{Binding RateCommand}" CommandParameter="humor:-1" Margin="0,0,6,6"/>
+     <Button Content="{l:T character.rate_more_humor}" Command="{Binding RateCommand}" CommandParameter="humor:1" Margin="0,0,6,6"/>
+    </WrapPanel>
+    <TextBlock Text="{Binding FeedbackStatus}" IsVisible="{Binding FeedbackStatus, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Classes="muted"/>
+   </StackPanel>
    <WrapPanel>
     <Button Content="{l:T character.text_mode}" Command="{Binding TextModeCommand}" Margin="0,0,8,6"/>
     <Button Content="{l:T character.disconnect}" Command="{Binding DisconnectCommand}" Margin="0,0,8,6"/>

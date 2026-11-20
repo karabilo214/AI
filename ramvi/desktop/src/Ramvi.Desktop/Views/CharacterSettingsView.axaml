@@ -68,6 +68,13 @@
      </DataTemplate>
     </ItemsControl.ItemTemplate>
    </ItemsControl>
+   <TextBlock Text="{l:T character.pref_title}" Classes="heading"/>
+   <TextBlock Text="{l:T character.pref_hint}" TextWrapping="Wrap" Classes="muted"/>
+   <TextBlock Text="{l:T character.pref_empty}" IsVisible="{Binding NoPreferences}" Classes="muted"/>
+   <ItemsControl x:Name="Preferences" ItemsSource="{Binding Preferences}">
+    <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:PreferenceItem"><TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,0,0,4"/></DataTemplate></ItemsControl.ItemTemplate>
+   </ItemsControl>
+   <WrapPanel><Button x:Name="FeedbackClear" Content="{l:T character.pref_clear}" Command="{Binding ClearFeedbackCommand}" IsEnabled="{Binding !NoPreferences}" Margin="0,0,8,8"/></WrapPanel>
    <TextBlock Text="{l:T character.history_title}" Classes="heading"/>
    <WrapPanel><Button x:Name="HistoryClear" Content="{l:T character.history_clear}" Command="{Binding ClearHistoryCommand}" Margin="0,0,8,8"/></WrapPanel>
    <StackPanel IsVisible="{Binding ClearHistoryArmed}" Spacing="8">

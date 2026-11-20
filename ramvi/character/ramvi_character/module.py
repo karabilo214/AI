@@ -8,6 +8,7 @@ from ramvi_character.consolidate import Consolidator
 from ramvi_character.context import Budget, ContextOrchestrator, text
 from ramvi_character.dialogue import Dialogue
 from ramvi_character.emotions import EmotionalState
+from ramvi_character.feedback import FeedbackStore
 from ramvi_character.initiative import InitiativeGate
 from ramvi_character.memory import MemoryStore
 from ramvi_character.pack import load_pack, presentation
@@ -40,6 +41,7 @@ class CharacterModule:
         self._memory: MemoryStore | None = None
         self._memory_error: str | None = None
         self._consolidator: Consolidator | None = None
+        self._feedback: FeedbackStore | None = None
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})
@@ -99,7 +101,8 @@ class CharacterModule:
 
     def _start_memory(self) -> None:
         if self._memory is not None:
-            self._consolidator = Consolidator(self._memory)
+            self._feedback = FeedbackStore(self._memory)
+            self._consolidator = Consolidator(self._memory, self._feedback)
 
     def _stop_memory(self) -> None:
         # Background memory work never outlives the module's active state.
@@ -189,6 +192,31 @@ class CharacterModule:
             )
         }
 
+    def _feedback_command(self, operation: str, args: dict[str, Any]) -> dict[str, Any]:
+        """The owner rates a reply (by default the last completed one) or reviews signals."""
+        if self._feedback is None:
+            raise ValueError("feedback is not available")
+        if operation == "feedback":
+            target = args.get("response_id")
+            if target is None:
+                done = [r["id"] for r in self._dialogue.history if r["status"] == "completed"]
+                if not done:
+                    raise ValueError("no reply to rate")
+                target = done[-1]
+            elif target not in {r["id"] for r in self._dialogue.history}:
+                raise ValueError("unknown reply")
+            self._feedback.add(
+                target, args.get("dimension", "overall"), args["direction"], "explicit_ui"
+            )
+        elif operation == "feedback_clear":
+            self._feedback.clear()
+            assert self._memory is not None
+            self._memory.compact()
+        return {
+            "preferences": self._feedback.preferences(),
+            "signals": self._feedback.signals(limit=50),
+        }
+
     def _history_command(self, operation: str, args: dict[str, Any]) -> dict[str, Any]:
         """Delete conversation turns; memory learned only from them is forgotten as well."""
         ids = None if operation == "history_clear" else args["ids"]
@@ -205,6 +233,8 @@ class CharacterModule:
                 for kind, part in (("response", ""), ("recent", "u"), ("recent", "a"))
             }
             forgotten = self._memory.forget_sources(sources)
+            if self._feedback is not None:
+                self._feedback.forget_responses(removed)
             self._memory.compact()
         return {"removed": removed, "memory_forgotten": forgotten}
 
@@ -218,6 +248,7 @@ class CharacterModule:
             "records": self._memory.records(limit=1000),
             "character_state": self._memory.load_state(),
             "history": copy.deepcopy(self._dialogue.history),
+            "feedback": self._feedback.signals(limit=1000) if self._feedback else [],
         }
 
     def _save_live_state(self) -> None:
@@ -413,6 +444,8 @@ class CharacterModule:
                 self._presentation_settings = preferences
             elif operation in MEMORY_OPERATIONS:
                 return {"memory": self._memory_command(operation, args)}
+            elif operation in {"feedback", "feedback_view", "feedback_clear"}:
+                return {"feedback": self._feedback_command(operation, args)}
             elif operation in {"history_forget", "history_clear"}:
                 return {"history": self._history_command(operation, args)}
             elif operation not in {"status", "poll"}:

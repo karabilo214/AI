@@ -58,6 +58,7 @@ class ResponsePlanner:
         self.ids: set[str] = set()
         self.candidates: list[dict[str, Any]] = []
         self.dropped = 0  # segments that held only a service phrase
+        self.feedback: list[dict[str, Any]] = []
 
     def prompt(self, streaming: bool) -> str:
         return (
@@ -74,6 +75,10 @@ or similar, not at the start, not at the end. End right after the substance of t
 Earlier assistant messages may be in an older style; ignore their tone and use your current personality.
 memory_candidates: usually empty. Propose only stable facts, preferences or events about the owner
 worth remembering later. subject: a short topic key; quote: the owner's exact words that support it.
+feedback (optional): only when the owner's current message reacts to your previous reply
+(praise, complaint, laughter, a wish such as "shorter" or "fewer jokes"). dimension is the side
+of your manner it concerns, direction 1 = more of it / liked, -1 = less / disliked; quote the
+owner's exact words; ambiguous true when the reaction is unclear (e.g. a bare "ok").
 Return only the specified JSON. Do not use markdown fences.
 Each segment should contain complete sentences or a complete meaningful unit; never split a sentence between records.
 In the start record you may add reaction and reaction_language (ru/en).
@@ -140,6 +145,7 @@ Allowed schema (all fields required, no extra fields):\n"""
                     raise ValueError("duplicate memory candidate")
                 candidate_ids.add(candidate["id"])
             self.candidates = copy.deepcopy(record["memory_candidates"])
+            self.feedback = copy.deepcopy(record.get("feedback", []))
             self.ended = True
         accepted: dict[str, Any] = copy.deepcopy(record)
         return accepted

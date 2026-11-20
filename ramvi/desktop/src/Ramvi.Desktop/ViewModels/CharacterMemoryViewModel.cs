@@ -25,11 +25,15 @@ public sealed class CharacterMemoryViewModel : ObservableObject
         RefreshCommand = new Command(() => RefreshAsync());
         ClearMemoryCommand = new Command(() => ArmOrRunAsync(true));
         ClearHistoryCommand = new Command(() => ArmOrRunAsync(false));
+        ClearFeedbackCommand = new Command(() => FeedbackAsync("feedback_clear"));
         CancelClearCommand = new Command(() => { ClearMemoryArmed = false; ClearHistoryArmed = false; return Task.CompletedTask; });
     }
 
     public ObservableCollection<MemoryRecordItem> Records { get; } = [];
     public ObservableCollection<HistoryTurnItem> History { get; } = [];
+    public ObservableCollection<PreferenceItem> Preferences { get; } = [];
+    public Command ClearFeedbackCommand { get; }
+    public bool NoPreferences => Preferences.Count == 0;
     public Command RefreshCommand { get; }
     public Command ClearMemoryCommand { get; }
     public Command ClearHistoryCommand { get; }
@@ -46,6 +50,7 @@ public sealed class CharacterMemoryViewModel : ObservableObject
     {
         base.Relocalize();
         foreach (var record in Records) record.Relocalize();
+        foreach (var preference in Preferences) preference.Relocalize();
     }
 
     /// <summary>Перечитать память и историю; status — уже полученный ответ, если есть.</summary>
@@ -55,6 +60,7 @@ public sealed class CharacterMemoryViewModel : ObservableObject
         try
         {
             ReadHistory(status ?? await _call("status", null).ConfigureAwait(true));
+            if (Available) await FeedbackAsync("feedback_view").ConfigureAwait(true);
         }
         catch (Exception error) when (CharacterViewModel.Handled(error))
         { Error = Localizer.Current["character.memory_error"]; }
@@ -121,6 +127,21 @@ public sealed class CharacterMemoryViewModel : ObservableObject
         }
         catch (Exception error) when (CharacterViewModel.Handled(error))
         { Error = Localizer.Current["character.memory_error"]; }
+    }
+
+    private async Task FeedbackAsync(string operation)
+    {
+        try { ReadPreferences((await _call(operation, null).ConfigureAwait(true)).GetProperty("feedback")); }
+        catch (Exception error) when (CharacterViewModel.Handled(error)) { Error = Localizer.Current["character.memory_error"]; }
+    }
+
+    /// <summary>Сводка оценок: куда указывают достоверные сигналы и установлено ли предпочтение.</summary>
+    public void ReadPreferences(JsonElement feedback)
+    {
+        Preferences.Clear();
+        foreach (var item in feedback.GetProperty("preferences").EnumerateArray())
+            Preferences.Add(new PreferenceItem(item));
+        Raise(nameof(NoPreferences));
     }
 
     private void ReadHistory(JsonElement status)
@@ -206,4 +227,43 @@ public sealed class HistoryTurnItem
     public string User { get; }
     public string Assistant { get; }
     public Command ForgetCommand { get; }
+}
+
+/// <summary>Одна сторона манеры: направление достоверных оценок, их число и установлено ли.</summary>
+public sealed class PreferenceItem : ObservableObject
+{
+    private static readonly Dictionary<string, string> Dimensions = new()
+    {
+        ["overall"] = "character.dim_overall", ["warmth"] = "character.dim_warmth", ["humor"] = "character.dim_humor",
+        ["sarcasm"] = "character.dim_sarcasm", ["strictness"] = "character.dim_strictness", ["curiosity"] = "character.dim_curiosity",
+        ["verbosity"] = "character.dim_verbosity", ["initiative"] = "character.dim_initiative", ["empathy"] = "character.dim_empathy",
+    };
+    private readonly string _dimension;
+    private readonly int _direction;
+    private readonly bool _established;
+    private readonly int _reliable;
+    private readonly int _unreliable;
+
+    public PreferenceItem(JsonElement item)
+    {
+        _dimension = item.GetProperty("dimension").GetString() ?? "";
+        _direction = item.GetProperty("direction").GetInt32();
+        _established = item.GetProperty("established").GetBoolean();
+        _reliable = item.GetProperty("reliable").GetInt32();
+        _unreliable = item.GetProperty("unreliable").GetInt32();
+    }
+
+    public string Text
+    {
+        get
+        {
+            var name = Dimensions.TryGetValue(_dimension, out var key) ? Localizer.Current[key] : _dimension;
+            var way = Localizer.Current[_direction > 0 ? "character.pref_more" : _direction < 0 ? "character.pref_less" : "character.pref_unclear"];
+            var state = Localizer.Current[_established ? "character.pref_established" : "character.pref_tentative"];
+            var counts = Localizer.Current["character.pref_counts"]
+                .Replace("{reliable}", _reliable.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{unreliable}", _unreliable.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
+            return name + ": " + way + " · " + state + " · " + counts;
+        }
+    }
 }

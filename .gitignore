@@ -11,3 +11,6 @@ log_*.txt
 CONTEXT.md
 CLAUDE.md
 AGENTS.md
+
+# Личные ключи API — не в git
+ramvi/Google-API.txt

@@ -254,6 +254,7 @@ class Dialogue:
         revision = snapshot["personality"]["policy_revision"]
         accepted: list[dict[str, Any]] = []
         candidates = []
+        feedback: list[dict[str, Any]] = []
         status = "error"
         try:
             caps = self.services.call("llm.capabilities", {})
@@ -336,6 +337,7 @@ class Dialogue:
                 # Candidates are published only after the entire stream finished successfully.
                 # The end record is retained by the planner, never written as a fact.
                 candidates = planner.candidates
+                feedback = planner.feedback
             except (ValueError, json.JSONDecodeError) as error:
                 accepted = planner.segments if streaming else []
                 if accepted:
@@ -368,12 +370,20 @@ class Dialogue:
                 )
                 status = "completed"
             consolidator = getattr(self.owner, "_consolidator", None)
-            if consolidator is not None and candidates:
+            if consolidator is not None and (candidates or feedback):
                 # Only a fully completed response reaches memory, and off the speech path.
                 owner_words = {"current": user_input}
                 for row in snapshot["history"]:
                     owner_words["recent:" + row["id"] + "u"] = row["user"]
-                consolidator.submit(identifier, candidates, owner_words)
+                # The owner's reaction concerns the previous completed reply.
+                previous = [r["id"] for r in snapshot["history"] if r["status"] == "completed"]
+                consolidator.submit(
+                    identifier,
+                    candidates,
+                    owner_words,
+                    feedback=feedback,
+                    target=previous[-1] if previous else None,
+                )
         except InterruptedError:
             status = "cancelled"
         except Exception as error:

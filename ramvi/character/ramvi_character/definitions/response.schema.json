@@ -204,12 +204,63 @@
             "$ref": "#/$defs/candidate"
           },
           "maxItems": 4
+        },
+        "feedback": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/feedback"
+          },
+          "maxItems": 2
         }
       },
       "required": [
         "type",
         "last_seq",
         "memory_candidates"
+      ],
+      "additionalProperties": false
+    },
+    "feedback": {
+      "type": "object",
+      "properties": {
+        "dimension": {
+          "enum": [
+            "overall",
+            "warmth",
+            "humor",
+            "sarcasm",
+            "strictness",
+            "curiosity",
+            "verbosity",
+            "initiative",
+            "empathy"
+          ]
+        },
+        "direction": {
+          "enum": [
+            -1,
+            1
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "ambiguous": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dimension",
+        "direction",
+        "confidence",
+        "ambiguous"
       ],
       "additionalProperties": false
     }

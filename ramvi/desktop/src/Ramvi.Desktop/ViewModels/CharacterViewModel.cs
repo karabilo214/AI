@@ -78,6 +78,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         TextModeCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await Speech.TextModeAsync().ConfigureAwait(true); });
         DisconnectCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await StopAsync().ConfigureAwait(true); await Speech.StopAsync().ConfigureAwait(true); });
         Send = new Command(SendAsync, () => !string.IsNullOrWhiteSpace(Draft) && Model is not null);
+        RateCommand = new Command(p => RateAsync(p as string ?? ""), _ => CanRate);
         Stop = new Command(StopAsync, () => Busy || _responseId is not null);
     }
     public ObservableCollection<ModelInfo> Models { get; }
@@ -103,9 +104,26 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     public Command Send { get; }
     public Command Stop { get; }
     public string Draft { get => _draft; set { if (Set(ref _draft, value)) Send.Refresh(); } }
-    public string Transcript { get => _transcript; private set => Set(ref _transcript, value); }
+    public string Transcript { get => _transcript; private set { if (Set(ref _transcript, value)) { Raise(nameof(CanRate)); RateCommand.Refresh(); } } }
+    /// <summary>9.18: оценка последнего ответа кнопкой — достоверный сигнал, но один характер не меняет.</summary>
+    public Command RateCommand { get; }
+    public bool CanRate => !Busy && !string.IsNullOrEmpty(Transcript);
+    private string _feedbackStatus = "";
+    public string FeedbackStatus { get => _feedbackStatus; private set => Set(ref _feedbackStatus, value); }
+    private async Task RateAsync(string choice)
+    {
+        var parts = choice.Split(':');
+        if (parts.Length != 2 || !int.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var direction)) return;
+        try
+        {
+            var result = await CallAsync("feedback", new JsonObject { ["dimension"] = parts[0], ["direction"] = direction }).ConfigureAwait(true);
+            Memory.ReadPreferences(result.GetProperty("feedback"));
+            FeedbackStatus = Localizer.Current["character.feedback_saved"];
+        }
+        catch (Exception e) when (Handled(e)) { FeedbackStatus = Localizer.Current["character.feedback_error"]; }
+    }
     public string Error { get => _error; private set => Set(ref _error, value); }
-    public bool Busy { get => _busy; private set { Set(ref _busy, value); Send.Refresh(); Stop.Refresh(); } }
+    public bool Busy { get => _busy; private set { Set(ref _busy, value); Send.Refresh(); Stop.Refresh(); Raise(nameof(CanRate)); RateCommand.Refresh(); if (value) FeedbackStatus = ""; } }
     public ModelInfo? Model
     {
         get => _model;

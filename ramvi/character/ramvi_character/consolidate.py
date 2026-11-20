@@ -15,6 +15,7 @@ import queue
 import threading
 from typing import Any
 
+from ramvi_character.feedback import FeedbackStore
 from ramvi_character.memory import MemoryStore
 from ramvi_character.words import norm as _norm
 from ramvi_character.words import stems as _stems
@@ -51,23 +52,36 @@ def record_id(kind: str, subject: str, value: str) -> str:
 class Consolidator:
     """Applies candidates one by one off the response path; stops with the module."""
 
-    def __init__(self, store: MemoryStore) -> None:
-        self.store = store
+    def __init__(self, store: MemoryStore, feedback: FeedbackStore | None = None) -> None:
+        self.store, self.feedback = store, feedback
         self._queue: queue.Queue[dict[str, Any]] = queue.Queue(QUEUE)
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stopped = threading.Event()
-        self.stats = {"processed": 0, "dropped": 0, "errors": 0, "forgotten": 0}
+        self.stats = {"processed": 0, "dropped": 0, "errors": 0, "forgotten": 0, "feedback": 0}
 
     def submit(
-        self, response_id: str, candidates: list[dict[str, Any]], owner_words: dict[str, str]
+        self,
+        response_id: str,
+        candidates: list[dict[str, Any]],
+        owner_words: dict[str, str],
+        feedback: list[dict[str, Any]] | None = None,
+        target: str | None = None,
     ) -> bool:
-        """Queue a completed response; a full queue drops it instead of blocking speech."""
-        if self._stopped.is_set() or not candidates:
+        """Queue a completed response; a full queue drops it instead of blocking speech.
+        feedback is the owner's reaction to the previous reply (target)."""
+        feedback = feedback if target is not None and self.feedback is not None else []
+        if self._stopped.is_set() or not (candidates or feedback):
             return False
         try:
             self._queue.put_nowait(
-                {"response": response_id, "candidates": candidates, "owner": dict(owner_words)}
+                {
+                    "response": response_id,
+                    "candidates": candidates,
+                    "owner": dict(owner_words),
+                    "feedback": feedback,
+                    "target": target,
+                }
             )
         except queue.Full:
             with self._lock:
@@ -95,6 +109,26 @@ class Consolidator:
                     self.apply(job["response"], candidate, job["owner"])
                     with self._lock:
                         self.stats["processed"] += 1
+                except Exception:
+                    with self._lock:
+                        self.stats["errors"] += 1
+            for signal in job["feedback"]:
+                if self._stopped.is_set():
+                    return
+                try:
+                    assert self.feedback is not None
+                    self.feedback.add(
+                        job["target"],
+                        signal["dimension"],
+                        signal["direction"],
+                        "user_said" if signal.get("quote") else "interpretation",
+                        confidence=signal["confidence"],
+                        quote=signal.get("quote"),
+                        ambiguous=signal["ambiguous"],
+                        owner_text=job["owner"].get("current"),
+                    )
+                    with self._lock:
+                        self.stats["feedback"] += 1
                 except Exception:
                     with self._lock:
                         self.stats["errors"] += 1

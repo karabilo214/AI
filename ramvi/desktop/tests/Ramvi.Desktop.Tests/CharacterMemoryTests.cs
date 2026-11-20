@@ -27,6 +27,8 @@ public sealed class CharacterMemoryTests
                 "status" => """{"history":[{"id":"t1","user":"Мою собаку зовут Бублик","assistant":"Запомню."}]}""",
                 "memory_export" => """{"memory":{"schema":"ramvi.character.memory_export/1","records":[]}}""",
                 "history_forget" or "history_clear" => """{"history":{"removed":["t1"],"memory_forgotten":1}}""",
+                "feedback_view" => """{"feedback":{"preferences":[{"dimension":"humor","direction":-1,"agreement":1.0,"reliable":3,"unreliable":2,"responses":2,"established":true}],"signals":[]}}""",
+                "feedback_clear" => """{"feedback":{"preferences":[],"signals":[]}}""",
                 _ => "{\"memory\":{\"records\":" + Records + "}}",
             };
             return Task.FromResult(JsonDocument.Parse(json).RootElement.Clone());
@@ -114,5 +116,24 @@ public sealed class CharacterMemoryTests
         await model.RefreshAsync();
         Assert.False(model.Available);
         Assert.Equal(Localizer.Current["character.memory_unavailable"], model.Error);
+    }
+
+    [Fact]
+    public async Task Preferences_show_direction_settledness_and_signal_counts()
+    {
+        var (model, fake) = Create();
+        await model.RefreshAsync();
+        var preference = Assert.Single(model.Preferences);
+        Assert.Equal("юмор: меньше / не нравится · установлено · достоверных 3, неоднозначных 2", preference.Text);
+        Localizer.Current = Localizer.Load("en");
+        try
+        {
+            model.Relocalize();
+            Assert.StartsWith("humor: less / disliked · settled", model.Preferences[0].Text, StringComparison.Ordinal);
+        }
+        finally { Localizer.Current = Localizer.Load("ru"); }
+        await model.ClearFeedbackCommand.RunAsync();
+        Assert.True(model.NoPreferences);
+        Assert.Contains(fake.Calls, c => c.Operation == "feedback_clear");
     }
 }
