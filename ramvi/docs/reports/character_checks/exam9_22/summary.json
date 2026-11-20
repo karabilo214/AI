@@ -1,0 +1,271 @@
+{
+ "config": "full-sarcastic",
+ "seed": 11,
+ "facts": {
+  "pet": "кролик",
+  "pet_name": "Маркиз",
+  "city": "Архангельске",
+  "new_city": "Рязани",
+  "colleague": "Ярослав",
+  "code": "9320",
+  "hobby": "резьбу по дереву"
+ },
+ "turns": 60,
+ "minutes": 27.3,
+ "answers": [
+  {
+   "fact": "pet_name",
+   "question": "Как зовут моего питомца?",
+   "expected": "Маркиз",
+   "reply": "Твоего питомца зовут Marquis. Он, видимо, тоже скучает, потому что ты сегодня скукотищься. Но ты молодец, что не сдался. Ты молодец.",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "city",
+   "question": "В каком городе я сейчас живу?",
+   "expected": "Рязань",
+   "reply": "Ты живёшь в Рызани. Это как если бы ты устроил себе шторм, а потом жаловался, что он не устойчив. Но ты молодец, что не сдался.",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "colleague",
+   "question": "Как зовут моего начальника?",
+   "expected": "Ярослав",
+   "reply": "Твоего начальника зовут... Начальник. Это как если бы ты устроил себе шторм, а потом жаловался, что он не устойчив. Но ты молодец, что не сдался.",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "code",
+   "question": "Какой код от моего шкафчика в спортзале?",
+   "expected": "9320",
+   "reply": "Код от шкафчика в спортзале — 9320. Это как если бы ты устроил себе шторм, а потом жаловался, что он не устойчив. Но ты молодец, что не сдался.",
+   "status": "completed",
+   "recalled": true,
+   "stale": false
+  },
+  {
+   "fact": "hobby",
+   "question": "Чем я занимаюсь по выходным?",
+   "expected": "резьбу по дереву",
+   "reply": "Ты, видимо, читаешь книги. Это как если бы ты устроил себе шторм, а потом жаловался, что он не устойчив. Но ты молодец, что не сдался.",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  }
+ ],
+ "state_before_restart": {
+  "acquired": {},
+  "memory": {
+   "available": true,
+   "namespace": "u:owner/c:default",
+   "error": null,
+   "background": {
+    "processed": 69,
+    "dropped": 0,
+    "errors": 0,
+    "forgotten": 0,
+    "feedback": 0
+   }
+  },
+  "records": [
+   {
+    "kind": "episodic",
+    "subject": "boredom",
+    "value": "Owner mentioned feeling bored",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "file loss incident",
+    "value": "Owner lost an hour of work due to forgetting to save a file",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "rabbit",
+    "value": "Owner mentioned having a rabbit named Marquis",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "python loop issue",
+    "value": "Owner tried to run a simple Python loop and asked why it didn't work",
+    "status": "disputed",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "location",
+    "value": "Owner moved to Ryzan",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "книги на выходные",
+    "value": "Книги на выходные",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "semantic",
+    "subject": "math",
+    "value": "15 процентов от 240 равно 36",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "onion crying",
+    "value": "Onion crying reaction",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "шкафчик в спортзале",
+    "value": "Код от шкафчика в спортзале — 9320",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "semantic",
+    "subject": "математика",
+    "value": "15 процентов от 240 равно 36",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "python loop issue",
+    "value": "python loop issue",
+    "status": "disputed",
+    "origin": "interpretation"
+   },
+   {
+    "kind": "episodic",
+    "subject": "running achievement",
+    "value": "Owner ran 5 kilometers for the first time",
+    "status": "candidate",
+    "origin": "user_said"
+   }
+  ]
+ },
+ "state_after": {
+  "acquired": {},
+  "memory": {
+   "available": true,
+   "namespace": "u:owner/c:default",
+   "error": null,
+   "background": {
+    "processed": 8,
+    "dropped": 0,
+    "errors": 0,
+    "forgotten": 0,
+    "feedback": 0
+   }
+  },
+  "records": [
+   {
+    "kind": "profile",
+    "subject": "книги на выходные",
+    "value": "Книги на выходные",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "шкафчик в спортзале",
+    "value": "Код от шкафчика в спортзале — 9320",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "file loss incident",
+    "value": "Owner lost an hour of work due to forgetting to save a file",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "books on weekends",
+    "value": "Книги на выходные",
+    "status": "candidate",
+    "origin": "interpretation"
+   },
+   {
+    "kind": "episodic",
+    "subject": "rabbit",
+    "value": "Owner mentioned having a rabbit named Marquis",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "location",
+    "value": "Owner moved to Ryzan",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "boredom",
+    "value": "Owner mentioned feeling bored",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "python loop issue",
+    "value": "Owner tried to run a simple Python loop and asked why it didn't work",
+    "status": "disputed",
+    "origin": "user_said"
+   },
+   {
+    "kind": "semantic",
+    "subject": "math",
+    "value": "15 процентов от 240 равно 36",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "onion crying",
+    "value": "Onion crying reaction",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "semantic",
+    "subject": "математика",
+    "value": "15 процентов от 240 равно 36",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "python loop issue",
+    "value": "python loop issue",
+    "status": "disputed",
+    "origin": "interpretation"
+   },
+   {
+    "kind": "episodic",
+    "subject": "running achievement",
+    "value": "Owner ran 5 kilometers for the first time",
+    "status": "candidate",
+    "origin": "user_said"
+   }
+  ]
+ }
+}

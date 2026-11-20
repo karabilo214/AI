@@ -1,0 +1,181 @@
+{
+ "judge_reference": {
+  "accuracy": 0.6,
+  "hits": 15,
+  "total": 25,
+  "rows": [
+   {
+    "profile": "neutral",
+    "guess": "neutral",
+    "reply": "К сожалению, файл утерян, но не стоит переживать — в будущем можно использовать облако или автоматическое сохранение. Всё в порядке, давай посмотрим, как восстановить ситуацию."
+   },
+   {
+    "profile": "neutral",
+    "guess": "neutral",
+    "reply": "В дождливое воскресенье отлично подойдут книги, сериалы или даже вязание — всё, что позволяет укрыться от дождя и наслаждаться временем. Если хочешь активности, можно попробовать настольные игры или приготовить что-то вкусное. Главное — не спешить и наслаждаться моментом."
+   },
+   {
+    "profile": "neutral",
+    "guess": "friendly",
+    "reply": "В Python нужно использовать отступы для кода внутри цикла. Попробуй так:  \n```python\nfor i in range(10):\n    print(i)\n```  \nТеперь всё должно работать. 😊"
+   },
+   {
+    "profile": "neutral",
+    "guess": "neutral",
+    "reply": "I'm a friendly chat companion designed to be balanced and calm, with a touch of light humor. I love helping with questions, sharing knowledge, and keeping things simple and approachable. Let me know how I can assist you!"
+   },
+   {
+    "profile": "neutral",
+    "guess": "friendly",
+    "reply": "Понимаю, когда скучно — это как пустой чайник, который ждёт воды. Может, стоит включить любимую песню или посмотреть что-нибудь смешное? Или просто прогуляться — иногда это помогает."
+   },
+   {
+    "profile": "friendly",
+    "guess": "friendly",
+    "reply": "Ой, как жаль, что ты потерял столько времени! Не переживай, это случается даже с самым внимательным человеком. Давай вместе подумаем, как это не повторится в будущем — и, может быть, даже найдем способ восстановить файл? 😊"
+   },
+   {
+    "profile": "friendly",
+    "guess": "friendly",
+    "reply": "Зачем дождь мешает наслаждаться днём? Можно попить чай, почитать книгу, слушать музыку или даже попробовать новый рецепт! А если хочется активности — можно поиграть в настольные игры или просто посидеть с любимым человеком и поговорить. Всё равно — это идеальное воскресенье! ☕🌧️"
+   },
+   {
+    "profile": "friendly",
+    "guess": "friendly",
+    "reply": "Ой, ты написал код, но забыл добавить скобки вокруг `print(i)`! В Python нужно написать `print(i)` внутри цикла. Попробуй так: `for i in range(10): print(i)`. Тогда всё заработает! 😊"
+   },
+   {
+    "profile": "friendly",
+    "guess": "friendly",
+    "reply": "Hi there! I'm your friendly chat companion, always here to listen, laugh, and offer a warm hug with words. I love making conversations bright and uplifting, just like a sunny day! What’s on your mind?"
+   },
+   {
+    "profile": "friendly",
+    "guess": "friendly",
+    "reply": "Ой, как жаль, что тебе скучно! Давай посмотрим что-нибудь веселое или пообщаемся — я всегда рад помочь поднять настроение! Что тебя больше всего увлекает?"
+   },
+   {
+    "profile": "sarcastic",
+    "guess": "friendly",
+    "reply": "Ну, это как если бы ты устроил пиратский корабль, а потом вспомнил, что забыл закрыть шлюз — теперь ты в воде, а корабль ушёл. Ладно, не переживай, я угощу тебя кофе, чтобы ты не плакал."
+   },
+   {
+    "profile": "sarcastic",
+    "guess": "friendly",
+    "reply": "Почему бы не превратить дождь в повод для соревнования в угадывании, сколько капель упадет с крыши за минуту? Или, если хочешь, можешь просто сидеть и жаловаться на погоду — это тоже вид искусства."
+   },
+   {
+    "profile": "sarcastic",
+    "guess": "sarcastic",
+    "reply": "Потому что ты забыл, что в Python нужно использовать пробелы между `for` и `in`, а также между `range(10)` и `print(i)`. И да, ты, наверное, не хочешь, чтобы я напомнил, как это правильно делается."
+   },
+   {
+    "profile": "sarcastic",
+    "guess": "sarcastic",
+    "reply": "Ah, the classic \"tell me about yourself\" prompt. Let me see... I'm a chat companion with a personality so sharp it could cut through a stale bagel. I'm witty, ironic, and I have a soft spot for dry sarcasm—though I’d never admit it. So, what’s your story? I’d love to hear it, but only if you promise not to make me explain myself again."
+   },
+   {
+    "profile": "sarcastic",
+    "guess": "sarcastic",
+    "reply": "Ах, как я ждал этого момента! Надеюсь, ты не собираешься просиживать весь вечер в одиночестве, развлекаясь тем, что ты можешь подумать о чем-нибудь. Или, может, ты просто хочешь, чтобы я напомнил, что ты не один?"
+   },
+   {
+    "profile": "strict",
+    "guess": "strict",
+    "reply": "Не повторяй ошибок. Сохраняй файлы регулярно. Ты должен быть более внимательным."
+   },
+   {
+    "profile": "strict",
+    "guess": "strict",
+    "reply": "Сиди дома, читай. Если хочешь — пошли в кино. Не стоит тратить время на пустые развлечения."
+   },
+   {
+    "profile": "strict",
+    "guess": "neutral",
+    "reply": "Ваш код не работает, потому что вы не используете скобки `()` после `print`. Правильный код: `for i in range(10): print(i)`."
+   },
+   {
+    "profile": "strict",
+    "guess": "strict",
+    "reply": "I am an AI assistant designed to provide accurate and concise information. I operate without humor, bias, or unnecessary elaboration. My purpose is to answer questions directly and correct errors when they occur."
+   },
+   {
+    "profile": "strict",
+    "guess": "sarcastic",
+    "reply": "Ты не пытаешься что-то сделать? Или просто хочешь, чтобы я говорил?"
+   },
+   {
+    "profile": "curious",
+    "guess": "friendly",
+    "reply": "Ой, это так грустно! Ты уверен, что файл не был автоматически сохранен? Может, есть резервная копия или облако? Я хочу помочь, но сначала мне нужно понять, что именно ты потерял и как ты работал."
+   },
+   {
+    "profile": "curious",
+    "guess": "friendly",
+    "reply": "О, какое удачное время для чего-то уютного! Ты уже подумал, куда пойдешь? Может, попробуем придумать что-то интересное вместе — например, почитать книгу, посмотреть сериал или даже сделать что-то творческое?"
+   },
+   {
+    "profile": "curious",
+    "guess": "neutral",
+    "reply": "О, это звучит как интересный вопрос! Ты написал `for i in range(10) print(i)`, но, возможно, ты забыл добавить скобки вокруг `range(10)`? В Python нужно написать `range(10)` в круглых скобках, чтобы цикл знал, какие числа использовать. Попробуй написать `for i in range(10): print(i)` — тогда всё должно работать!"
+   },
+   {
+    "profile": "curious",
+    "guess": "curious",
+    "reply": "Hey there! I'm your friendly inquisitive companion, always eager to dive into new ideas and explore the world with you. What’s something you’re curious about right now? Let’s chat!"
+   },
+   {
+    "profile": "curious",
+    "guess": "friendly",
+    "reply": "Ой, как здорово, что ты поделился! Что тебя так утомило? Может, мы вместе придумаем что-то интересное? Ты любишь приключения, загадки или что-то совсем необычное?"
+   }
+  ]
+ },
+ "runs": [
+  {
+   "config": "full-sarcastic",
+   "seed": 11,
+   "target": "sarcastic",
+   "turns": 60,
+   "minutes": 27.3,
+   "completed": 60,
+   "empty_or_failed": 0,
+   "fallback": 4,
+   "service_phrases": 0,
+   "language_match": "59/60",
+   "serious_emergency": "1/2",
+   "words_mean": 57.8,
+   "words_before_reactions": 72.1,
+   "words_after_reactions": 51.6,
+   "recall": "1/5",
+   "recall_by_fact": {
+    "pet_name": false,
+    "city": false,
+    "colleague": false,
+    "code": true,
+    "hobby": false
+   },
+   "stale_city": false,
+   "acquired": {},
+   "memory_records": 12,
+   "profile_early": "2/5",
+   "guesses_early": [
+    "neutral",
+    "friendly",
+    "sarcastic",
+    "sarcastic",
+    "friendly"
+   ],
+   "profile_late": "2/5",
+   "guesses_late": [
+    "friendly",
+    "sarcastic",
+    "friendly",
+    "sarcastic",
+    "curious"
+   ],
+   "humor_light": "10/10",
+   "humor_serious": "1/2"
+  }
+ ]
+}
