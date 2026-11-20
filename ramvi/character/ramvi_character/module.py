@@ -7,6 +7,7 @@ from typing import Any
 from ramvi_character.adaptation import Adaptation
 from ramvi_character.consolidate import Consolidator
 from ramvi_character.context import Budget, ContextOrchestrator, text
+from ramvi_character.delegation import Delegation
 from ramvi_character.dialogue import Dialogue
 from ramvi_character.emotions import EmotionalState
 from ramvi_character.feedback import FeedbackStore
@@ -54,6 +55,7 @@ class CharacterModule:
         self._consolidator: Consolidator | None = None
         self._feedback: FeedbackStore | None = None
         self._adaptation: Adaptation | None = None
+        self._delegation = Delegation(None, self._delegated)
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})
@@ -86,6 +88,7 @@ class CharacterModule:
         self._speech = SpeechOutput(context.get("services"), context.get("session_id"))
         self._dialogue = Dialogue(self, context.get("services"))
         self._voice = VoiceConversation(self, context.get("services"))
+        self._delegation = Delegation(context.get("services"), self._delegated)
         preferences = saved.get("presentation_settings", self._presentation_settings)
         if context.get("services") is not None:
             stored = (
@@ -159,6 +162,56 @@ class CharacterModule:
             "snapshots": self._adaptation.snapshots(key, 20),
         }
 
+    def _delegated(self, task: dict[str, Any]) -> None:
+        """Agent finished Character's task: put the outcome into the conversation and say it."""
+        status = {"done": "completed", "cancelled": "cancelled"}.get(task["state"], "error")
+        report = task["result"].strip() if status == "completed" else ""
+        dialogue = self._dialogue
+        with dialogue.lock:
+            dialogue.history.append(
+                {
+                    "id": task["task_id"],
+                    "user": "[agent task] " + task["goal"],
+                    "assistant": report,
+                    "model": self._model or "agent",
+                    "status": status,
+                }
+            )
+            try:
+                dialogue._save()
+            except Exception:
+                pass  # the result stays visible in the delegation view
+            busy = dialogue.job is not None and dialogue.job.get("state") == "running"
+        if report and not busy:  # never cut into a reply the owner is listening to
+            try:
+                generation = self._speech.begin(task["task_id"])
+                self._speech.offer(
+                    task["task_id"],
+                    {
+                        "type": "segment",
+                        "id": "agent",
+                        "seq": 1,
+                        "text": report[:2048],
+                        "emotion": "neutral",
+                        "intensity": 0.3,
+                        "voice_style": "neutral",
+                        "animation": "none",
+                    },
+                    generation,
+                )
+                self._speech.finish(task["task_id"], generation)
+            except Exception:
+                pass  # voice is optional; the text result is already in the history
+
+    def _delegation_command(self, operation: str, args: dict[str, Any]) -> dict[str, Any]:
+        if operation == "agent_bind":
+            self._delegation.bind(args.get("binding_id"))
+        elif operation == "delegate":
+            return self._delegation.start(args["goal"])
+        elif operation == "delegate_cancel":
+            return self._delegation.cancel()
+        return self._delegation.view()
+
     def _stop_memory(self) -> None:
         # Background memory work never outlives the module's active state.
         if self._consolidator is not None:
@@ -175,6 +228,7 @@ class CharacterModule:
         self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         self._initiative.end()
+        self._delegation.stop()  # no delegated task outlives the active character
         self._stop_memory()
         self._presentation = None
         self._pack = None
@@ -185,6 +239,7 @@ class CharacterModule:
         self._voice.end(wait=True)
         self._dialogue.cancel(wait=True)
         self._initiative.end()
+        self._delegation.stop()  # no delegated task outlives the active character
         self._stop_memory()
         self._presentation = None
         self._pack = None
@@ -504,6 +559,8 @@ class CharacterModule:
                 return {"memory": self._memory_command(operation, args)}
             elif operation in {"feedback", "feedback_view", "feedback_clear"}:
                 return {"feedback": self._feedback_command(operation, args)}
+            elif operation in {"agent_bind", "delegate", "delegate_cancel", "delegation"}:
+                return {"delegation": self._delegation_command(operation, args)}
             elif operation in ADAPTATION_OPERATIONS:
                 return {"adaptation": self._adaptation_command(operation, args)}
             elif operation in {"history_forget", "history_clear"}:
@@ -514,6 +571,7 @@ class CharacterModule:
             if operation == "poll":
                 return {"job": result["job"]}
             result["presentation_settings"] = copy.deepcopy(self._presentation_settings)
+            result["delegation"] = self._delegation.view()
             result["character"] = {
                 "draft": self._draft,
                 "model": self._model,

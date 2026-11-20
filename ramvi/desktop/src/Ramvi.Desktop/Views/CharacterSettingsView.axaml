@@ -39,6 +39,16 @@
       <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
      </StackPanel>
    </StackPanel>
+  <StackPanel x:Name="AgentSettings" DataContext="{Binding Agent}" x:DataType="vm:CharacterAgentViewModel" Spacing="8">
+   <TextBlock Text="{l:T character.agent_title}" Classes="heading"/>
+   <TextBlock Text="{l:T character.agent_hint}" TextWrapping="Wrap" Classes="muted"/>
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+    <TextBox x:Name="AgentFolder" Text="{Binding Folder}" PlaceholderText="{l:T character.agent_folder}"/>
+    <Button Grid.Column="1" Content="{l:T character.agent_browse}" Command="{Binding BrowseCommand}"/>
+   </Grid>
+   <CheckBox x:Name="AgentEnabled" Content="{l:T character.agent_enabled}" IsChecked="{Binding Enabled}"/>
+   <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Classes="error"/>
+  </StackPanel>
   <StackPanel x:Name="MemorySettings" DataContext="{Binding Memory}" x:DataType="vm:CharacterMemoryViewModel" Spacing="8">
    <TextBlock Text="{l:T character.memory_title}" Classes="heading"/>
    <TextBlock Text="{l:T character.memory_hint}" TextWrapping="Wrap" Classes="muted"/>

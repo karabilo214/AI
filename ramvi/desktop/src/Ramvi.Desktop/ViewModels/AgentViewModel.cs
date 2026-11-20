@@ -123,7 +123,7 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     public bool IsRunning { get => _running; private set { Set(ref _running, value); Raise(nameof(IsIdle)); StartCommand.Refresh(); StopCommand.Refresh(); RollbackCommand.Refresh(); } }
     public bool HasPending => _pending is not null;
     public bool IsControlPending => _pending is { } p && Text(p, "kind") == "control";
-    public string PendingTitle => _pending is { } p ? L["agent.kind." + Text(p, "kind")] + " · " + Text(p, "title") + (Text(p, "reason").Length > 0 ? " · " + L["agent.checkpoint." + Text(p, "reason")] : "") : "";
+    public string PendingTitle => _pending is { } p ? (Text(p, "source_module") == "character" ? L["agent.from_character"] + " · " : "") + L["agent.kind." + Text(p, "kind")] + " · " + Text(p, "title") + (Text(p, "reason").Length > 0 ? " · " + L["agent.checkpoint." + Text(p, "reason")] : "") : "";
     public string PendingDetail => _pending is { } p && Text(p, "kind") == "limit" ? L["agent.metrics"] + ": " + Text(p, "steps") + " · " + Text(p, "elapsed") + " s · " + Text(p, "tokens") + "\n" + Text(p, "detail") : _pending is { } q ? Text(q, "diff") + Text(q, "command") + Text(q, "cwd") + Text(q, "application") + "\n" + Text(q, "plan") + "\n" + Text(q, "value") : "";
     public string ApproveLabel => _pending is { } p && Text(p, "kind") == "limit" ? L["agent.continue"] : L["agent.approve"];
     public string Reason { get; set; } = "";

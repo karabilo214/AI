@@ -138,6 +138,8 @@ class AgentDesktop:
         self._workspace: Workspace | None = None
         self._binding: str | None = None
         self._target: dict[str, str] | None = None
+        # 9.21: bindings made for other modules (Character) on the owner's explicit request.
+        self._delegates: dict[str, tuple[Owner, str]] = {}
         self._policy = defaults()
         try:
             loaded = json.loads((root / "agent_settings.json").read_text())
@@ -154,6 +156,11 @@ class AgentDesktop:
     def _wait(self, kind: str, data: dict[str, Any], cancel: Any) -> dict[str, Any]:
         identifier = data.get("id") or uuid.uuid4().hex
         with self._condition:
+            # Agent's own task and a delegated one share one confirmation slot: wait in turn.
+            while self._pending is not None:
+                if cancel is not None and cancel.is_set():
+                    return {"action": "stop"}
+                self._condition.wait(0.1)
             self._pending = {**data, "id": identifier, "kind": kind}
             self._answer = None
             try:
@@ -164,6 +171,7 @@ class AgentDesktop:
                 return self._answer
             finally:
                 self._pending, self._answer = None, None
+                self._condition.notify_all()
 
     def start(self, body: dict[str, Any]) -> dict[str, Any]:
         self._installed()
@@ -193,12 +201,30 @@ class AgentDesktop:
                     [{"name": f["name"], "text": f["text"]} for f in files], ensure_ascii=False
                 )
             )
-        model = Models(self.runs.db).get(model_id)
         self.sections.open("agent")
         owner = self.host._entry("agent").owner
         if owner is None:
             raise ChatError("api.busy")
         self.host.grants.allow(owner, "agent")  # trusted user explicitly started a task
+        use_ui = body.get("use_ui", False)
+        if not isinstance(use_ui, bool):
+            raise ValueError("use_ui must be boolean")
+        binding, ws = self._bind(owner, folder, model_id, use_ui, context_data, len(goal))
+        self._owner, self._workspace, self._binding = owner, ws, binding
+        self._task = self.host.agent.create(owner, goal, binding)
+        return {"task_id": self._task}
+
+    def _bind(
+        self,
+        owner: Owner,
+        folder: str,
+        model_id: str,
+        use_ui: bool,
+        context_data: str,
+        goal_length: int,
+    ) -> tuple[str, Workspace]:
+        """One workspace binding with the user's policy, tools, confirmations and journal."""
+        model = Models(self.runs.db).get(model_id)
         policy = self._policy
         ws = Workspace(
             Path(folder),
@@ -211,7 +237,8 @@ class AgentDesktop:
         holder: dict[str, Any] = {}
 
         def ask(request: Any) -> Decision:
-            answer = self._wait(request.kind, asdict(request), holder["gate"].cancel)
+            shown = {**asdict(request), "source_module": owner.module_id}
+            answer = self._wait(request.kind, shown, holder["gate"].cancel)
             if request.kind == "control" and answer["action"] == "approve":
                 if holder["gate"].cancel is not None:
                     holder["gate"].cancel.wait(5)  # user returns to the explicitly selected window
@@ -220,12 +247,10 @@ class AgentDesktop:
             return Decision(answer["action"], answer.get("series", 0), answer.get("reason", ""))
 
         def on_limit(request: Any) -> bool:
-            answer = self._wait("limit", asdict(request), holder["gate"].cancel)
+            shown = {**asdict(request), "source_module": owner.module_id}
+            answer = self._wait("limit", shown, holder["gate"].cancel)
             return bool(answer["action"] == "approve")
 
-        use_ui = body.get("use_ui", False)
-        if not isinstance(use_ui, bool):
-            raise ValueError("use_ui must be boolean")
         target = self._target
         if use_ui and (target is None or self.host.context is None):
             raise ValueError("select an application first")
@@ -268,7 +293,7 @@ class AgentDesktop:
         if (
             context_data
             and required_context(SYSTEM_PROMPT, [*preview.tools.openai_tools(), FINISH_TOOL])
-            + (len(goal) + len(context_data) + 2) // 3
+            + (goal_length + len(context_data) + 2) // 3
             > context
         ):
             raise ChatError("agent.context_attachments", context=context)
@@ -283,9 +308,45 @@ class AgentDesktop:
             else ModelFacts("tools" in capabilities("gguf", model.architecture), context),
             context_data=context_data,
         )
-        self._owner, self._workspace, self._binding = owner, ws, binding
-        self._task = self.host.agent.create(owner, goal, binding)
-        return {"task_id": self._task}
+        return binding, ws
+
+    def delegate(self, body: dict[str, Any]) -> dict[str, Any]:
+        """The owner lets another module (Character) hand tasks to Agent in this folder.
+
+        The module receives only an opaque binding for its own scope; folder, permissions,
+        tools, confirmations and journal are the Agent's, under the same settings.
+        """
+        if set(body) - {"module", "enabled", "workspace", "model_id"} or not isinstance(
+            body.get("enabled"), bool
+        ):
+            raise ValueError("invalid delegation fields")
+        module = body.get("module")
+        if not isinstance(module, str) or module == "agent":
+            raise ValueError("invalid module")
+        entry = self.host._entry(module)
+        if "agent" not in entry.manifest.permissions:
+            raise PermissionError("module does not request agent")
+        self._release_delegate(module)
+        if not body["enabled"]:
+            return {"binding_id": None}
+        folder, model_id = body.get("workspace"), body.get("model_id")
+        if not isinstance(folder, str) or not folder or not isinstance(model_id, str):
+            raise ValueError("workspace and model are required")
+        owner = entry.owner
+        if owner is None or entry.state != "active":
+            raise ValueError("module is not running")
+        self.host.grants.allow(owner, "agent")  # trusted user explicitly turned it on
+        binding, _ = self._bind(owner, folder, model_id, False, "", 0)
+        self._delegates[module] = (owner, binding)
+        return {"binding_id": binding}
+
+    def _release_delegate(self, module: str) -> None:
+        previous = self._delegates.pop(module, None)
+        if previous is not None:
+            try:
+                self.host.agent.release_owner(previous[0])  # cancels its tasks, drops binding
+            except (PermissionError, TimeoutError):
+                pass
 
     def stop(self) -> None:
         if self._owner is not None and self._task is not None:
@@ -294,6 +355,8 @@ class AgentDesktop:
             self._condition.notify_all()
 
     def close(self) -> None:
+        for module in list(self._delegates):
+            self._release_delegate(module)  # old rights must not survive a settings change
         if self._owner is not None:
             self.llm.release_owner(self._owner)
             self.host.agent.release_owner(self._owner)
@@ -315,6 +378,8 @@ class AgentDesktop:
                 return {"settings": json.loads(json.dumps(self._policy)), "tools": list(TOOLS)}
             if method == "POST" and path == "/agent/start":
                 return self.start(body)
+            if method == "POST" and path == "/agent/delegate":
+                return self.delegate(body)
             if method == "POST" and path == "/agent/stop":
                 self.stop()
                 return {"ok": True}

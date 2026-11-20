@@ -24,6 +24,12 @@
     </WrapPanel>
     <TextBlock Text="{Binding FeedbackStatus}" IsVisible="{Binding FeedbackStatus, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Classes="muted"/>
    </StackPanel>
+   <StackPanel x:Name="CharacterAgentTask" DataContext="{Binding Agent}" x:DataType="vm:CharacterAgentViewModel" IsVisible="{Binding HasTask}" Spacing="4">
+    <TextBlock Text="{Binding Status}" TextWrapping="Wrap"/>
+    <TextBlock Text="{l:T character.agent_waiting_hint}" IsVisible="{Binding Waiting}" TextWrapping="Wrap" Classes="muted"/>
+    <Button Content="{l:T character.agent_cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding Running}" HorizontalAlignment="Left"/>
+   </StackPanel>
+   <TextBlock Text="{Binding Agent.Error}" IsVisible="{Binding Agent.Error, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" Classes="error" TextWrapping="Wrap"/>
    <WrapPanel>
     <Button Content="{l:T character.text_mode}" Command="{Binding TextModeCommand}" Margin="0,0,8,6"/>
     <Button Content="{l:T character.disconnect}" Command="{Binding DisconnectCommand}" Margin="0,0,8,6"/>
@@ -53,6 +59,7 @@
     </Button></StackPanel>
      <TextBlock Grid.Column="1" Text="{Binding Voice.Status}" VerticalAlignment="Center" Margin="6,0" Classes="caption" TextWrapping="Wrap"/>
      <StackPanel Grid.Column="2" Orientation="Horizontal">
+      <Button x:Name="CharacterDelegate" Content="{l:T character.agent_delegate}" ToolTip.Tip="{l:T character.agent_delegate_hint}" Command="{Binding DelegateCommand}" IsVisible="{Binding Agent.Enabled}" Margin="0,0,6,0"/>
       <Button x:Name="CharacterSend" Classes="accent" Command="{Binding Send}" IsVisible="{Binding !Busy}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource icon-send}"/><TextBlock Text="{l:T chat.send}" VerticalAlignment="Center"/></StackPanel></Button>
       <Button x:Name="CharacterStop" Command="{Binding Stop}" IsVisible="{Binding Busy}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource icon-stop}"/><TextBlock Text="{l:T chat.stop}" VerticalAlignment="Center"/></StackPanel></Button>
      </StackPanel>

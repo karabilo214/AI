@@ -75,7 +75,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _connect = connect;
         _loadPoll = loadPoll ?? TimeSpan.FromMilliseconds(300);
         Agent = new AgentViewModel(() => _api, pickFolder ?? (_ => Task.FromResult<string?>(null)), Models, pickFiles);
-        Character = new CharacterViewModel(() => _api, Models, () => SelectedModel);
+        Character = new CharacterViewModel(() => _api, Models, () => SelectedModel, pickFolder);
         Agent.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AgentViewModel.IsRunning)) Raise(nameof(CanSelectModel)); };
         Character.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterViewModel.Busy)) Raise(nameof(CanSelectModel)); };
         PropertyChanged += (_, e) => { if (e.PropertyName == nameof(IsIdle)) Raise(nameof(CanSelectModel)); };

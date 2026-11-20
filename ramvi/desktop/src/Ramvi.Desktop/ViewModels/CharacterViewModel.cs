@@ -68,13 +68,17 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         _serverGeneration=generation;
         if(_responseId is not null && _responseId!=response) { InvalidateResponse(); Busy=false; }
     }
-    public CharacterViewModel(Func<IChatApi> api, ObservableCollection<ModelInfo> models, Func<ModelInfo?>? sharedModel = null)
+    public CharacterViewModel(Func<IChatApi> api, ObservableCollection<ModelInfo> models, Func<ModelInfo?>? sharedModel = null, Func<string?, Task<string?>>? pickFolder = null)
     {
         _token = _lifetime.Token;
         _api = api; Models = models; _sharedModel = sharedModel;
         Voice = new CharacterVoiceViewModel((operation, args) => ModuleCallAsync("voice", operation, args), () => Model is not null, FollowVoiceReply);
         Speech = new CharacterSpeechViewModel((operation, args) => ModuleCallAsync("speech", operation, args), ObserveGeneration, ObservePlayback);
         Memory = new CharacterMemoryViewModel(CallAsync, ReloadTranscriptAsync);
+        Agent = new CharacterAgentViewModel(CallAsync, AgentRouteAsync,
+            pickFolder ?? (_ => Task.FromResult<string?>(null)), () => Model, ReloadTranscriptAsync);
+        DelegateCommand = new Command(DelegateAsync, () => Model is not null && Agent.CanDelegate(Draft));
+        Agent.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(CharacterAgentViewModel.Enabled) or nameof(CharacterAgentViewModel.Running)) DelegateCommand.Refresh(); };
         TextModeCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await Speech.TextModeAsync().ConfigureAwait(true); });
         DisconnectCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await StopAsync().ConfigureAwait(true); await Speech.StopAsync().ConfigureAwait(true); });
         Send = new Command(SendAsync, () => !string.IsNullOrWhiteSpace(Draft) && Model is not null);
@@ -86,6 +90,18 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     public CharacterVoiceViewModel Voice { get; }
     public CharacterSpeechViewModel Speech { get; }
     public CharacterMemoryViewModel Memory { get; }
+    /// <summary>9.21: поручения агенту.</summary>
+    public CharacterAgentViewModel Agent { get; }
+    public Command DelegateCommand { get; }
+    private async Task<JsonElement> AgentRouteAsync(string path, JsonObject body)
+    {
+        using var document = JsonDocument.Parse(body.ToJsonString());
+        return await _api().AgentAsync(path, document.RootElement.Clone(), _token).ConfigureAwait(true);
+    }
+    private async Task DelegateAsync()
+    {
+        if (await Agent.DelegateAsync(Draft, _token).ConfigureAwait(true)) Draft = "";
+    }
     public Command TextModeCommand { get; }
     public Command DisconnectCommand { get; }
     private bool _showAvatar = true;
@@ -103,7 +119,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     public string TextTiming { get => _textTiming; private set => Set(ref _textTiming, value); }
     public Command Send { get; }
     public Command Stop { get; }
-    public string Draft { get => _draft; set { if (Set(ref _draft, value)) Send.Refresh(); } }
+    public string Draft { get => _draft; set { if (Set(ref _draft, value)) { Send.Refresh(); DelegateCommand.Refresh(); } } }
     public string Transcript { get => _transcript; private set { if (Set(ref _transcript, value)) { Raise(nameof(CanRate)); RateCommand.Refresh(); } } }
     /// <summary>9.18: оценка последнего ответа кнопкой — достоверный сигнал, но один характер не меняет.</summary>
     public Command RateCommand { get; }
@@ -193,6 +209,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
             await Voice.LoadAsync().ConfigureAwait(true);
             await Speech.LoadAsync().ConfigureAwait(true);
             await Memory.RefreshAsync(result).ConfigureAwait(true);
+            if (result.TryGetProperty("delegation", out var delegation) && delegation.ValueKind == JsonValueKind.Object) Agent.Read(delegation);
         }
         catch (Exception e) when (Handled(e)) { Error = Localizer.Current["character.request_error"]; }
     }
@@ -320,7 +337,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         finally { _commands.Release(); if(revision==_requestRevision) Busy=false; }
     }
     internal static bool Handled(Exception e) => e is ApiException or HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException or OperationCanceledException or NotSupportedException;
-    public override void Relocalize() { base.Relocalize(); Voice.Relocalize(); Speech.Relocalize(); Memory.Relocalize(); }
+    public override void Relocalize() { base.Relocalize(); Voice.Relocalize(); Speech.Relocalize(); Memory.Relocalize(); Agent.Relocalize(); }
     public void Dispose() { if (_disposed) return; _disposed = true; Voice.Dispose(); Speech.Dispose(); _lifetime.Cancel(); _lifetime.Dispose(); }
 }
 public sealed record CharacterProfile(string Id, string Name);
