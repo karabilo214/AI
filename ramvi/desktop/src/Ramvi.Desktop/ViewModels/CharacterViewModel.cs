@@ -74,6 +74,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         _api = api; Models = models; _sharedModel = sharedModel;
         Voice = new CharacterVoiceViewModel((operation, args) => ModuleCallAsync("voice", operation, args), () => Model is not null, FollowVoiceReply);
         Speech = new CharacterSpeechViewModel((operation, args) => ModuleCallAsync("speech", operation, args), ObserveGeneration, ObservePlayback);
+        Memory = new CharacterMemoryViewModel(CallAsync, ReloadTranscriptAsync);
         TextModeCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await Speech.TextModeAsync().ConfigureAwait(true); });
         DisconnectCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await StopAsync().ConfigureAwait(true); await Speech.StopAsync().ConfigureAwait(true); });
         Send = new Command(SendAsync, () => !string.IsNullOrWhiteSpace(Draft) && Model is not null);
@@ -83,6 +84,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     public ObservableCollection<CharacterProfile> Profiles { get; } = [];
     public CharacterVoiceViewModel Voice { get; }
     public CharacterSpeechViewModel Speech { get; }
+    public CharacterMemoryViewModel Memory { get; }
     public Command TextModeCommand { get; }
     public Command DisconnectCommand { get; }
     private bool _showAvatar = true;
@@ -172,7 +174,15 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
             Error = "";
             await Voice.LoadAsync().ConfigureAwait(true);
             await Speech.LoadAsync().ConfigureAwait(true);
+            await Memory.RefreshAsync(result).ConfigureAwait(true);
         }
+        catch (Exception e) when (Handled(e)) { Error = Localizer.Current["character.request_error"]; }
+    }
+    private async Task ReloadTranscriptAsync()
+    {
+        // История изменилась на экране памяти: лента диалога показывает то же, что сохранено.
+        if (Busy) return;
+        try { ReadHistory(await CallAsync("status").ConfigureAwait(true)); }
         catch (Exception e) when (Handled(e)) { Error = Localizer.Current["character.request_error"]; }
     }
     private void ReadHistory(JsonElement result)
@@ -291,8 +301,8 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         catch(Exception e) when(Handled(e)) { if(revision==_requestRevision) Error=Localizer.Current["character.request_error"]; }
         finally { _commands.Release(); if(revision==_requestRevision) Busy=false; }
     }
-    private static bool Handled(Exception e) => e is ApiException or HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException or OperationCanceledException or NotSupportedException;
-    public override void Relocalize() { base.Relocalize(); Voice.Relocalize(); Speech.Relocalize(); }
+    internal static bool Handled(Exception e) => e is ApiException or HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException or OperationCanceledException or NotSupportedException;
+    public override void Relocalize() { base.Relocalize(); Voice.Relocalize(); Speech.Relocalize(); Memory.Relocalize(); }
     public void Dispose() { if (_disposed) return; _disposed = true; Voice.Dispose(); Speech.Dispose(); _lifetime.Cancel(); _lifetime.Dispose(); }
 }
 public sealed record CharacterProfile(string Id, string Name);

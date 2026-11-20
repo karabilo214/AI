@@ -16,6 +16,27 @@ public sealed partial class CharacterSettingsView : UserControl
             if (DataContext is CharacterViewModel model) model.PackPath = "";
             PackError.Text = ""; PackError.IsVisible = false;
         };
+        // Вкладку открыли — показать память и историю на сейчас, а не на момент загрузки.
+        AttachedToVisualTree += async (_, _) =>
+        {
+            if (DataContext is CharacterViewModel model) await model.Memory.RefreshAsync().ConfigureAwait(true);
+        };
+        MemoryExport.Click += async (_, _) =>
+        {
+            var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+            if (storage?.CanSave != true || DataContext is not CharacterViewModel model) return;
+            var json = await model.Memory.ExportAsync().ConfigureAwait(true);
+            if (json is null) return;
+            var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = Localizer.Current["character.memory_export"], SuggestedFileName = "ramvi-character-memory.json",
+                FileTypeChoices = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }]
+            }).ConfigureAwait(true);
+            if (file is null) return;
+            await using var stream = await file.OpenWriteAsync().ConfigureAwait(true);
+            await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
+            await writer.WriteAsync(json).ConfigureAwait(true);
+        };
         CharacterChoosePack.Click += async (_, _) =>
         {
             var storage = TopLevel.GetTopLevel(this)?.StorageProvider;

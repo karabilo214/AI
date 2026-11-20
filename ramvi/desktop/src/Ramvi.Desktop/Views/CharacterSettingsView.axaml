@@ -39,6 +39,56 @@
       <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
      </StackPanel>
    </StackPanel>
+  <StackPanel x:Name="MemorySettings" DataContext="{Binding Memory}" x:DataType="vm:CharacterMemoryViewModel" Spacing="8">
+   <TextBlock Text="{l:T character.memory_title}" Classes="heading"/>
+   <TextBlock Text="{l:T character.memory_hint}" TextWrapping="Wrap" Classes="muted"/>
+   <WrapPanel>
+    <Button x:Name="MemoryRefresh" Content="{l:T character.memory_refresh}" Command="{Binding RefreshCommand}" Margin="0,0,8,8"/>
+    <Button x:Name="MemoryExport" Content="{l:T character.memory_export}" IsEnabled="{Binding Available}" Margin="0,0,8,8"/>
+    <Button x:Name="MemoryClear" Content="{l:T character.memory_clear}" Command="{Binding ClearMemoryCommand}" IsEnabled="{Binding Available}" Margin="0,0,8,8"/>
+   </WrapPanel>
+   <StackPanel IsVisible="{Binding ClearMemoryArmed}" Spacing="8">
+    <TextBlock Text="{l:T character.memory_clear_confirm}" TextWrapping="Wrap" Classes="error"/>
+    <WrapPanel><Button x:Name="MemoryClearYes" Content="{l:T character.memory_clear_yes}" Command="{Binding ClearMemoryCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.memory_cancel}" Command="{Binding CancelClearCommand}" Margin="0,0,8,8"/></WrapPanel>
+   </StackPanel>
+   <TextBlock Text="{l:T character.memory_empty}" IsVisible="{Binding NoRecords}" Classes="muted"/>
+   <ItemsControl x:Name="MemoryRecords" ItemsSource="{Binding Records}">
+    <ItemsControl.ItemTemplate>
+     <DataTemplate x:DataType="vm:MemoryRecordItem">
+      <StackPanel Spacing="4" Margin="0,0,0,12">
+       <TextBlock Text="{Binding Subject}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+       <TextBlock Text="{Binding Details}" Classes="muted" TextWrapping="Wrap"/>
+       <TextBox Text="{Binding Value}" TextWrapping="Wrap" AcceptsReturn="False"/>
+       <WrapPanel>
+        <Button Content="{l:T character.memory_save}" Command="{Binding SaveCommand}" Margin="0,0,8,0"/>
+        <Button Content="{l:T character.memory_confirm}" Command="{Binding ConfirmCommand}" IsVisible="{Binding !IsActive}" Margin="0,0,8,0"/>
+        <Button Content="{l:T character.memory_forget}" Command="{Binding ForgetCommand}" Margin="0,0,8,0"/>
+       </WrapPanel>
+      </StackPanel>
+     </DataTemplate>
+    </ItemsControl.ItemTemplate>
+   </ItemsControl>
+   <TextBlock Text="{l:T character.history_title}" Classes="heading"/>
+   <WrapPanel><Button x:Name="HistoryClear" Content="{l:T character.history_clear}" Command="{Binding ClearHistoryCommand}" Margin="0,0,8,8"/></WrapPanel>
+   <StackPanel IsVisible="{Binding ClearHistoryArmed}" Spacing="8">
+    <TextBlock Text="{l:T character.history_clear_confirm}" TextWrapping="Wrap" Classes="error"/>
+    <WrapPanel><Button x:Name="HistoryClearYes" Content="{l:T character.memory_clear_yes}" Command="{Binding ClearHistoryCommand}" Margin="0,0,8,8"/><Button Content="{l:T character.memory_cancel}" Command="{Binding CancelClearCommand}" Margin="0,0,8,8"/></WrapPanel>
+   </StackPanel>
+   <TextBlock Text="{l:T character.history_empty}" IsVisible="{Binding NoHistory}" Classes="muted"/>
+   <ItemsControl x:Name="HistoryTurns" ItemsSource="{Binding History}">
+    <ItemsControl.ItemTemplate>
+     <DataTemplate x:DataType="vm:HistoryTurnItem">
+      <StackPanel Spacing="2" Margin="0,0,0,10">
+       <TextBlock Text="{Binding User}" TextWrapping="Wrap"/>
+       <TextBlock Text="{Binding Assistant}" Classes="muted" TextWrapping="Wrap"/>
+       <Button Content="{l:T character.history_forget}" Command="{Binding ForgetCommand}" HorizontalAlignment="Left"/>
+      </StackPanel>
+     </DataTemplate>
+    </ItemsControl.ItemTemplate>
+   </ItemsControl>
+   <TextBlock Text="{Binding Status}" TextWrapping="Wrap"/>
+   <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Classes="error"/>
+  </StackPanel>
   <CheckBox Content="{l:T character.diagnostics}" IsChecked="{Binding Diagnostics}"/>
  </StackPanel>
  </ScrollViewer>

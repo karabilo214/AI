@@ -189,6 +189,12 @@ class ScopedServices:
             raise RuntimeError("the module has no database of its own (no migrations)")
         return dict(self.database.execute(payload["sql"], payload.get("params")))
 
+    @handler("data.compact", permission="data")
+    def _db_compact(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.database is None:
+            raise RuntimeError("the module has no database of its own (no migrations)")
+        return dict(self.database.compact())
+
     @handler("secrets.get", permission="secrets")
     def _secrets_get(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {"value": self.secrets.get(payload["key"])}

@@ -130,8 +130,26 @@ class ModuleDatabase:
             if existed and created:
                 shutil.copyfile(max(created, key=lambda p: p.stat().st_mtime), self.path)
             raise
+        # Удалённые модулем строки затираются в файле, а не остаются в свободных страницах.
+        db.execute("PRAGMA secure_delete=ON")
         self._db = db
         return self
+
+    def compact(self) -> dict[str, Any]:
+        """После удаления данных: журнал WAL — в базу и обнулить, старые копии миграций — удалить.
+
+        Копии нужны только на время самой миграции (откат при сбое); после удачного открытия
+        в них могли остаться записи, которые пользователь уже удалил.
+        """
+        db = self._require("compact")
+        db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        removed = 0
+        backups = self.data.path("backups")
+        if backups.exists():
+            for item in backups.glob("*.bak"):
+                item.unlink()
+                removed += 1
+        return {"backups_removed": removed}
 
     def _discard(self) -> None:
         for suffix in ("", "-wal", "-shm"):

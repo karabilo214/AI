@@ -16,19 +16,13 @@ import threading
 from typing import Any
 
 from ramvi_character.memory import MemoryStore
-from ramvi_character.recall import terms
+from ramvi_character.words import norm as _norm
+from ramvi_character.words import stems as _stems
+from ramvi_character.words import terms
 
 KIND = {"preference": "profile", "event": "episodic", "fact": "semantic"}
 QUEUE = 16
 SAME = 0.6  # word overlap that counts as the same knowledge in other words
-
-
-def _norm(value: str) -> str:
-    return " ".join(value.casefold().split())
-
-
-def _stems(value: str) -> set[str]:
-    return {w[: max(4, len(w) - 2)] if len(w) >= 5 else w for w in terms(value, 64)}
 
 
 def same_knowledge(a: str, b: str) -> bool:
@@ -63,7 +57,7 @@ class Consolidator:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stopped = threading.Event()
-        self.stats = {"processed": 0, "dropped": 0, "errors": 0}
+        self.stats = {"processed": 0, "dropped": 0, "errors": 0, "forgotten": 0}
 
     def submit(
         self, response_id: str, candidates: list[dict[str, Any]], owner_words: dict[str, str]
@@ -107,12 +101,22 @@ class Consolidator:
 
     def apply(
         self, response_id: str, candidate: dict[str, Any], owner_words: dict[str, str]
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         kind = KIND[candidate["kind"]]
         value = candidate["text"]
         subject = _norm(candidate.get("subject") or " ".join(terms(value, 6)) or value)[:256]
         source = origin(candidate, owner_words)
-        sources = ["response:" + response_id, *candidate["evidence"]][:8]
+        # "current" is this turn's owner message; its history id keeps the trace stable.
+        evidence = [
+            "recent:" + response_id + "u" if e == "current" else e for e in candidate["evidence"]
+        ]
+        sources = list(dict.fromkeys(["response:" + response_id, *evidence]))[:8]
+        fresh = source == "user_said" and "current" in candidate["evidence"]
+        if not fresh and self.store.forgotten(kind, subject, value, sources):
+            # The owner forgot it: the model may not bring it back from the same material.
+            with self._lock:
+                self.stats["forgotten"] += 1
+            return None
         confidence = float(candidate["confidence"])
         known = [r for r in self.store.by_subject(subject, kind) if r["status"] != "superseded"]
         for record in known:
@@ -173,6 +177,31 @@ class Consolidator:
                 "status": "active",
                 "origin": "user_said",
                 "confidence": max(0.9, record["confidence"]),
+            }
+        )
+
+    def correct(self, identifier: str, value: str, subject: str | None = None) -> dict[str, Any]:
+        """The owner's correction replaces the record; the wrong version is forgotten."""
+        record = self.store.get(identifier)
+        if record is None:
+            raise KeyError(identifier)
+        subject = _norm(subject or record["subject"])[:256]
+        self.store.forget(identifier)
+        return self.store.put(
+            {
+                "id": record_id(record["kind"], subject, value),
+                "kind": record["kind"],
+                "type": record["type"],
+                "subject": subject,
+                "value": value,
+                "confidence": 1.0,
+                "status": "active",
+                "origin": "user_said",
+                "source_ids": ["owner:correction"],
+                "importance": record["importance"],
+                "topics": record["topics"],
+                "entities": record["entities"],
+                "first_seen": record["first_seen"],
             }
         )
 

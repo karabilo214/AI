@@ -70,6 +70,27 @@ class Dialogue:
                 },
             )
 
+    def forget(self, identifiers: list[str] | None) -> list[str]:
+        """Delete history turns (all when None); returns removed ids. A running response is
+        stopped first, and the finished job's events (its text) are dropped too."""
+        self.cancel(wait=True)
+        thread = self.thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=5)
+            if thread.is_alive():  # its turn would be appended after the deletion
+                raise RuntimeError("response is still stopping")
+        with self.lock:
+            removed = [
+                row["id"] for row in self.history if identifiers is None or row["id"] in identifiers
+            ]
+            if identifiers is not None and set(identifiers) - set(removed):
+                raise ValueError("unknown history turn")
+            self.history = [row for row in self.history if row["id"] not in removed]
+            if self.job is not None and self.job["id"] in removed:
+                self.job = None
+            self._save()
+        return removed
+
     def view(self, response_id: str | None = None, cursor: int = 0) -> dict[str, Any]:
         if not isinstance(cursor, int) or isinstance(cursor, bool) or cursor < 0:
             raise ValueError("invalid event cursor")

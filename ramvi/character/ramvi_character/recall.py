@@ -8,12 +8,12 @@ record nobody else found nor outweigh text, topics and the task together.
 """
 
 import math
-import re
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
 from ramvi_character.memory import MemoryStore
+from ramvi_character.words import stem, terms
 
 # similarity(query, texts) -> one value in [0, 1] per text; e.g. embeddings cosine.
 Similarity = Callable[[str, Sequence[str]], Sequence[float]]
@@ -30,32 +30,13 @@ WEIGHTS = {
 }
 CANDIDATES = 48  # per source query
 RECENCY_HALF_LIFE_DAYS = 30.0
-STOP = frozenset(
-    "и в во на не что это как а но или ли же бы то за по из у о об от до для с со к ко"
-    " я ты он она мы вы они мне меня тебе тебя его её ее нам вас их мой твой наш ваш"
-    " был была были быть есть было будет очень там тут где когда так уже ещё еще"
-    " the a an and or but is are was were be to of in on at for with it this that"
-    " i you he she we they me my your our their do does did not what how".split()
-)
-WORD = re.compile(r"\w+", re.UNICODE)
-
-
-def terms(value: str, limit: int = 16) -> list[str]:
-    result = []
-    for word in WORD.findall(value.casefold()):
-        if word in STOP or len(word) < 2 or (word.isdigit() and len(word) < 3):
-            continue
-        if word not in result:
-            result.append(word)
-    return result[:limit]
 
 
 def fts_query(words: list[str]) -> str | None:
     """OR of prefix terms; a short prefix catches Russian word endings (файл/файлы/файлом)."""
     parts = []
     for word in words:
-        stem = word[: max(4, len(word) - 2)] if len(word) >= 5 else word
-        parts.append('"' + stem.replace('"', "") + '"*')
+        parts.append('"' + stem(word).replace('"', "") + '"*')
     return " OR ".join(parts) if parts else None
 
 

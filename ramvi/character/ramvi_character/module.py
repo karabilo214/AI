@@ -15,6 +15,10 @@ from ramvi_character.personality import Personality
 from ramvi_character.speech import SpeechOutput
 from ramvi_character.voice import VoiceConversation
 
+MEMORY_OPERATIONS = frozenset(
+    {"memory", "memory_confirm", "memory_correct", "memory_forget", "memory_clear", "memory_export"}
+)
+
 
 class CharacterModule:
     def __init__(self) -> None:
@@ -159,17 +163,61 @@ class CharacterModule:
         """Owner-only memory control: list, confirm a candidate, forget a record."""
         if self._memory is None:
             raise ValueError("memory is not available")
+        if operation == "memory_export":
+            return self._export()
+        if operation in {"memory_confirm", "memory_correct"} and self._consolidator is None:
+            raise ValueError("memory is not available")
         if operation == "memory_confirm":
-            if self._consolidator is None:
-                raise ValueError("memory is not available")
+            assert self._consolidator is not None
             self._consolidator.confirm(args["id"])
+        elif operation == "memory_correct":
+            assert self._consolidator is not None
+            value = text(args["value"], 4096)
+            if not value.strip():
+                raise ValueError("empty memory value")
+            self._consolidator.correct(args["id"], value, args.get("subject"))
         elif operation == "memory_forget":
             if not self._memory.forget(args["id"]):
                 raise ValueError("unknown memory record")
+            self._memory.compact()
+        elif operation == "memory_clear":
+            self._memory.forget_all()
+            self._memory.compact()
         return {
             "records": self._memory.records(
                 kind=args.get("kind"), status=args.get("status"), limit=args.get("limit", 100)
             )
+        }
+
+    def _history_command(self, operation: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Delete conversation turns; memory learned only from them is forgotten as well."""
+        ids = None if operation == "history_clear" else args["ids"]
+        if ids is not None and (
+            not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids)
+        ):
+            raise ValueError("invalid history ids")
+        removed = self._dialogue.forget(ids)
+        forgotten = 0
+        if self._memory is not None and removed:
+            sources = {
+                f"{kind}:{i}{part}"
+                for i in removed
+                for kind, part in (("response", ""), ("recent", "u"), ("recent", "a"))
+            }
+            forgotten = self._memory.forget_sources(sources)
+            self._memory.compact()
+        return {"removed": removed, "memory_forgotten": forgotten}
+
+    def _export(self) -> dict[str, Any]:
+        """Everything this owner has with the character, as one readable document."""
+        assert self._memory is not None
+        return {
+            "schema": "ramvi.character.memory_export/1",
+            "exported_at": self._memory.clock(),
+            "namespace": self._memory.namespace,
+            "records": self._memory.records(limit=1000),
+            "character_state": self._memory.load_state(),
+            "history": copy.deepcopy(self._dialogue.history),
         }
 
     def _save_live_state(self) -> None:
@@ -363,8 +411,10 @@ class CharacterModule:
                         "data.set", {"path": "presentation.json", "value": preferences}
                     )
                 self._presentation_settings = preferences
-            elif operation in {"memory", "memory_confirm", "memory_forget"}:
+            elif operation in MEMORY_OPERATIONS:
                 return {"memory": self._memory_command(operation, args)}
+            elif operation in {"history_forget", "history_clear"}:
+                return {"history": self._history_command(operation, args)}
             elif operation not in {"status", "poll"}:
                 raise ValueError("unknown dialogue operation")
             result = self._dialogue.view(args.get("response_id"), args.get("cursor", 0))

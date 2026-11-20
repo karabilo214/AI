@@ -7,7 +7,8 @@ from typing import Any
 import pytest
 from ramvi_character.context import Budget, ContextOrchestrator
 from ramvi_character.memory import MemoryStore
-from ramvi_character.recall import Recall, terms
+from ramvi_character.recall import Recall
+from ramvi_character.words import terms
 from ramvi_service.module_data import ModuleDatabase
 from test_character_dialogue import Services, active, finish
 from test_character_memory import DataServices, open_db
@@ -221,7 +222,7 @@ def test_records_from_before_the_search_migration_are_indexed(tmp_path: Path) ->
     old.close()
     upgraded = open_db(tmp_path / "data")
     try:
-        assert upgraded.schema_version == 2
+        assert upgraded.schema_version == len(load_migrations(MIGRATIONS))
         found = Recall(store(upgraded)).search("Как зовут мою кошку?")
         assert ids(found) == ["cat"] and found[0]["importance"] == 0.5
     finally:

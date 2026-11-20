@@ -23,6 +23,7 @@ METHODS = {
     "data.set",
     "data.query",
     "data.execute",
+    "data.compact",
     "secrets.get",
     "secrets.set",
     "secrets.delete",

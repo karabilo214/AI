@@ -38,7 +38,7 @@ public sealed class CharacterDialogueTests
         Assert.Contains("Earlier", vm.Transcript);
         vm.Draft = "Hello"; await vm.Send.RunAsync();
         Assert.Contains("Fresh reply", vm.Transcript); Assert.False(vm.Busy); Assert.Equal("", vm.Draft);
-        Assert.Equal(new[] { "status", "cancel", "status", "start", "poll" }, calls);
+        Assert.Equal(new[] { "status", "memory", "cancel", "status", "start", "poll" }, calls);
     }
     [AvaloniaFact]
     public async Task Stop_discards_a_poll_response_that_arrives_late()

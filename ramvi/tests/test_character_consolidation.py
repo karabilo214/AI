@@ -31,6 +31,12 @@ def candidate(text: str, **changes: Any) -> dict[str, Any]:
     return item
 
 
+def applied(c: Consolidator, *args: Any) -> dict[str, Any]:
+    result = c.apply(*args)
+    assert result is not None
+    return result
+
+
 def consolidator(db: ModuleDatabase) -> Consolidator:
     return Consolidator(MemoryStore(DataServices(db)))
 
@@ -50,28 +56,28 @@ def test_new_knowledge_is_never_an_active_fact_at_once(db: ModuleDatabase) -> No
     c = consolidator(db)
     owner = {"current": "Меня зовут Саша"}
     said = candidate("Владельца зовут Саша", subject="имя", quote="Меня зовут Саша")
-    first = c.apply("r1", said, owner)
+    first = applied(c, "r1", said, owner)
     assert first["status"] == "candidate" and first["origin"] == "user_said"
-    assert c.apply("r1", said, owner)["status"] == "candidate"  # тот же ответ — не повтор
-    again = c.apply(
-        "r2", candidate("Его зовут Саша", subject="Имя", quote="Меня зовут Саша"), owner
+    assert applied(c, "r1", said, owner)["status"] == "candidate"  # тот же ответ — не повтор
+    again = applied(
+        c, "r2", candidate("Его зовут Саша", subject="Имя", quote="Меня зовут Саша"), owner
     )
     assert again["id"] == first["id"] and again["status"] == "active"
     assert again["occurrences"] == 3 and "response:r2" in again["source_ids"]
 
     guess = candidate("Скорее всего, программист", subject="работа")
     for response in ("r3", "r4", "r5"):
-        result = c.apply(response, guess, owner)
+        result = applied(c, response, guess, owner)
     assert result["status"] == "candidate" and result["origin"] == "interpretation"
 
 
 def test_contradiction_is_disputed_and_needs_the_owner(db: ModuleDatabase) -> None:
     c = consolidator(db)
     owner = {"current": "Я живу в Киеве"}
-    kyiv = c.confirm(c.apply("r1", candidate("Живёт в Киеве", subject="город"), owner)["id"])
+    kyiv = c.confirm(applied(c, "r1", candidate("Живёт в Киеве", subject="город"), owner)["id"])
     assert kyiv["status"] == "active" and kyiv["origin"] == "user_said"
 
-    lviv = c.apply("r2", candidate("Живёт во Львове", subject="город"), {"current": "Львов"})
+    lviv = applied(c, "r2", candidate("Живёт во Львове", subject="город"), {"current": "Львов"})
     assert lviv["status"] == "disputed"
     assert c.store.get(kyiv["id"])["status"] == "active"  # type: ignore[index]
 
@@ -82,8 +88,8 @@ def test_contradiction_is_disputed_and_needs_the_owner(db: ModuleDatabase) -> No
 
 def test_two_unconfirmed_versions_are_both_disputed(db: ModuleDatabase) -> None:
     c = consolidator(db)
-    a = c.apply("r1", candidate("Любимый цвет синий", subject="цвет"), {"current": "синий"})
-    b = c.apply("r2", candidate("Любимый цвет красный", subject="цвет"), {"current": "красный"})
+    a = applied(c, "r1", candidate("Любимый цвет синий", subject="цвет"), {"current": "синий"})
+    b = applied(c, "r2", candidate("Любимый цвет красный", subject="цвет"), {"current": "красный"})
     assert b["status"] == "disputed"
     assert c.store.get(a["id"])["status"] == "disputed"  # type: ignore[index]
 
@@ -94,7 +100,7 @@ class Both(Services):
         self.db = db
 
     def call(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
-        if method in ("data.query", "data.execute"):
+        if method in ("data.query", "data.execute", "data.compact"):
             return DataServices(self.db).call(method, payload)
         return super().call(method, payload)
 

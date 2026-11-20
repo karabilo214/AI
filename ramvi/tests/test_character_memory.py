@@ -30,6 +30,8 @@ class DataServices:
             return self.database.query(payload["sql"], payload.get("params"))
         if method == "data.execute":
             return self.database.execute(payload["sql"], payload.get("params"))
+        if method == "data.compact":
+            return self.database.compact()
         raise AssertionError(method)
 
 
@@ -78,7 +80,7 @@ def test_record_has_every_spec_field_and_survives_reopen(tmp_path: Path) -> None
     second = open_db(tmp_path / "data")  # перезапуск: новое соединение, миграция не повторяется
     try:
         saved = MemoryStore(DataServices(second)).get("memory_001")
-        assert second.schema_version == 2
+        assert second.schema_version == len(load_migrations(MIGRATIONS))
     finally:
         second.close()
     assert saved == {

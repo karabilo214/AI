@@ -6,12 +6,15 @@ Search (9.15) and consolidation of candidates (9.16) build on these tables.
 """
 
 import copy
+import hashlib
 import json
 import math
 import re
 import time
 from collections.abc import Callable
 from typing import Any
+
+from ramvi_character.words import norm, stems
 
 KINDS = ("working", "profile", "episodic", "semantic", "behavioral")
 STATUSES = ("candidate", "active", "disputed", "superseded")
@@ -46,6 +49,9 @@ STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 MAX_SOURCES = 32
 MAX_TAGS = 16
 STATE_SCHEMA = "ramvi.character.live_state/1"
+# Relative sources ("current", "task") point to a different message every turn: not a trace.
+STABLE_SOURCE = re.compile(r"(response|recent|memory|owner):[A-Za-z0-9_.:-]+\Z")
+FORGOTTEN_SIMILAR = 0.6
 
 
 def utc_now() -> str:
@@ -268,15 +274,110 @@ class MemoryStore:
                 return updated
         raise RuntimeError("memory record is being changed concurrently")
 
-    def forget(self, identifier: str) -> bool:
-        """Delete on the owner's request; nothing of it stays in this namespace."""
-        return (
-            self._execute(
-                "DELETE FROM memory_record WHERE namespace_id = ? AND id = ?",
-                [self.namespace, identifier],
-            )
-            == 1
+    def _hash(self, value: str) -> str:
+        return hashlib.sha256((self.namespace + "\n" + value).encode()).hexdigest()[:32]
+
+    def forget(self, identifier: str, optimize: bool = True) -> bool:
+        """Delete on the owner's request. Only a textless trace stays, so the same knowledge
+        is not restored automatically from the same sources; the search index is cleaned."""
+        record = self.get(identifier)
+        if record is None:
+            return False
+        trace = sorted({self._hash(s) for s in stems(record["subject"] + " " + record["value"])})
+        self._execute(
+            "INSERT OR REPLACE INTO memory_forgotten (namespace_id, id, kind, subject_hash,"
+            " stem_hashes, source_ids, forgotten_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                self.namespace,
+                self._hash("record\n" + identifier),
+                record["kind"],
+                self._hash(norm(record["subject"])),
+                json.dumps(trace),
+                json.dumps([s for s in record["source_ids"] if STABLE_SOURCE.fullmatch(s)]),
+                self.clock(),
+            ],
         )
+        deleted = self._execute(
+            "DELETE FROM memory_record WHERE namespace_id = ? AND id = ?",
+            [self.namespace, identifier],
+        )
+        if optimize:
+            self.optimize()
+        return deleted == 1
+
+    def optimize(self) -> None:
+        # FTS5 keeps deleted terms in old segments until a merge.
+        self._execute("INSERT INTO memory_fts (memory_fts) VALUES ('optimize')", [])
+
+    def forgotten(self, kind: str, subject: str, value: str, source_ids: list[str]) -> bool:
+        """True when this knowledge was forgotten before: same stable sources, or the same
+        subject with mostly the same words (compared through salted hashes only)."""
+        stable = [s for s in source_ids if STABLE_SOURCE.fullmatch(s)]
+        if stable:
+            rows = self._query(
+                "SELECT 1 FROM memory_forgotten f, json_each(f.source_ids) j"
+                " WHERE f.namespace_id = ? AND j.value IN ("
+                + ", ".join("?" for _ in stable)
+                + ") LIMIT 1",
+                [self.namespace, *stable],
+            )
+            if rows:
+                return True
+        words = {self._hash(s) for s in stems(subject + " " + value)}
+        rows = self._query(
+            "SELECT stem_hashes FROM memory_forgotten"
+            " WHERE namespace_id = ? AND subject_hash = ? AND kind = ? LIMIT 100",
+            [self.namespace, self._hash(norm(subject)), kind],
+        )
+        for row in rows:
+            old = set(json.loads(row["stem_hashes"]))
+            if words and old and len(words & old) / len(words | old) >= FORGOTTEN_SIMILAR:
+                return True
+        return False
+
+    def forget_all(self) -> int:
+        """Forget every record of this namespace (other users and characters untouched)."""
+        count = 0
+        while True:
+            batch = self._query(
+                "SELECT id FROM memory_record WHERE namespace_id = ? LIMIT 500", [self.namespace]
+            )
+            if not batch:
+                self.optimize()
+                return count
+            for row in batch:
+                count += int(self.forget(row["id"], optimize=False))
+
+    def forget_sources(self, sources: set[str]) -> int:
+        """Deleted history: records learned only from it are forgotten; others lose those
+        sources and stay. Returns how many records were forgotten."""
+        stable = sorted(s for s in sources if STABLE_SOURCE.fullmatch(s))
+        if not stable:
+            return 0
+        rows = self._query(
+            "SELECT DISTINCT r.id FROM memory_record r, json_each(r.source_ids) j"
+            " WHERE r.namespace_id = ? AND j.value IN ("
+            + ", ".join("?" for _ in stable)
+            + ") LIMIT 1000",
+            [self.namespace, *stable],
+        )
+        forgotten = 0
+        for row in rows:
+            record = self.get(row["id"])
+            if record is None:
+                continue
+            kept = [s for s in record["source_ids"] if s not in sources]
+            if any(STABLE_SOURCE.fullmatch(s) for s in kept):
+                self.put({**record, "source_ids": kept})
+            else:
+                forgotten += int(self.forget(record["id"], optimize=False))
+        if forgotten:
+            self.optimize()
+        return forgotten
+
+    def compact(self) -> dict[str, Any]:
+        """After deletions: flush the WAL journal and drop old migration copies."""
+        return dict(self.services.call("data.compact", {}))
 
     def save_state(self, state: dict[str, Any]) -> int:
         """Character State is stored apart from memories; returns its new revision."""
