@@ -91,3 +91,15 @@
 **Вопрос владельцу:** колесо pywhispercpp само несёт копии библиотек Microsoft под изменёнными именами (`msvcp140-a4c2229b….dll`, `vcomp140-f96f3a14….dll` — так их переименовывает delvewheel, на них ссылаются DLL whisper). Это не файлы из каталога VC\Redist. Варианты: оставить как часть пакета pywhispercpp (так его раздаёт PyPI) или пересобрать whisper.cpp так, чтобы он брал общие `msvcp140.dll`/`vcomp140.dll` комплекта.
 
 Решение владельца: копии VC++ внутри pywhispercpp оставить. Финальная сборка (с текстами MIT для пакетов NuGet без файла лицензии): ZIP 1 916 605 091 байт, SHA-256 `362b7409b82233395bfdb8ea8b907591f86cad6c598b7a53aadf43007b4201b2`. **Опубликовано:** https://github.com/karabilo214/RAMVI/releases/tag/v0.8.0.
+
+## Релизный комплект 0.9.0 (собран 2026-11-20 на ноутбуке с RTX 5060)
+
+Та же сборка, что у 0.8.0 (Python комплекта, оболочка опубликована на Mac без .pdb, `--vs-license open-source --trim --zip`). Новое в составе: облачные модели по API (`cloud.py`, `cloud_api.py`, `cloud_budget.py` — только стандартная библиотека), модуль Character (`modules/character`), ONNX Runtime с flatbuffers и protobuf (паузы в голосе).
+
+| | |
+|---|---|
+| ZIP | 1 931 944 883 байта = 1,80 ГиБ (меньше предела файла GitHub Releases 2 ГиБ) |
+| SHA-256 ZIP | `92e3345f35a946c78d58fe8b209d4f601c62f6a3d2337b2bc426b1418af9b3ef` (совпал на ноутбуке, на Mac и у GitHub) |
+| Пакетов Python | 33 322 файла, 3 926 259 301 байт до упаковки |
+
+Проверка без сети (`exam4_offline.py`, сеть закрыта защитой в процессах комплекта): чат qwen3-8b ответил «391» (верно), голос распознан, агент прочитал, нашёл, показал diff и применил правку; попыток выхода в сеть, кроме двух проверочных, нет — [exam4_results_0.9.0.json](stage8_checks/exam4_results_0.9.0.json). Опубликовано: https://github.com/karabilo214/RAMVI/releases/tag/v0.9.0.
