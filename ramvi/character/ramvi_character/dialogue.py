@@ -368,6 +368,7 @@ class Dialogue:
                         "memory_candidates": [{**c, "status": "candidate"} for c in candidates],
                     }
                 )
+                self.job["memory_rejected"] = planner.rejected
                 status = "completed"
             consolidator = getattr(self.owner, "_consolidator", None)
             if consolidator is not None and (candidates or feedback):

@@ -150,6 +150,30 @@ def test_nonstream_and_candidate_remains_unconfirmed() -> None:
     m.dispose()
 
 
+def test_streamed_reply_survives_a_copied_schema_reference_in_memory() -> None:
+    """9.22: the real model wrote {"$ref": ...} as evidence; the reply must stay completed."""
+    r = records()
+    r[-1]["memory_candidates"] = [
+        {
+            "id": "m",
+            "kind": "fact",
+            "text": "x",
+            "confidence": 1,
+            "evidence": [{"$ref": "#/$defs/source"}],
+        },
+        {"id": "k", "kind": "fact", "text": "kept", "confidence": 1, "evidence": ["current"]},
+    ]
+    svc = Services(output="\n".join(json.dumps(x) for x in r) + "\n")
+    m = active(svc)
+    m.dialogue("start", {"text": "Тест", "model": "one"})
+    result = finish(m)
+    assert result["job"]["state"] == "completed" and not result["job"].get("fallback")
+    assert result["job"]["memory_rejected"] == 1 and len(svc.requests) == 1
+    assert [c["id"] for c in result["job"]["events"][-1]["memory_candidates"]] == ["k"]
+    assert "$ref" not in svc.requests[0]["messages"][0]["content"]
+    m.dispose()
+
+
 def test_policy_change_invalidates_inflight_response() -> None:
     svc = Services()
     svc.block.clear()

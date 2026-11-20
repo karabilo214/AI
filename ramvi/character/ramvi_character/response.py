@@ -23,6 +23,26 @@ SERVICE = re.compile(
     re.IGNORECASE,
 )
 SENTENCE = re.compile(r"[^.!?…]*(?:[.!?…]+|\Z)\s*")
+SOURCE_HINT = 'a source_id shown in the messages: "current", "task", "recent:<id>" or "memory:<id>"'
+
+
+def prompt_schema(node: Any, definitions: dict[str, Any]) -> Any:
+    """The schema as the model sees it: references resolved in place. A small model copies
+    {"$ref": ...} literally into its answer, so the prompt carries no references at all."""
+    if isinstance(node, list):
+        return [prompt_schema(item, definitions) for item in node]
+    if not isinstance(node, dict):
+        return node
+    if "$ref" in node:
+        name = node["$ref"].removeprefix("#/$defs/")
+        if name == "source":  # the ids change every turn; the messages show them
+            return {"type": "string", "description": SOURCE_HINT}
+        return prompt_schema(definitions[name], definitions)
+    return {
+        k: prompt_schema(v, definitions)
+        for k, v in node.items()
+        if k not in ("$defs", "$id", "$schema")
+    }
 
 
 def strip_service_phrases(value: str) -> str:
@@ -50,6 +70,11 @@ class ResponsePlanner:
         definitions["voice_style"]["enum"] = list(dict.fromkeys(["neutral", *(voice_styles or [])]))
         definitions["source"]["enum"] = sources or ["current"]
         self.validator = Draft202012Validator(self.schema)
+        self.items = {
+            name: Draft202012Validator({"$defs": definitions, "$ref": "#/$defs/" + name})
+            for name in ("candidate", "feedback")
+        }
+        self.rejected = 0  # memory proposals and reactions dropped as invalid
         self.buffer = ""
         self.size = 0
         self.started = False
@@ -101,12 +126,15 @@ Do not claim an external action or completed work in a reaction. No extra LLM ca
 Example field values are placeholders: choose emotion, intensity and voice_style
 that fit your personality and the moment, not always neutral.
 For array mode wrap records in brackets and separate them with commas.
-Allowed schema (all fields required, no extra fields):\n"""
-            + encode(self.schema)
+memory_candidates and feedback are arrays of objects; evidence lists source ids, e.g. ["current"].
+Allowed schema (fields in "required" are mandatory, no extra fields):\n"""
+            + encode(prompt_schema(self.schema, self.schema["$defs"]))
         )
 
     def accept(self, record: Any) -> dict[str, Any] | None:
         encode(record)  # Reject NaN/infinity even when a Python caller bypasses JSON.
+        if isinstance(record, dict) and record.get("type") == "end":
+            record = self._clean_end(record)
         try:
             self.validator.validate(record)
         except ValidationError as error:
@@ -150,6 +178,29 @@ Allowed schema (all fields required, no extra fields):\n"""
         accepted: dict[str, Any] = copy.deepcopy(record)
         return accepted
 
+    def _clean_end(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Memory proposals and reactions are optional advice: an invalid one is dropped,
+        the already spoken reply stays valid. The rest of the end record is still checked."""
+        record = dict(record)
+        for field, name in (("memory_candidates", "candidate"), ("feedback", "feedback")):
+            items = record.get(field)
+            if isinstance(items, list):
+                limit = self.schema["$defs"]["end"]["properties"][field]["maxItems"]
+                kept, seen = [], set()
+                for item in items:
+                    key = (
+                        item.get("id")
+                        if field == "memory_candidates" and isinstance(item, dict)
+                        else None
+                    )
+                    if self.items[name].is_valid(item) and (key is None or key not in seen):
+                        kept.append(item)
+                        seen.add(key)
+                kept = kept[:limit]
+                self.rejected += len(items) - len(kept)
+                record[field] = kept
+        return record
+
     def feed(self, chunk: str) -> list[dict[str, Any]]:
         self.size += len(chunk.encode("utf-8"))
         if self.size > 48_000:
@@ -174,7 +225,11 @@ Allowed schema (all fields required, no extra fields):\n"""
 
     def complete(self, content: str) -> list[dict[str, Any]]:
         # Non-streaming providers expose nothing until the whole document is valid.
-        records = json.loads(text(content, 48_000))
+        content = text(content, 48_000)
+        try:
+            records = json.loads(content)
+        except json.JSONDecodeError:  # the prompt example is one record per line
+            records = [json.loads(line) for line in content.splitlines() if line.strip()]
         if not isinstance(records, list) or not 3 <= len(records) <= 10:
             raise ValueError("invalid response document")
         result = [r for r in map(self.accept, records) if r is not None]

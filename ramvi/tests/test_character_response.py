@@ -103,8 +103,10 @@ def test_nonstream_is_atomic_and_evidence_is_scoped() -> None:
             "evidence": ["foreign"],
         }
     ]
-    with pytest.raises(ValueError):
-        planner().complete(json.dumps(r))
+    # A proposal citing a foreign source never becomes a fact; the spoken reply stays valid.
+    p = planner()
+    assert p.complete(json.dumps(r))[-1]["memory_candidates"] == []
+    assert p.candidates == [] and p.rejected == 1
     r[-1]["memory_candidates"][0]["evidence"] = ["current"]
     p = planner()
     output = p.complete(json.dumps(r))
@@ -170,3 +172,65 @@ def test_profiles_give_different_style_instructions() -> None:
     no_teasing.select("sarcastic")
     no_teasing.boundary("teasing", False)
     assert not any("sarcasm" in line for line in no_teasing.view()["style"])
+
+
+def candidate(identifier: str, evidence: Any = None) -> dict[str, Any]:
+    return {
+        "id": identifier,
+        "kind": "fact",
+        "text": "fact " + identifier,
+        "confidence": 0.8,
+        "evidence": ["current"] if evidence is None else evidence,
+    }
+
+
+def test_prompt_schema_has_no_references_and_lists_source_ids() -> None:
+    """9.22: qwen3:8b copied {"$ref": "#/$defs/source"} into evidence on 10/10 turns."""
+    prompt = planner().prompt(True)
+    assert "$ref" not in prompt and "$defs" not in prompt
+    assert '"emotion":{"enum":["neutral","joy"]}' in prompt
+    assert '\\"recent:<id>\\"' in prompt and '"evidence":{"type":"array"' in prompt
+
+
+def test_bad_memory_proposals_are_dropped_without_losing_the_reply() -> None:
+    r = records()
+    r[-1]["memory_candidates"] = [
+        candidate("m1", [{"$ref": "#/$defs/source"}]),
+        candidate("m2"),
+        candidate("m2"),
+        candidate("m3"),
+        candidate("m4"),
+        candidate("m5"),
+        candidate("m6"),
+    ]
+    r[-1]["feedback"] = [
+        {"dimension": "humor", "direction": 2, "confidence": 0.9, "ambiguous": False},
+        {"dimension": "humor", "direction": -1, "confidence": 0.9, "ambiguous": False},
+    ]
+    p = planner()
+    out = p.feed("\n".join(json.dumps(x) for x in r) + "\n")
+    assert [c["id"] for c in p.candidates] == ["m2", "m3", "m4", "m5"]  # cap 4, one copy each
+    assert out[-1]["memory_candidates"] == p.candidates
+    assert [f["direction"] for f in p.feedback] == [-1]
+    assert p.rejected == 4 and len(p.segments) == 1
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"last_seq": 2}, {"extra": 1}, {"memory_candidates": "m1"}, {"memory_candidates": None}],
+)
+def test_end_record_itself_is_still_validated(change: dict[str, Any]) -> None:
+    r = records()
+    r[-1].update(change)
+    with pytest.raises(ValueError):
+        planner().complete(json.dumps(r))
+
+
+def test_nonstream_accepts_one_record_per_line_like_the_prompt_example() -> None:
+    r = records()
+    p = planner()
+    assert p.complete("\n".join(json.dumps(x) for x in r)) == r
+    with pytest.raises(ValueError):
+        planner().complete(json.dumps(r[0]) + "\n" + json.dumps(r[2]))  # no segment
+    with pytest.raises(json.JSONDecodeError):
+        planner().complete("[" + json.dumps(r[0]))
