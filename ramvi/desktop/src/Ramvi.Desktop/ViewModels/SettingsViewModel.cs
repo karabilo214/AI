@@ -78,12 +78,14 @@ public sealed class SettingsViewModel : ObservableObject
         Func<Task>? agentLoad = null,
         Func<string, Task>? copy = null,
         Func<Task<string?>>? pickFile = null,
-        Func<Task>? characterLoad = null)
+        Func<Task>? characterLoad = null,
+        Func<Task>? cloudChanged = null)
     {
         _pickFile = pickFile ?? (() => Task.FromResult<string?>(null));
         InstallUpdateCommand = new Command(InstallUpdateAsync);
         RestartToUpdateCommand = new Command(() => _restart!(), () => _update?.Staged is not null);
         Connections = new ConnectionsViewModel(api, copy);
+        Cloud = new CloudModelsViewModel(api, cloudChanged);
         _soundChanged = soundChanged;
         _agentLoad = agentLoad;
         _characterLoad = characterLoad;
@@ -156,7 +158,7 @@ public sealed class SettingsViewModel : ObservableObject
 
             if (value.Id == "module:character" && IsOpen && _characterLoad is not null) _ = _characterLoad();
             if (value.Id == "module:agent" && IsOpen && _agentLoad is not null) _ = _agentLoad();
-            if (value.Id == "connections" && IsOpen) _ = Connections.LoadAsync();
+            if (value.Id == "connections" && IsOpen) { _ = Connections.LoadAsync(); _ = Cloud.LoadAsync(); }
             if (value.Id == "models" && IsOpen && _openModels is not null)
             {
                 _ = _openModels(); // экран моделей перечитывает каталог и загрузки
@@ -174,6 +176,9 @@ public sealed class SettingsViewModel : ObservableObject
     public bool IsConnectionsTab => _selectedTab?.Id == "connections";
 
     public ConnectionsViewModel Connections { get; }
+
+    /// <summary>7.8: облачные модели по API.</summary>
+    public CloudModelsViewModel Cloud { get; }
 
     public bool IsModuleTab => _selectedTab?.Id.StartsWith("module:", StringComparison.Ordinal) == true && !IsAgentTab && !IsCharacterTab;
     public bool IsCharacterTab => _selectedTab?.Id == "module:character";
@@ -476,6 +481,7 @@ public sealed class SettingsViewModel : ObservableObject
         base.Relocalize();
         Sound.Relocalize();
         Connections.Relocalize();
+        Cloud.Relocalize();
         foreach (var t in Tabs)
         {
             t.Relocalize();

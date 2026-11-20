@@ -112,7 +112,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 }
                 catch (Exception error) when (error is ApiException or HttpRequestException)
                 { ShowError(error); }
-            });
+            },
+            cloudChanged: ReloadModelListAsync);
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -292,12 +293,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool CanSelectModel => IsIdle && !Agent.IsRunning && !Character.Busy;
 
+    /// <summary>7.8: выбрана облачная модель — сообщения, задачи агента и реплики персонажу уходят в сервис.</summary>
+    public bool IsCloudModel => SelectedModel?.IsCloud == true;
+
+    public string CloudNotice => SelectedModel?.Cloud is { } cloud
+        ? L.Format("cloud.sending", ("host", cloud.Host))
+        : SelectedModel?.IsCloud == true ? L["cloud.sending_unknown"] : "";
+
     public ModelInfo? SelectedModel
     {
         get => _selectedModel;
         set
         {
             if (!Set(ref _selectedModel, value)) return;
+            Raise(nameof(IsCloudModel));
+            Raise(nameof(CloudNotice));
             Agent.Model = value;
             Character.Model = value;
             if (!_ignoreModelChange && value is not null) _ = ChangeModelAsync(value);

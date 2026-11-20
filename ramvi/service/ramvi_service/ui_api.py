@@ -16,6 +16,7 @@ from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from ramvi_storage.database import DiskFull
 
@@ -127,7 +128,7 @@ class UIServer:
         if method == "GET" and path == "/status":
             return {"engine": self._status(), "limits": asdict(chat.limits)}
         if method == "GET" and path == "/models":
-            return {"models": self._with_fit(chat.models())}
+            return {"models": self._with_cloud(self._with_fit(chat.models()))}
         if method == "GET" and path == "/chats":
             return {"chats": chat.list_chats()}
         if method == "POST" and path == "/chats":
@@ -428,6 +429,25 @@ class UIServer:
                 raise ChatError("api.bad_request", field="enabled")
             return cloud.enable(match.group(1), body.get("model"), enabled)
         raise ChatError("api.not_found")
+
+    def _with_cloud(self, models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """7.8: у облачной модели — куда уходят запросы (имя подключения, сервис, адрес)."""
+        if self.cloud is None or not any(m.get("provider") == "cloud" for m in models):
+            return models
+        connections = {c["id"]: c for c in self.cloud.view()["connections"]}
+        for item in models:
+            if item.get("provider") != "cloud":
+                continue
+            connection = connections.get(str((item.get("capabilities") or {}).get("cloud", "")))
+            if connection is not None:
+                item["cloud"] = {
+                    "connection": connection["id"],
+                    "name": connection["name"],
+                    "kind": connection["kind"],
+                    "host": urlsplit(connection["url"]).hostname or connection["url"],
+                    "model": item["id"].split(":", 2)[-1],
+                }
+        return models
 
     def _with_fit(self, models: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """4.4: статус каждой установленной модели (заголовок из файла, без сети)."""

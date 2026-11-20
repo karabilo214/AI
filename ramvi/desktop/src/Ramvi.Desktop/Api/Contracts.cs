@@ -31,7 +31,44 @@ public sealed record ModelInfo(
     string? Quant,
     long? Bytes,
     Dictionary<string, JsonElement>? Capabilities = null,
-    CompatInfo? Compat = null);
+    CompatInfo? Compat = null,
+    string? Provider = null,
+    CloudModelInfo? Cloud = null)
+{
+    /// <summary>7.8: модель считает облачный сервис — запросы уходят туда.</summary>
+    [JsonIgnore]
+    public bool IsCloud => Provider == "cloud";
+
+    /// <summary>Имя в списке выбора: у облачной — модель и подключение.</summary>
+    [JsonIgnore]
+    public string Label => Cloud is { } cloud ? $"{cloud.Model} · {cloud.Name}" : Id;
+}
+
+/// <summary>7.8: куда уходят запросы облачной модели.</summary>
+public sealed record CloudModelInfo(string Connection, string Name, string Kind, string Host, string Model);
+
+// --- 7.7/7.8: облачные модели по API -------------------------------------------------------
+
+public sealed record CloudKind(string Kind, string Url);
+
+/// <summary>Подключение: ключ не возвращается — только HasKey.</summary>
+public sealed record CloudConnection(string Id, string Kind, string Name, string Url, bool HasKey, IReadOnlyList<string> Models);
+
+public sealed record CloudView(IReadOnlyList<CloudKind> Kinds, IReadOnlyList<CloudConnection> Connections);
+
+/// <summary>Key: строка — заменить, "" — удалить, null — оставить прежний.</summary>
+public sealed record CloudSaveRequest(string? Id, string Kind, string Name, string Url, string? Key);
+
+public sealed record CloudConnectionResponse(CloudConnection Connection);
+
+/// <summary>Сохранённое подключение (Id) или значения формы (Kind, Url, Key).</summary>
+public sealed record CloudModelsRequest(string? Id, string? Kind = null, string? Url = null, string? Key = null);
+
+public sealed record CloudModelsResponse(IReadOnlyList<string> Models);
+
+public sealed record CloudEnableRequest(string Model, bool Enabled);
+
+public sealed record CloudEnableResponse(string Id, IReadOnlyList<string> Models);
 
 // --- 4.11: каталог, загрузки, совместимость, рекомендации ---------------------------------
 
@@ -338,4 +375,11 @@ public sealed record UnloadResponse(bool Unloaded, EngineStatus Engine);
 [JsonSerializable(typeof(NewKeyResponse))]
 [JsonSerializable(typeof(RevokeRequest))]
 [JsonSerializable(typeof(RevokeResponse))]
+[JsonSerializable(typeof(CloudView))]
+[JsonSerializable(typeof(CloudSaveRequest))]
+[JsonSerializable(typeof(CloudConnectionResponse))]
+[JsonSerializable(typeof(CloudModelsRequest))]
+[JsonSerializable(typeof(CloudModelsResponse))]
+[JsonSerializable(typeof(CloudEnableRequest))]
+[JsonSerializable(typeof(CloudEnableResponse))]
 internal sealed partial class ApiJson : JsonSerializerContext;

@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="using:Ramvi.Desktop.ViewModels" xmlns:l="using:Ramvi.Desktop.Localization"
+ x:Class="Ramvi.Desktop.Views.CloudModelsView" x:DataType="vm:CloudModelsViewModel">
+ <StackPanel Spacing="10">
+  <TextBlock Classes="heading" Text="{l:T cloud.title}"/>
+  <TextBlock Classes="muted" TextWrapping="Wrap" Text="{l:T cloud.note}"/>
+  <!-- Подключения -->
+  <ItemsControl x:Name="CloudConnections" ItemsSource="{Binding Connections}">
+   <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:CloudConnectionRow">
+    <Border Classes="inset" Padding="14,10" Margin="0,0,0,8">
+     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+      <StackPanel Spacing="2">
+       <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock FontWeight="SemiBold" Text="{Binding Name}"/>
+        <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding Host}"/>
+        <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding Key}"/>
+       </StackPanel>
+       <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Models}"/>
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+       <Button Content="{l:T cloud.choose_models}" Command="{Binding ModelsCommand}"/>
+       <Button Content="{l:T cloud.change}" Command="{Binding EditCommand}"/>
+       <Button Content="{Binding DeleteLabel}" Command="{Binding DeleteCommand}"/>
+      </StackPanel>
+     </Grid>
+    </Border>
+   </DataTemplate></ItemsControl.ItemTemplate>
+  </ItemsControl>
+  <!-- Модели выбранного подключения -->
+  <Border Classes="inset" Padding="14,10" IsVisible="{Binding HasSelected}">
+   <StackPanel Spacing="6">
+    <TextBlock FontWeight="SemiBold" Text="{Binding ModelsTitle}"/>
+    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T cloud.models_hint}"/>
+    <TextBox x:Name="CloudFilter" PlaceholderText="{l:T cloud.filter}" Text="{Binding Filter}"/>
+    <ScrollViewer MaxHeight="260">
+     <ItemsControl x:Name="CloudModelList" ItemsSource="{Binding Models}">
+      <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:CloudModelOption">
+       <CheckBox Content="{Binding Name}" IsChecked="{Binding Enabled}"/>
+      </DataTemplate></ItemsControl.ItemTemplate>
+     </ItemsControl>
+    </ScrollViewer>
+   </StackPanel>
+  </Border>
+  <!-- Форма: новое подключение или изменение -->
+  <Border Classes="inset" Padding="14,10">
+   <StackPanel Spacing="6">
+    <Grid ColumnDefinitions="*,Auto">
+     <TextBlock FontWeight="SemiBold" VerticalAlignment="Center" Text="{Binding FormTitle}"/>
+     <Button Grid.Column="1" Content="{l:T cloud.new_button}" Command="{Binding NewCommand}" IsVisible="{Binding IsEditing}"/>
+    </Grid>
+    <ComboBox x:Name="CloudKind" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsEditing}">
+     <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:CloudKindOption"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
+    </ComboBox>
+    <TextBox x:Name="CloudName" PlaceholderText="{l:T cloud.name}" Text="{Binding Name}"/>
+    <TextBox x:Name="CloudUrl" PlaceholderText="{l:T cloud.url}" Text="{Binding Url}"/>
+    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T cloud.url_hint}" IsVisible="{Binding IsCompatible}"/>
+    <TextBox x:Name="CloudKey" PasswordChar="•" PlaceholderText="{l:T cloud.key}" Text="{Binding Key}"/>
+    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T cloud.key_where}"/>
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+     <Button x:Name="CloudCheck" Content="{l:T cloud.check}" Command="{Binding CheckCommand}"/>
+     <Button x:Name="CloudSave" Classes="accent" Content="{l:T cloud.save}" Command="{Binding SaveCommand}"/>
+    </StackPanel>
+   </StackPanel>
+  </Border>
+  <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}"/>
+  <TextBlock TextWrapping="Wrap" Text="{Binding Message}" IsVisible="{Binding HasMessage}"/>
+ </StackPanel>
+</UserControl>

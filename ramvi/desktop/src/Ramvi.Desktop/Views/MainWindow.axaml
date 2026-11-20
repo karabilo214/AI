@@ -102,10 +102,16 @@
                       IsEnabled="{Binding CanSelectModel}">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="api:ModelInfo">
-                  <TextBlock Text="{Binding Id}" />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Label}" />
+                    <TextBlock Classes="muted" Text="{l:T cloud.tag}" IsVisible="{Binding IsCloud}" />
+                  </StackPanel>
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
+            <!-- 7.8: облачная модель — видно, куда уходят запросы -->
+            <TextBlock x:Name="CloudNotice" VerticalAlignment="Center" Classes="muted" Text="{Binding CloudNotice}"
+                       IsVisible="{Binding IsCloudModel}" />
             <!-- 3.17: модель загружается — крутится значок; подсказка называет модель -->
             <Border x:Name="LoadingSpinner" Background="Transparent" VerticalAlignment="Center" Margin="0,0,6,0"
                     IsVisible="{Binding IsModelLoading}" ToolTip.Tip="{Binding LoadingTip}">
@@ -402,7 +408,7 @@
                             SelectedItem="{Binding Settings.DefaultModel}">
                     <ComboBox.ItemTemplate>
                       <DataTemplate x:DataType="api:ModelInfo">
-                        <TextBlock Text="{Binding Id}" />
+                        <TextBlock Text="{Binding Label}" />
                       </DataTemplate>
                     </ComboBox.ItemTemplate>
                   </ComboBox>
@@ -665,6 +671,8 @@
             <!-- 7.1–7.4: «Подключения» — внешний API для IDE и агентов: адрес, порт, сеть, ключи программ -->
             <ScrollViewer x:Name="ConnectionsTab" IsVisible="{Binding Settings.IsConnectionsTab}">
               <StackPanel Spacing="10" Margin="28,8,28,12">
+                <views:CloudModelsView DataContext="{Binding Settings.Cloud}" />
+                <Separator Margin="0,8" />
                 <TextBlock x:Name="ApiStatus" Classes="heading" TextWrapping="Wrap" Text="{Binding Settings.Connections.Status}" />
                 <Border Classes="inset" Padding="14,10" IsVisible="{Binding Settings.Connections.HasUrl}">
                   <StackPanel Spacing="6">
@@ -822,7 +830,7 @@
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="api:ModelInfo">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="{Binding Id}" />
+                      <TextBlock Text="{Binding Label}" />
                       <TextBlock Classes="muted" Text="{Binding Quant}" />
                     </StackPanel>
                   </DataTemplate>

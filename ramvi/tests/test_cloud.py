@@ -743,6 +743,13 @@ def test_chat_through_the_app_with_only_a_cloud_model(tmp_path: Path, cloud: Clo
         assert [(m["id"], m["provider"], m["compat"]) for m in models] == [
             (f"cloud:{connection['id']}:gpt-a", "cloud", {"status": "cloud"})
         ]
+        assert models[0]["cloud"] == {
+            "connection": connection["id"],
+            "name": "Test",
+            "kind": "openai",
+            "host": "127.0.0.1",
+            "model": "gpt-a",
+        }
 
         chat = client.ok("POST", "/chats", {"model_id": models[0]["id"]})["chat"]
         events = client.events(f"/chats/{chat['id']}/send", {"text": "Привет"})

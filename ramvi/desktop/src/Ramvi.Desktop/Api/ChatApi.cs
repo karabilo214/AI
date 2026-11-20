@@ -45,6 +45,21 @@ public interface IChatApi
     Task<RevokeResponse> RevokeKeyAsync(string id, bool cancelRunning, CancellationToken cancel = default) =>
         throw new NotSupportedException();
 
+    /// <summary>7.8: подключения к облачным сервисам.</summary>
+    Task<CloudView> CloudAsync(CancellationToken cancel = default) => throw new NotSupportedException();
+
+    Task<CloudConnection> SaveCloudAsync(CloudSaveRequest request, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
+    /// <summary>Список моделей сервиса — заодно проверка ключа.</summary>
+    Task<IReadOnlyList<string>> CloudModelsAsync(CloudModelsRequest request, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
+    Task<CloudEnableResponse> EnableCloudModelAsync(string connection, string model, bool enabled, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
+    Task DeleteCloudAsync(string connection, CancellationToken cancel = default) => throw new NotSupportedException();
+
     Task<IReadOnlyList<ModelInfo>> ModelsAsync(CancellationToken cancel = default);
 
     /// <summary>Просмотреть папку моделей из настроек и подключить найденные модели на месте.</summary>
@@ -268,6 +283,29 @@ public sealed class ChatApiClient : IChatApi, IDisposable
 
     public Task<UpdateStatus> StageUpdateAsync(string path, CancellationToken cancel = default) =>
         PostAsync("updates/stage", new PathRequest(path), ApiJson.Default.PathRequest, ApiJson.Default.UpdateStatus, cancel);
+
+    public Task<CloudView> CloudAsync(CancellationToken cancel = default) =>
+        GetAsync("cloud", ApiJson.Default.CloudView, cancel);
+
+    public async Task<CloudConnection> SaveCloudAsync(CloudSaveRequest request, CancellationToken cancel = default) =>
+        (await PostAsync("cloud/connections", request, ApiJson.Default.CloudSaveRequest,
+            ApiJson.Default.CloudConnectionResponse, cancel).ConfigureAwait(false)).Connection;
+
+    public async Task<IReadOnlyList<string>> CloudModelsAsync(CloudModelsRequest request, CancellationToken cancel = default) =>
+        (await PostAsync("cloud/models", request, ApiJson.Default.CloudModelsRequest,
+            ApiJson.Default.CloudModelsResponse, cancel).ConfigureAwait(false)).Models;
+
+    public Task<CloudEnableResponse> EnableCloudModelAsync(
+        string connection, string model, bool enabled, CancellationToken cancel = default) =>
+        PostAsync($"cloud/connections/{Id(connection)}/models", new CloudEnableRequest(model, enabled),
+            ApiJson.Default.CloudEnableRequest, ApiJson.Default.CloudEnableResponse, cancel);
+
+    public async Task DeleteCloudAsync(string connection, CancellationToken cancel = default)
+    {
+        using var response = await _http.DeleteAsync(new Uri($"cloud/connections/{Id(connection)}", UriKind.Relative), cancel)
+            .ConfigureAwait(false);
+        await EnsureAsync(response, cancel).ConfigureAwait(false);
+    }
 
     public Task<ConnectionsInfo> ConnectionsAsync(CancellationToken cancel = default) =>
         GetAsync("connections", ApiJson.Default.ConnectionsInfo, cancel);

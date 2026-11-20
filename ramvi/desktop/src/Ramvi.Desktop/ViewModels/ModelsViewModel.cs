@@ -392,6 +392,11 @@ public sealed class ModelsViewModel : ObservableObject
         var taken = new HashSet<string>(StringComparer.Ordinal);
         foreach (var model in installed)
         {
+            if (model.IsCloud)
+            {
+                continue; // 7.8: облачными моделями управляет «Подключения» → «Облачные модели»
+            }
+
             var key = model.Compat?.Model?.Key is { Length: > 0 } k ? k : model.Id;
             var catalogId = Capability(model, "catalog_id");
             var owns = catalogId is not null && Capability(model, "imported") == "False";

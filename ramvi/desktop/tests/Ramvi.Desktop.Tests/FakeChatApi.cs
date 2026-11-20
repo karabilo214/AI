@@ -28,6 +28,57 @@ internal sealed class FakeChatApi : IChatApi
 
     public Limits Limits { get; set; } = new(1000, 2, 100, 150, 255);
 
+    // --- 7.8: облачные подключения в памяти ---
+    public List<CloudConnection> CloudConnections { get; } = [];
+    public Dictionary<string, string> CloudKeys { get; } = [];
+    public List<string> RemoteModels { get; set; } = ["gpt-b", "gpt-a", "gpt-codex"];
+    public List<CloudModelsRequest> CloudChecks { get; } = [];
+    public List<CloudSaveRequest> CloudSaves { get; } = [];
+    public ApiException? CloudFail { get; set; }
+
+    public Task<CloudView> CloudAsync(CancellationToken cancel = default) =>
+        Task.FromResult(new CloudView([new("openai", "https://api.openai.com/v1")], [.. CloudConnections]));
+
+    public Task<CloudConnection> SaveCloudAsync(CloudSaveRequest request, CancellationToken cancel = default)
+    {
+        CloudSaves.Add(request);
+        var id = request.Id ?? request.Name.ToLowerInvariant().Replace(' ', '-');
+        if (request.Key is { Length: > 0 } key) CloudKeys[id] = key;
+        else if (request.Key is "") CloudKeys.Remove(id);
+        var models = CloudConnections.FirstOrDefault(c => c.Id == id)?.Models ?? [];
+        var saved = new CloudConnection(id, request.Kind, request.Name, request.Url, CloudKeys.ContainsKey(id), models);
+        CloudConnections.RemoveAll(c => c.Id == id);
+        CloudConnections.Add(saved);
+        return Task.FromResult(saved);
+    }
+
+    public Task<IReadOnlyList<string>> CloudModelsAsync(CloudModelsRequest request, CancellationToken cancel = default)
+    {
+        CloudChecks.Add(request);
+        if (CloudFail is { } fail) throw fail;
+        return Task.FromResult<IReadOnlyList<string>>([.. RemoteModels]);
+    }
+
+    public Task<CloudEnableResponse> EnableCloudModelAsync(string connection, string model, bool enabled, CancellationToken cancel = default)
+    {
+        if (CloudFail is { } fail) throw fail;
+        var row = CloudConnections.Single(c => c.Id == connection);
+        var models = enabled ? [.. row.Models.Where(m => m != model), model] : row.Models.Where(m => m != model).ToList();
+        CloudConnections[CloudConnections.IndexOf(row)] = row with { Models = models };
+        var id = $"cloud:{connection}:{model}";
+        Models.RemoveAll(m => m.Id == id);
+        if (enabled) Models.Add(new ModelInfo(id, "cloud", null, null, Provider: "cloud", Cloud: new CloudModelInfo(connection, row.Name, row.Kind, new Uri(row.Url).Host, model)));
+        return Task.FromResult(new CloudEnableResponse(connection, models));
+    }
+
+    public Task DeleteCloudAsync(string connection, CancellationToken cancel = default)
+    {
+        CloudConnections.RemoveAll(c => c.Id == connection);
+        CloudKeys.Remove(connection);
+        Models.RemoveAll(m => m.Cloud?.Connection == connection);
+        return Task.CompletedTask;
+    }
+
     public List<string> Calls { get; } = [];
 
     public ApiException? FailNext { get; set; }
