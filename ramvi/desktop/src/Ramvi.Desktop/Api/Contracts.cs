@@ -54,7 +54,36 @@ public sealed record CloudKind(string Kind, string Url);
 /// <summary>Подключение: ключ не возвращается — только HasKey.</summary>
 public sealed record CloudConnection(string Id, string Kind, string Name, string Url, bool HasKey, IReadOnlyList<string> Models);
 
-public sealed record CloudView(IReadOnlyList<CloudKind> Kinds, IReadOnlyList<CloudConnection> Connections);
+public sealed record CloudView(IReadOnlyList<CloudKind> Kinds, IReadOnlyList<CloudConnection> Connections, CloudSpending? Spending = null);
+
+// --- 7.10: стоимость и лимиты ---
+
+/// <summary>Цена за миллион токенов (USD), источник и дата, когда её вписали.</summary>
+public sealed record CloudPrice(double Input, double Output, string Source, string CheckedOn);
+
+public sealed record CloudLimits(double? Daily, double? Monthly);
+
+/// <summary>Один облачный ответ: токены и стоимость (null — цена не задана).</summary>
+public sealed record CloudUsageRow(double At, string Model, string Source, long PromptTokens, long CompletionTokens, double? Cost, string State);
+
+public sealed record CloudSpending(
+    string Currency,
+    CloudLimits Limits,
+    double Today,
+    double Month,
+    int UnknownToday,
+    int UnknownMonth,
+    Dictionary<string, CloudPrice> Prices,
+    IReadOnlyList<CloudUsageRow> Recent);
+
+public sealed record CloudLimitsRequest(double? Daily, double? Monthly);
+
+public sealed record CloudLimitsResponse(CloudSpending Spending);
+
+/// <summary>Input/Output null — убрать цену.</summary>
+public sealed record CloudPriceRequest(string Model, double? Input, double? Output, string? Source);
+
+public sealed record CloudPriceResponse(string Model, CloudPrice? Price);
 
 /// <summary>Key: строка — заменить, "" — удалить, null — оставить прежний.</summary>
 public sealed record CloudSaveRequest(string? Id, string Kind, string Name, string Url, string? Key);
@@ -382,4 +411,8 @@ public sealed record UnloadResponse(bool Unloaded, EngineStatus Engine);
 [JsonSerializable(typeof(CloudModelsResponse))]
 [JsonSerializable(typeof(CloudEnableRequest))]
 [JsonSerializable(typeof(CloudEnableResponse))]
+[JsonSerializable(typeof(CloudLimitsRequest))]
+[JsonSerializable(typeof(CloudLimitsResponse))]
+[JsonSerializable(typeof(CloudPriceRequest))]
+[JsonSerializable(typeof(CloudPriceResponse))]
 internal sealed partial class ApiJson : JsonSerializerContext;

@@ -268,6 +268,7 @@ def build(
     # (иначе файл базы открыт и после close — Windows не даст перенести папку).
     server.on_close.append(db.close)
     server.on_close.append(server.api.close)
+    server.on_close.append(cloud.budget.close)  # 7.10: после внешнего API — он пишет учёт
     server.on_close.append(server.downloads.close)
     server.on_close.append(host.agent.close)
     server.on_close.append(host.close)

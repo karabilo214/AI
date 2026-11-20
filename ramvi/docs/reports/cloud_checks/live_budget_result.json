@@ -1,0 +1,54 @@
+{
+ "answers": [
+  {
+   "text": "Париж",
+   "token_usage": {
+    "prompt_tokens": 23,
+    "completion_tokens": 5
+   }
+  },
+  {
+   "text": "**7**",
+   "token_usage": {
+    "prompt_tokens": 22,
+    "completion_tokens": 5
+   }
+  }
+ ],
+ "recorded": [
+  {
+   "at": 1795200279.479448,
+   "model": "cloud:claude:claude-sonnet-5-5",
+   "source": "app",
+   "prompt_tokens": 23,
+   "completion_tokens": 5,
+   "cost": 0.000144,
+   "state": "done"
+  },
+  {
+   "at": 1795200281.587292,
+   "model": "cloud:claude:claude-sonnet-5-5",
+   "source": "app",
+   "prompt_tokens": 22,
+   "completion_tokens": 5,
+   "cost": 0.000141,
+   "state": "done"
+  }
+ ],
+ "today": 0.000285,
+ "expected_cost": [
+  0.000144,
+  0.000141
+ ],
+ "after_limit": {
+  "error": {
+   "code": "cloud.limit_reached",
+   "params": {
+    "period": "day",
+    "limit": 0.0001425,
+    "spent": 0.000285
+   }
+  },
+  "recorded": 2
+ }
+}

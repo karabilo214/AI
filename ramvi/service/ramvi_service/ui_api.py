@@ -419,6 +419,11 @@ class UIServer:
             return {"connection": cloud.save(body)}
         if method == "POST" and path == "/cloud/models":  # проверка ключа по значениям формы
             return {"models": cloud.remote_models(body)}
+        if method == "POST" and path == "/cloud/limits":  # 7.10: лимиты расходов
+            return {"spending": cloud.set_limits(body)}
+        price = re.fullmatch(r"/cloud/connections/([a-z0-9][a-z0-9_-]{0,31})/prices", path)
+        if method == "POST" and price is not None:
+            return cloud.set_price(price.group(1), body)
         match = re.fullmatch(r"/cloud/connections/([a-z0-9][a-z0-9_-]{0,31})(/models)?", path)
         if match is not None and method == "DELETE" and match.group(2) is None:
             cloud.delete(match.group(1))

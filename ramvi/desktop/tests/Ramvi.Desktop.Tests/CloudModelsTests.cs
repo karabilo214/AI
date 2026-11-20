@@ -229,6 +229,9 @@ public sealed class CloudModelsTests
         api.CloudConnections.Add(new CloudConnection("c", "anthropic", "Claude", "https://api.anthropic.com", true, []));
         await api.EnableCloudModelAsync("c", "claude-sonnet-5-5", true, TestContext.Current.CancellationToken);
         api.AddChat("чат", "cloud:c:claude-sonnet-5-5");
+        api.Spending = new CloudSpending("USD", new CloudLimits(5, 50), 0.0123, 0.4, 0, 0,
+            new() { ["cloud:c:claude-sonnet-5-5"] = new CloudPrice(3, 15, "https://example.com/pricing", "2026-11-20") },
+            [new CloudUsageRow(1_790_000_000, "cloud:c:claude-sonnet-5-5", "app", 700, 30, 0.00255, "done")]);
         var model = new MainViewModel(api);
         await model.InitializeAsync();
         var window = new MainWindow { DataContext = model };
@@ -252,6 +255,8 @@ public sealed class CloudModelsTests
         Assert.True(view.IsEffectivelyVisible);
         Assert.Equal(1, view.FindControl<ItemsControl>("CloudConnections")!.ItemCount);
         Assert.Equal(4, view.FindControl<ItemsControl>("CloudModelList")!.ItemCount);
+        Assert.True(view.FindControl<Border>("CloudSpending")!.IsEffectivelyVisible); // 7.10: расходы
+        Assert.Equal(1, view.FindControl<ItemsControl>("CloudPrices")!.ItemCount);
         var texts = view.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
         Assert.Contains(Ru["cloud.title"], texts);
         Assert.Contains(Ru.Format("cloud.models_of", ("name", "Claude")), texts);
@@ -263,5 +268,96 @@ public sealed class CloudModelsTests
         }
 
         window.Close();
+    }
+
+    [Fact]
+    public async Task Spending_limits_and_recent_answers_are_shown_and_saved()
+    {
+        var api = new FakeChatApi
+        {
+            Spending = new CloudSpending("USD", new CloudLimits(5, null), 0.0123, 0.5, 1, 2, [],
+            [
+                new CloudUsageRow(1_790_000_000, "cloud:c:claude-x", "api:Cursor", 700, 30, 0.00066, "done"),
+                new CloudUsageRow(1_790_000_000, "cloud:c:claude-x", "app", 10, 0, null, "cut"),
+            ]),
+        };
+        var model = new CloudModelsViewModel(() => api);
+        await model.LoadAsync();
+        Assert.Equal(Ru.Format("cloud.spent_today", ("spent", "$0.0123"), ("limit", "$5")) + " · " + Ru.Format("cloud.unknown_answers", ("count", 1)), model.TodayText);
+        Assert.StartsWith(Ru.Format("cloud.spent_month", ("spent", "$0.5"), ("limit", Ru["cloud.no_limit"])), model.MonthText, StringComparison.Ordinal);
+        Assert.Equal("5", model.DailyLimit);
+        Assert.Equal("", model.MonthlyLimit);
+        Assert.Contains(Ru.Format("cloud.source_api", ("name", "Cursor")), model.Recent[0].Text, StringComparison.Ordinal);
+        Assert.Contains("700 → 30", model.Recent[0].Text, StringComparison.Ordinal);
+        Assert.Contains("$0.00066", model.Recent[0].Text, StringComparison.Ordinal);
+        Assert.Contains(Ru["cloud.cost_unknown"], model.Recent[1].Text, StringComparison.Ordinal);
+        Assert.EndsWith(Ru["cloud.state_cut"], model.Recent[1].Text, StringComparison.Ordinal);
+
+        model.DailyLimit = "2,5";
+        model.MonthlyLimit = " ";
+        await model.SaveLimitsCommand.RunAsync();
+        Assert.Equal((2.5, (double?)null), api.LimitCalls[^1]);
+        Assert.Equal(Ru["cloud.limits_saved"], model.Message);
+        model.DailyLimit = "-1";
+        await model.SaveLimitsCommand.RunAsync();
+        Assert.Single(api.LimitCalls); // неверное число не уходит в сервис
+        Assert.Equal(Ru["cloud.limit_bad"], model.Error);
+    }
+
+    [Fact]
+    public async Task Prices_are_set_with_a_source_for_enabled_models()
+    {
+        var api = new FakeChatApi();
+        api.CloudConnections.Add(new CloudConnection("c", "anthropic", "Claude", "https://api.anthropic.com", true, []));
+        await api.EnableCloudModelAsync("c", "claude-x", true, TestContext.Current.CancellationToken);
+        var model = new CloudModelsViewModel(() => api);
+        await model.LoadAsync();
+        await model.Connections[0].ModelsCommand.RunAsync();
+        var row = Assert.Single(model.Prices);
+        Assert.Equal("claude-x", row.Model);
+        Assert.Equal(Ru["cloud.price_missing_short"], row.Summary);
+        Assert.False(row.ClearCommand.CanExecute(null));
+
+        row.Input = "abc";
+        await row.SaveCommand.RunAsync();
+        Assert.Empty(api.PriceCalls);
+        Assert.Equal(Ru["cloud.price_bad"], row.Error);
+        row.Input = "3";
+        row.Output = "";
+        await row.SaveCommand.RunAsync(); // пустая цена выхода — не «бесплатно»
+        Assert.Empty(api.PriceCalls);
+
+        row.Input = "3";
+        row.Output = "15,5";
+        row.Source = " https://example.com/pricing ";
+        await row.SaveCommand.RunAsync();
+        Assert.Equal(("c", new CloudPriceRequest("claude-x", 3, 15.5, "https://example.com/pricing")), api.PriceCalls[^1]);
+        row = Assert.Single(model.Prices); // строки пересобраны с сохранённой ценой
+        Assert.Equal(Ru.Format("cloud.price_set", ("input", "$3"), ("output", "$15.5"), ("source", "https://example.com/pricing"), ("date", "2026-11-20")), row.Summary);
+        Assert.Equal("15.5", row.Output);
+        await row.ClearCommand.RunAsync();
+        Assert.Equal(new CloudPriceRequest("claude-x", null, null, null), api.PriceCalls[^1].Price);
+        Assert.Equal(Ru.Format("cloud.price_cleared", ("model", "claude-x")), model.Message);
+        Assert.Equal(Ru["cloud.price_missing_short"], model.Prices[0].Summary);
+    }
+
+    [Fact]
+    public async Task Client_sends_limits_and_prices_without_empty_fields()
+    {
+        var spending = """{"currency":"USD","limits":{"daily":2.5,"monthly":null},"today":0.1,"month":0.2,"unknown_today":0,"unknown_month":0,"prices":{"cloud:c:m":{"input":3,"output":15,"source":"s","checked_on":"2026-11-20"}},"recent":[{"at":1,"model":"cloud:c:m","source":"app","prompt_tokens":7,"completion_tokens":3,"cost":0.000066,"state":"done"}]}""";
+        var handler = new Handler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/ui/v1/cloud/limits" => """{"spending":""" + spending + "}",
+            "/ui/v1/cloud/connections/c/prices" => """{"model":"cloud:c:m","price":null}""",
+            _ => "{}",
+        });
+        using var client = new ChatApiClient(new Uri("http://127.0.0.1:5000"), "secret", handler);
+        var cancel = TestContext.Current.CancellationToken;
+        var result = await client.SetCloudLimitsAsync(2.5, null, cancel);
+        Assert.Equal(3, result.Prices["cloud:c:m"].Input);
+        Assert.Equal(0.000066, result.Recent[0].Cost);
+        await client.SetCloudPriceAsync("c", new CloudPriceRequest("m", null, null, null), cancel);
+        Assert.Equal("""{"daily":2.5}""", handler.Requests[0].Body);
+        Assert.Equal("""{"model":"m"}""", handler.Requests[1].Body);
     }
 }

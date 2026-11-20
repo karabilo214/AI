@@ -36,8 +36,30 @@ internal sealed class FakeChatApi : IChatApi
     public List<CloudSaveRequest> CloudSaves { get; } = [];
     public ApiException? CloudFail { get; set; }
 
+    public CloudSpending Spending { get; set; } = new("USD", new(null, null), 0, 0, 0, 0, [], []);
+    public List<(double? Daily, double? Monthly)> LimitCalls { get; } = [];
+    public List<(string Connection, CloudPriceRequest Price)> PriceCalls { get; } = [];
+
     public Task<CloudView> CloudAsync(CancellationToken cancel = default) =>
-        Task.FromResult(new CloudView([new("openai", "https://api.openai.com/v1")], [.. CloudConnections]));
+        Task.FromResult(new CloudView([new("openai", "https://api.openai.com/v1")], [.. CloudConnections], Spending));
+
+    public Task<CloudSpending> SetCloudLimitsAsync(double? daily, double? monthly, CancellationToken cancel = default)
+    {
+        LimitCalls.Add((daily, monthly));
+        Spending = Spending with { Limits = new CloudLimits(daily, monthly) };
+        return Task.FromResult(Spending);
+    }
+
+    public Task<CloudPriceResponse> SetCloudPriceAsync(string connection, CloudPriceRequest price, CancellationToken cancel = default)
+    {
+        PriceCalls.Add((connection, price));
+        var id = $"cloud:{connection}:{price.Model}";
+        var prices = new Dictionary<string, CloudPrice>(Spending.Prices);
+        if (price.Input is null) prices.Remove(id);
+        else prices[id] = new CloudPrice(price.Input.Value, price.Output!.Value, price.Source!, "2026-11-20");
+        Spending = Spending with { Prices = prices };
+        return Task.FromResult(new CloudPriceResponse(id, prices.GetValueOrDefault(id)));
+    }
 
     public Task<CloudConnection> SaveCloudAsync(CloudSaveRequest request, CancellationToken cancel = default)
     {

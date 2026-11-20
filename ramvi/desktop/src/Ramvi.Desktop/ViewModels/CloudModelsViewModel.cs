@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Ramvi.Desktop.Api;
 using Ramvi.Desktop.Localization;
 
@@ -84,6 +85,96 @@ public sealed class CloudConnectionRow : ObservableObject
     }
 }
 
+/// <summary>7.10: деньги в долларах — коротко, без лишних нулей.</summary>
+internal static class Money
+{
+    public static string Text(double value) => "$" + value.ToString("0.######", CultureInfo.InvariantCulture);
+
+    /// <summary>Пусто — null (без лимита/цены); запятая и точка как разделитель.</summary>
+    public static bool TryParse(string text, out double? value)
+    {
+        value = null;
+        var trimmed = text.Trim().Replace(',', '.').TrimStart('$');
+        if (trimmed.Length == 0) return true;
+        if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && number >= 0)
+        {
+            value = number;
+            return true;
+        }
+
+        return false;
+    }
+
+    public static string Field(double? value) => value is { } v ? v.ToString("0.######", CultureInfo.InvariantCulture) : "";
+}
+
+/// <summary>7.10: облачный ответ в списке расходов: когда, модель, кто, токены, стоимость.</summary>
+public sealed class CloudUsageItem(CloudUsageRow row) : ObservableObject
+{
+    private static Localizer L => Localizer.Current;
+
+    public string Text => L.Format(
+        "cloud.usage_row",
+        ("time", DateTimeOffset.FromUnixTimeMilliseconds((long)(row.At * 1000)).ToLocalTime().ToString("g", CultureInfo.CurrentCulture)),
+        ("model", row.Model.Split(':', 3)[^1]),
+        ("source", row.Source == "app" ? L["cloud.source_app"] : row.Source.StartsWith("api:", StringComparison.Ordinal) ? L.Format("cloud.source_api", ("name", row.Source[4..])) : row.Source),
+        ("prompt", row.PromptTokens),
+        ("completion", row.CompletionTokens),
+        ("cost", row.Cost is { } cost ? Money.Text(cost) : L["cloud.cost_unknown"]))
+        + (row.State == "done" ? "" : " · " + L[$"cloud.state_{row.State}"]);
+}
+
+/// <summary>7.10: цена включённой модели — за миллион входных и выходных токенов, источник.</summary>
+public sealed class CloudPriceRow : ObservableObject
+{
+    private readonly Func<CloudPriceRow, CloudPriceRequest, Task> _save;
+    private string _input;
+    private string _output;
+    private string _source;
+
+    public CloudPriceRow(string model, CloudPrice? price, Func<CloudPriceRow, CloudPriceRequest, Task> save)
+    {
+        Model = model;
+        Price = price;
+        _save = save;
+        _input = Money.Field(price?.Input);
+        _output = Money.Field(price?.Output);
+        _source = price?.Source ?? "";
+        SaveCommand = new Command(SaveAsync);
+        ClearCommand = new Command(() => _save(this, new CloudPriceRequest(Model, null, null, null)), () => Price is not null);
+    }
+
+    private static Localizer L => Localizer.Current;
+
+    public string Model { get; }
+    public CloudPrice? Price { get; }
+    public string Input { get => _input; set => Set(ref _input, value); }
+    public string Output { get => _output; set => Set(ref _output, value); }
+    public string Source { get => _source; set => Set(ref _source, value); }
+    public Command SaveCommand { get; }
+    public Command ClearCommand { get; }
+
+    public string Summary => Price is { } p
+        ? L.Format("cloud.price_set", ("input", Money.Text(p.Input)), ("output", Money.Text(p.Output)), ("source", p.Source), ("date", p.CheckedOn))
+        : L["cloud.price_missing_short"];
+
+    public string? Error { get; private set; }
+
+    private Task SaveAsync()
+    {
+        if (!Money.TryParse(_input, out var input) || !Money.TryParse(_output, out var output) || input is null || output is null)
+        {
+            Error = L["cloud.price_bad"];
+            Raise(nameof(Error));
+            return Task.CompletedTask;
+        }
+
+        Error = null;
+        Raise(nameof(Error));
+        return _save(this, new CloudPriceRequest(Model, input, output, _source.Trim()));
+    }
+}
+
 /// <summary>
 /// 7.8: «Облачные модели» во вкладке «Подключения» — сервис, адрес, ключ (после сохранения не
 /// показывается), «Проверить», список моделей сервиса с галочками. Включённые модели появляются в
@@ -103,6 +194,9 @@ public sealed class CloudModelsViewModel : ObservableObject
     private CloudConnectionRow? _selected;
     private string? _error;
     private string? _message;
+    private CloudSpending? _spending;
+    private string _dailyLimit = "";
+    private string _monthlyLimit = "";
 
     public CloudModelsViewModel(Func<IChatApi> api, Func<Task>? modelsChanged = null)
     {
@@ -120,6 +214,7 @@ public sealed class CloudModelsViewModel : ObservableObject
         CheckCommand = new Command(CheckAsync, () => CanSave);
         SaveCommand = new Command(SaveAsync, () => CanSave);
         NewCommand = new Command(() => { Clear(); return Task.CompletedTask; });
+        SaveLimitsCommand = new Command(SaveLimitsAsync);
     }
 
     private static Localizer L => Localizer.Current;
@@ -130,6 +225,21 @@ public sealed class CloudModelsViewModel : ObservableObject
     public Command CheckCommand { get; }
     public Command SaveCommand { get; }
     public Command NewCommand { get; }
+
+    // --- 7.10: расходы ---
+    public Command SaveLimitsCommand { get; }
+    public ObservableCollection<CloudUsageItem> Recent { get; } = [];
+    public ObservableCollection<CloudPriceRow> Prices { get; } = [];
+    public bool HasRecent => Recent.Count > 0;
+    public string DailyLimit { get => _dailyLimit; set => Set(ref _dailyLimit, value); }
+    public string MonthlyLimit { get => _monthlyLimit; set => Set(ref _monthlyLimit, value); }
+
+    public string TodayText => Spent("cloud.spent_today", _spending?.Today ?? 0, _spending?.Limits.Daily, _spending?.UnknownToday ?? 0);
+    public string MonthText => Spent("cloud.spent_month", _spending?.Month ?? 0, _spending?.Limits.Monthly, _spending?.UnknownMonth ?? 0);
+
+    private static string Spent(string key, double spent, double? limit, int unknown) =>
+        L.Format(key, ("spent", Money.Text(spent)), ("limit", limit is { } l ? Money.Text(l) : L["cloud.no_limit"]))
+        + (unknown > 0 ? " · " + L.Format("cloud.unknown_answers", ("count", unknown)) : "");
 
     public CloudKindOption Kind
     {
@@ -208,6 +318,7 @@ public sealed class CloudModelsViewModel : ObservableObject
 
     private void Show(CloudView view)
     {
+        ShowSpending(view.Spending);
         var selected = _selected?.Info.Id;
         Connections.Clear();
         foreach (var connection in view.Connections)
@@ -220,6 +331,74 @@ public sealed class CloudModelsViewModel : ObservableObject
         {
             Models.Clear();
             _allModels.Clear();
+        }
+
+        ShowPrices();
+    }
+
+    private void ShowSpending(CloudSpending? spending)
+    {
+        if (spending is null) return;
+        var limitsChanged = _spending is null || _spending.Limits != spending.Limits;
+        _spending = spending;
+        if (limitsChanged)
+        {
+            DailyLimit = Money.Field(spending.Limits.Daily);
+            MonthlyLimit = Money.Field(spending.Limits.Monthly);
+        }
+
+        Recent.Clear();
+        foreach (var row in spending.Recent) Recent.Add(new CloudUsageItem(row));
+        Raise(nameof(HasRecent));
+        Raise(nameof(TodayText));
+        Raise(nameof(MonthText));
+    }
+
+    /// <summary>Цены — у включённых моделей выбранного подключения.</summary>
+    private void ShowPrices()
+    {
+        Prices.Clear();
+        if (_selected is not { } row) return;
+        foreach (var model in row.Info.Models)
+        {
+            var id = $"cloud:{row.Info.Id}:{model}";
+            Prices.Add(new CloudPriceRow(model, _spending?.Prices.GetValueOrDefault(id), SavePriceAsync));
+        }
+    }
+
+    private async Task SavePriceAsync(CloudPriceRow row, CloudPriceRequest price)
+    {
+        if (_selected is not { } connection) return;
+        Error = Message = null;
+        try
+        {
+            await _api().SetCloudPriceAsync(connection.Info.Id, price).ConfigureAwait(true);
+            Show(await _api().CloudAsync().ConfigureAwait(true));
+            Message = L.Format(price.Input is null ? "cloud.price_cleared" : "cloud.price_saved", ("model", row.Model));
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException or NotSupportedException)
+        {
+            Error = Text(error);
+        }
+    }
+
+    private async Task SaveLimitsAsync()
+    {
+        Error = Message = null;
+        if (!Money.TryParse(_dailyLimit, out var daily) || !Money.TryParse(_monthlyLimit, out var monthly))
+        {
+            Error = L["cloud.limit_bad"];
+            return;
+        }
+
+        try
+        {
+            ShowSpending(await _api().SetCloudLimitsAsync(daily, monthly).ConfigureAwait(true));
+            Message = L["cloud.limits_saved"];
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException or NotSupportedException)
+        {
+            Error = Text(error);
         }
     }
 
@@ -293,6 +472,7 @@ public sealed class CloudModelsViewModel : ObservableObject
     {
         Error = null;
         Selected = row;
+        ShowPrices();
         Models.Clear();
         _allModels.Clear();
         try
@@ -389,6 +569,8 @@ public sealed class CloudModelsViewModel : ObservableObject
             row.Relocalize();
         }
 
+        foreach (var item in Recent) item.Relocalize();
+        foreach (var price in Prices) price.Relocalize();
         base.Relocalize();
     }
 

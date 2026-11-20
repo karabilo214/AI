@@ -4,6 +4,28 @@
  <StackPanel Spacing="10">
   <TextBlock Classes="heading" Text="{l:T cloud.title}"/>
   <TextBlock Classes="muted" TextWrapping="Wrap" Text="{l:T cloud.note}"/>
+  <!-- 7.10: расходы и лимиты -->
+  <Border x:Name="CloudSpending" Classes="inset" Padding="14,10">
+   <StackPanel Spacing="6">
+    <TextBlock FontWeight="SemiBold" Text="{l:T cloud.spending}"/>
+    <TextBlock x:Name="CloudToday" TextWrapping="Wrap" Text="{Binding TodayText}"/>
+    <TextBlock x:Name="CloudMonth" TextWrapping="Wrap" Text="{Binding MonthText}"/>
+    <Grid ColumnDefinitions="*,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2">
+     <TextBlock Classes="caption" Text="{l:T cloud.daily_limit}"/>
+     <TextBlock Grid.Column="1" Classes="caption" Text="{l:T cloud.monthly_limit}"/>
+     <TextBox x:Name="CloudDailyLimit" Grid.Row="1" PlaceholderText="{l:T cloud.no_limit}" Text="{Binding DailyLimit}"/>
+     <TextBox x:Name="CloudMonthlyLimit" Grid.Row="1" Grid.Column="1" PlaceholderText="{l:T cloud.no_limit}" Text="{Binding MonthlyLimit}"/>
+     <Button Grid.Row="1" Grid.Column="2" Content="{l:T cloud.save_limits}" Command="{Binding SaveLimitsCommand}"/>
+    </Grid>
+    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T cloud.limits_hint}"/>
+    <TextBlock Classes="caption" FontWeight="SemiBold" Text="{l:T cloud.recent}" IsVisible="{Binding HasRecent}"/>
+    <ItemsControl x:Name="CloudRecent" ItemsSource="{Binding Recent}" IsVisible="{Binding HasRecent}">
+     <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:CloudUsageItem">
+      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Text}"/>
+     </DataTemplate></ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
+  </Border>
   <!-- Подключения -->
   <ItemsControl x:Name="CloudConnections" ItemsSource="{Binding Connections}">
    <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:CloudConnectionRow">
@@ -32,6 +54,23 @@
     <TextBlock FontWeight="SemiBold" Text="{Binding ModelsTitle}"/>
     <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T cloud.models_hint}"/>
     <TextBox x:Name="CloudFilter" PlaceholderText="{l:T cloud.filter}" Text="{Binding Filter}"/>
+    <!-- 7.10: цены включённых моделей -->
+    <ItemsControl x:Name="CloudPrices" ItemsSource="{Binding Prices}">
+     <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:CloudPriceRow">
+      <StackPanel Spacing="4" Margin="0,0,0,8">
+       <TextBlock FontWeight="SemiBold" Text="{Binding Model}"/>
+       <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Summary}"/>
+       <Grid ColumnDefinitions="*,*,2*,Auto,Auto" ColumnSpacing="6">
+        <TextBox PlaceholderText="{l:T cloud.price_input}" Text="{Binding Input}"/>
+        <TextBox Grid.Column="1" PlaceholderText="{l:T cloud.price_output}" Text="{Binding Output}"/>
+        <TextBox Grid.Column="2" PlaceholderText="{l:T cloud.price_source}" Text="{Binding Source}"/>
+        <Button Grid.Column="3" Content="{l:T cloud.price_save}" Command="{Binding SaveCommand}"/>
+        <Button Grid.Column="4" Content="{l:T cloud.price_clear}" Command="{Binding ClearCommand}"/>
+       </Grid>
+       <TextBlock Classes="error" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      </StackPanel>
+     </DataTemplate></ItemsControl.ItemTemplate>
+    </ItemsControl>
     <ScrollViewer MaxHeight="260">
      <ItemsControl x:Name="CloudModelList" ItemsSource="{Binding Models}">
       <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:CloudModelOption">

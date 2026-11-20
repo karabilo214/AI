@@ -401,6 +401,9 @@ def test_usage_is_counted_for_the_client(svc: tuple[Any, str, str]) -> None:
         3,
         0,
     )
+    assert (
+        server.cloud.spending()["recent"][0]["source"] == "api:ide"
+    )  # 7.10: расход видно по программе
 
 
 def test_cloud_errors_are_clear_and_keep_the_cloud_key_hidden(

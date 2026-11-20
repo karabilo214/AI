@@ -801,15 +801,47 @@ def _error(error: Exception, host: str, key: str) -> ChatError:
 
     if isinstance(error, urllib.error.HTTPError):
         detail = clean(error.read(2000).decode("utf-8", "replace"))
+        after = _retry_after(error.headers.get("Retry-After") if error.headers else None)
         if error.code in (401, 403):
             return ChatError("cloud.key_rejected", host=host, status=error.code, detail=detail)
         if error.code == 429:
-            return ChatError("cloud.rate_limited", host=host, detail=detail)
+            return ChatError("cloud.rate_limited", host=host, detail=detail, retry_after=after)
+        if error.code in RETRY_STATUS:  # перегружен/недоступен: запрос не выполнялся
+            return ChatError(
+                "cloud.service_error",
+                host=host,
+                status=error.code,
+                detail=detail,
+                retry_after=after,
+            )
         if 300 <= error.code < 400:
             return ChatError("cloud.redirect_refused", host=host, status=error.code)
         return ChatError("cloud.service_error", host=host, status=error.code, detail=detail)
     reason = getattr(error, "reason", error)
-    return ChatError("cloud.unreachable", host=host, detail=clean(str(reason)))
+    # Соединение не установлено — запрос до сервиса не дошёл, повтор безопасен.
+    connect = isinstance(reason, ConnectionRefusedError | socket.gaierror)
+    return ChatError("cloud.unreachable", host=host, detail=clean(str(reason)), connect=connect)
+
+
+RETRY_STATUS = (503, 529)
+RETRY_DELAYS = (1.0, 3.0)  # две попытки после первой
+MAX_RETRY_AFTER = 10.0
+
+
+def _retry_after(value: Any) -> float | None:
+    try:
+        return min(max(float(value), 0.0), MAX_RETRY_AFTER) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def retryable(error: ChatError) -> bool:
+    """Повтор только там, где запрос точно не выполнялся (и не списал деньги)."""
+    if error.code == "cloud.rate_limited":
+        return True
+    if error.code == "cloud.service_error":
+        return error.params.get("status") in RETRY_STATUS
+    return error.code == "cloud.unreachable" and bool(error.params.get("connect"))
 
 
 def _open(
@@ -842,11 +874,22 @@ class CloudProvider:
     capabilities = CAPABILITIES
 
     def __init__(
-        self, kind: str, url: str, model: str, key: Callable[[], str | None], timeout: float = 600.0
+        self,
+        kind: str,
+        url: str,
+        model: str,
+        key: Callable[[], str | None],
+        timeout: float = 600.0,
+        *,
+        before: Callable[[], None] | None = None,
+        after: Callable[[dict[str, int] | None, str], None] | None = None,
     ) -> None:
         self.protocol = protocol_for(kind, url)
         self.url, self.model, self.key, self.timeout = url.rstrip("/"), model, key, timeout
         self.host = urllib.parse.urlsplit(self.url).hostname or ""
+        # 7.10: before — проверка лимита расходов; after — учёт ответа (usage, done/cut/error).
+        self.before, self.after = before, after
+        self.retry_delays = RETRY_DELAYS
         self._lock = threading.Lock()
         self._response: Any = None
 
@@ -856,13 +899,29 @@ class CloudProvider:
             raise ChatError("cloud.no_key", host=self.host)
         return key
 
-    def _request(self, request: dict[str, Any], stream: bool) -> tuple[Any, str]:
+    def _request(
+        self, request: dict[str, Any], stream: bool, cancel: threading.Event | None = None
+    ) -> tuple[Any, str]:
+        if self.before is not None:
+            self.before()  # лимит исчерпан — запрос не уходит
         key = self._key()
         endpoint, headers, body = self.protocol.chat_request(
             self.url, key, self.model, request, stream
         )
+        for delay in (*self.retry_delays, None):
+            try:
+                return self._send(endpoint, headers, body, key), key
+            except ChatError as error:
+                if delay is None or not retryable(error):
+                    raise
+                pause = error.params.get("retry_after")
+                if (cancel or threading.Event()).wait(delay if pause is None else pause):
+                    raise InterruptedError("request cancelled") from None
+        raise AssertionError("unreachable")
+
+    def _send(self, endpoint: str, headers: dict[str, str], body: dict[str, Any], key: str) -> Any:
         try:
-            return _open(endpoint, headers, body, key, self.timeout), key
+            return _open(endpoint, headers, body, key, self.timeout)
         except ChatError as error:
             # Модели-рассуждатели OpenAI отвергают temperature: один повтор без неё, до вывода.
             if (
@@ -872,39 +931,47 @@ class CloudProvider:
                 and "temperature" in body
             ):
                 body.pop("temperature")
-                return _open(endpoint, headers, body, key, self.timeout), key
+                return _open(endpoint, headers, body, key, self.timeout)
             raise
 
     def complete(self, request: dict[str, Any], cancel: threading.Event) -> dict[str, Any]:
         if cancel.is_set():
             raise InterruptedError("request cancelled")
-        response, key = self._request(request, False)
+        response, key = self._request(request, False, cancel)
         try:
             with self._lock:
                 self._response = response
             reply = _read_json(response)
         except (OSError, ValueError) as error:
+            self._account(None, "cut" if cancel.is_set() else "error")
             if cancel.is_set():
                 raise InterruptedError("request cancelled") from None
             raise _error(error, self.host, key) from None
         finally:
             self._close()
-        if cancel.is_set():
-            raise InterruptedError("late response cancelled")
         if not isinstance(reply, dict):
+            self._account(None, "error")
             raise ChatError(
                 "cloud.service_error", host=self.host, status=200, detail="not an object"
             )
         result: dict[str, Any] = self.protocol.response(reply)
+        self._account(result.get("usage"), "done")  # сервис посчитал и списал — учесть всегда
+        if cancel.is_set():
+            raise InterruptedError("late response cancelled")
         return result
+
+    def _account(self, usage: dict[str, int] | None, state: str) -> None:
+        if self.after is not None:
+            self.after(usage, state)
 
     def stream(self, request: dict[str, Any], cancel: threading.Event) -> Iterator[dict[str, Any]]:
         if cancel.is_set():
             raise InterruptedError("request cancelled")
-        response, key = self._request(request, True)
+        response, key = self._request(request, True, cancel)
         with self._lock:
             self._response = response
         done = threading.Event()
+        accounted = False
 
         def watch() -> None:
             while not done.wait(0.01):
@@ -938,10 +1005,14 @@ class CloudProvider:
                 elif text.startswith("data:"):
                     yield from reader.feed(event, text[5:].strip())
                     event = ""
+            accounted = True
+            self._account(reader.usage, "done")
             yield {"type": "end", "finish_reason": reader.finish or "stop", "usage": reader.usage}
         finally:
             done.set()
             self._close()
+            if not accounted:  # оборван: что успел сообщить сервис (часто — ничего)
+                self._account(reader.usage, "cut" if cancel.is_set() else "error")
 
     def _close(self) -> None:
         with self._lock:
@@ -975,23 +1046,122 @@ class CloudConnections:
     def __init__(
         self, data_dir: Path, secrets: Any, models: Models, timeout: float = 600.0
     ) -> None:
+        from ramvi_service.cloud_budget import Budget
+
         self.path = Path(data_dir) / "cloud.json"
         self.secrets, self.models, self.timeout = secrets, models, timeout
+        self.budget = Budget(Path(data_dir) / "cloud_usage.sqlite3")  # 7.10: учёт ответов
         self._lock = threading.RLock()
 
-    def _load(self) -> list[dict[str, str]]:
+    def _read(self) -> dict[str, Any]:
         try:
             data = json.loads(self.path.read_text("utf-8"))
         except FileNotFoundError:
-            return []
-        items = data.get("connections") if isinstance(data, dict) else None
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _write(self, **changes: Any) -> None:
+        data = {**self._read(), **changes}
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
+        tmp.replace(self.path)
+
+    def _load(self) -> list[dict[str, str]]:
+        items = self._read().get("connections")
         return [c for c in items or [] if isinstance(c, dict) and c.get("kind") in KINDS]
 
     def _save(self, items: list[dict[str, str]]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"connections": items}, ensure_ascii=False, indent=1), "utf-8")
-        tmp.replace(self.path)
+        self._write(connections=items)
+
+    # --- 7.10: цены, лимиты, учёт --------------------------------------------------------
+
+    def _prices(self) -> dict[str, dict[str, Any]]:
+        prices = self._read().get("prices")
+        return prices if isinstance(prices, dict) else {}
+
+    def _limits(self) -> dict[str, float | None]:
+        limits = self._read().get("limits")
+        limits = limits if isinstance(limits, dict) else {}
+        return {"daily": limits.get("daily"), "monthly": limits.get("monthly")}
+
+    def set_limits(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Лимит расходов в долларах за день и за месяц; null — без лимита."""
+        if set(body) - {"daily", "monthly"}:
+            raise ChatError("api.bad_request", field="limits")
+        limits = {}
+        for name in ("daily", "monthly"):
+            value = body.get(name)
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, int | float)
+                or not 0 <= value <= 1e6
+            ):
+                raise ChatError("api.bad_request", field=name)
+            limits[name] = None if value is None else float(value)
+        with self._lock:
+            self._write(limits=limits)
+        return self.spending()
+
+    def set_price(self, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Цена модели за миллион входных/выходных токенов (USD) с источником; дата — сегодня."""
+        if set(body) - {"model", "input", "output", "source"}:
+            raise ChatError("api.bad_request", field="price")
+        name = body.get("model")
+        if not isinstance(name, str) or not name:
+            raise ChatError("api.bad_request", field="model")
+        with self._lock:
+            self._find(connection_id)
+            identifier = model_id(connection_id, name)
+            prices = self._prices()
+            if body.get("input") is None and body.get("output") is None:
+                prices.pop(identifier, None)  # цену убрали
+            else:
+                values = [body.get("input"), body.get("output")]
+                if any(
+                    isinstance(v, bool) or not isinstance(v, int | float) or not 0 <= v <= 1e4
+                    for v in values
+                ):
+                    raise ChatError("api.bad_request", field="price")
+                source = body.get("source")
+                if not isinstance(source, str) or not source.strip() or len(source) > 300:
+                    raise ChatError("cloud.price_source_required")
+                prices[identifier] = {
+                    "input": float(values[0] or 0),  # проверены выше: числа
+                    "output": float(values[1] or 0),
+                    "source": source.strip(),
+                    "checked_on": time.strftime("%Y-%m-%d"),
+                }
+            self._write(prices=prices)
+            return {"model": identifier, "price": prices.get(identifier)}
+
+    def spending(self) -> dict[str, Any]:
+        today, unknown_today = self.budget.spent("day")
+        month, unknown_month = self.budget.spent("month")
+        return {
+            "currency": "USD",
+            "limits": self._limits(),
+            "today": today,
+            "month": month,
+            "unknown_today": unknown_today,
+            "unknown_month": unknown_month,
+            "prices": self._prices(),
+            "recent": self.budget.recent(),
+        }
+
+    def check(self, identifier: str) -> None:
+        """Перед запросом: лимит исчерпан — новый запрос не уходит (идущий не обрывается)."""
+        limits = self._limits()
+        if limits["daily"] is None and limits["monthly"] is None:
+            return
+        if identifier not in self._prices():
+            # Без цены расход не посчитать, и лимит не сработал бы.
+            raise ChatError("cloud.price_missing", model=identifier.split(":", 2)[-1])
+        for name, period in (("daily", "day"), ("monthly", "month")):
+            limit = limits[name]
+            spent, _ = self.budget.spent(period)
+            if limit is not None and spent >= limit:
+                raise ChatError("cloud.limit_reached", period=period, limit=limit, spent=spent)
 
     def _key(self, connection_id: str) -> str | None:
         if self.secrets is None:
@@ -1023,6 +1193,7 @@ class CloudConnections:
                     {**c, "has_key": bool(self._key(c["id"])), "models": self._enabled(c["id"])}
                     for c in self._load()
                 ],
+                "spending": self.spending(),
             }
 
     def save(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -1090,6 +1261,10 @@ class CloudConnections:
                 except Exception:
                     pass
             self._save([c for c in items if c["id"] != connection_id])
+            prefix = model_id(connection_id, "")
+            self._write(
+                prices={k: v for k, v in self._prices().items() if not k.startswith(prefix)}
+            )
 
     def remote_models(self, body: dict[str, Any]) -> list[str]:
         """Список моделей сервиса — проверка ключа. Значения формы или сохранённое подключение."""
@@ -1149,14 +1324,21 @@ class CloudConnections:
                     pass
             return {"id": connection_id, "models": self._enabled(connection_id)}
 
-    def provider(self, model: Model) -> CloudProvider:
+    def provider(self, model: Model, source: str = "app") -> CloudProvider:
+        """`source` — кто спросил (приложение или клиент внешнего API), для учёта."""
         connection = self._find(str(model.capabilities.get(CLOUD, "")))
+
+        def after(usage: dict[str, int] | None, state: str) -> None:
+            self.budget.record(model.id, source, usage, self._prices().get(model.id), state)
+
         return CloudProvider(
             connection["kind"],
             connection["url"],
             model.path,
             lambda: self._key(connection["id"]),
             self.timeout,
+            before=lambda: self.check(model.id),
+            after=after,
         )
 
 

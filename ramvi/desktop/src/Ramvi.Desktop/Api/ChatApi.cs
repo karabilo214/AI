@@ -60,6 +60,14 @@ public interface IChatApi
 
     Task DeleteCloudAsync(string connection, CancellationToken cancel = default) => throw new NotSupportedException();
 
+    /// <summary>7.10: лимиты расходов (USD за день и месяц; null — без лимита).</summary>
+    Task<CloudSpending> SetCloudLimitsAsync(double? daily, double? monthly, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
+    /// <summary>7.10: цена модели за миллион токенов с источником; null — убрать.</summary>
+    Task<CloudPriceResponse> SetCloudPriceAsync(string connection, CloudPriceRequest price, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+
     Task<IReadOnlyList<ModelInfo>> ModelsAsync(CancellationToken cancel = default);
 
     /// <summary>Просмотреть папку моделей из настроек и подключить найденные модели на месте.</summary>
@@ -299,6 +307,14 @@ public sealed class ChatApiClient : IChatApi, IDisposable
         string connection, string model, bool enabled, CancellationToken cancel = default) =>
         PostAsync($"cloud/connections/{Id(connection)}/models", new CloudEnableRequest(model, enabled),
             ApiJson.Default.CloudEnableRequest, ApiJson.Default.CloudEnableResponse, cancel);
+
+    public async Task<CloudSpending> SetCloudLimitsAsync(double? daily, double? monthly, CancellationToken cancel = default) =>
+        (await PostAsync("cloud/limits", new CloudLimitsRequest(daily, monthly), ApiJson.Default.CloudLimitsRequest,
+            ApiJson.Default.CloudLimitsResponse, cancel).ConfigureAwait(false)).Spending;
+
+    public Task<CloudPriceResponse> SetCloudPriceAsync(string connection, CloudPriceRequest price, CancellationToken cancel = default) =>
+        PostAsync($"cloud/connections/{Id(connection)}/prices", price, ApiJson.Default.CloudPriceRequest,
+            ApiJson.Default.CloudPriceResponse, cancel);
 
     public async Task DeleteCloudAsync(string connection, CancellationToken cancel = default)
     {

@@ -614,7 +614,7 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                 with api.gate.turn(client.id, api.options, active.cancel):
                     if active.cancel.is_set():
                         raise InterruptedError("revoked")
-                    provider = api.cloud.provider(model)
+                    provider = api.cloud.provider(model, source="api:" + client.name)
                     try:
                         for chunk in provider.stream(request, active.cancel):
                             data = writer.feed(chunk)

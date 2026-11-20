@@ -279,6 +279,8 @@ class Cloud:
         self.tool = False
         self.slow: bool | str = False
         self.override: dict[str, Any] | None = None  # готовый ответ без потока
+        self.failures: list[int] = []  # 7.10: коды сбоев по одному на запрос, затем ответ
+        self.retry_after: str | None = None
         self.disconnected = threading.Event()
         owner = self
 
@@ -305,6 +307,11 @@ class Cloud:
                 self.wfile.write(body)
 
             def _fail(self) -> bool:
+                if owner.failures:
+                    code = owner.failures.pop(0)
+                    extra = {"Retry-After": owner.retry_after} if owner.retry_after else None
+                    self._send(code, b'{"error": {"message": "busy"}}', extra=extra)
+                    return True
                 if owner.status == 200:
                     return False
                 if owner.status == 302:
