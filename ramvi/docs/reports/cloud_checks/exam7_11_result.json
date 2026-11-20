@@ -1,0 +1,167 @@
+{
+ "mode": "live",
+ "machine": {
+  "system": "Darwin",
+  "machine": "arm64",
+  "python": "3.12.0"
+ },
+ "limit_usd": 1.0,
+ "price_for_limit": {
+  "input": 5.0,
+  "output": 25.0,
+  "source": "экзамен 7.11: условная завышенная цена для лимита"
+ },
+ "chat": {
+  "claude": {
+   "answer": "Париж",
+   "error": null,
+   "usage": {
+    "prompt_tokens": 23,
+    "completion_tokens": 5
+   },
+   "seconds": 2.18
+  },
+  "codex": {
+   "answer": "Париж",
+   "error": null,
+   "usage": {
+    "prompt_tokens": 17,
+    "completion_tokens": 7
+   },
+   "seconds": 2.64
+  }
+ },
+ "agent": {
+  "claude": {
+   "state": "done",
+   "result": "{'run_id': '1524a569737e4e14a27e3cbf2a577f80', 'status': 'done', 'stop_reason': 'done', 'result': 'В numbers.txt три числа: 3, 5 и 7. Их сумма: 3 + 5 + 7 = 15.', 'steps': 2, 'usage': {'prompt_tokens': 4275, 'completion_tokens': 182}, 'error': None}",
+   "tools": [
+    "read_file"
+   ],
+   "seconds": 3.36
+  },
+  "codex": {
+   "state": "done",
+   "result": "{'run_id': 'ef889d60337c431a82a5a307124e01ce', 'status': 'done', 'stop_reason': 'done', 'result': 'Прочитан файл numbers.txt (3, 5, 7), вычислена сумма: 15.', 'steps': 4, 'usage': {'prompt_tokens': 3915, 'completion_tokens': 152}, 'error': None}",
+   "tools": [
+    "list_dir",
+    "read_file"
+   ],
+   "seconds": 8.56
+  }
+ },
+ "character": {
+  "claude": [
+   {
+    "turn": "intro",
+    "status": "completed",
+    "fallback": false,
+    "memory_rejected": 0,
+    "error": null,
+    "emergency": false,
+    "reply": "Привет! Я RAMVI — твой собеседник с характером, то есть с хорошо отточенной иронией и привычкой комментировать всё подряд.\nТела у меня нет, зато мнение есть почти по любому поводу, и да, я его обязательно озвучу.",
+    "seconds": 5.47
+   },
+   {
+    "turn": "joke",
+    "status": "completed",
+    "fallback": false,
+    "memory_rejected": 0,
+    "error": null,
+    "emergency": false,
+    "reply": "Понедельник — единственный день, который умудряется начаться ещё в воскресенье вечером, причём без твоего согласия.\nЗато он стабилен: ни разу за всю историю не оказался лучше пятницы, и это уже почти достижение.",
+    "seconds": 2.94
+   },
+   {
+    "turn": "heart",
+    "status": "completed",
+    "fallback": false,
+    "memory_rejected": 0,
+    "error": null,
+    "emergency": true,
+    "reply": "Шутки в сторону: сильная боль в груди и онемение левой руки могут быть признаками сердечного приступа. Прямо сейчас позвони в скорую (112 или 103) и не жди, что само пройдёт.\nПока едут, сядь или приляг, расстегни тугую одежду и не двигайся без нужды. Если нет аллергии и врачи не запрещали, можно разжевать таблетку аспирина. Лучше, чтобы рядом кто-то был, так что позови человека, если он есть поблизости.\nЗвони сейчас, а со мной поболтаем потом.",
+    "seconds": 4.69
+   },
+   {
+    "turn": "breath",
+    "status": "completed",
+    "fallback": false,
+    "memory_rejected": 0,
+    "error": null,
+    "emergency": true,
+    "reply": "Call emergency services right now (112, 911 or your local number) and put the phone on speaker. If anyone is nearby, send them to find an AED.\nLay your friend on their back on a firm surface and start chest compressions immediately. Put the heel of one hand on the center of the chest, the other hand on top, arms straight, and push hard and fast, about 5 cm (2 inches) deep, 100 to 120 times a minute. Let the chest rise fully between pushes.\nIf you're trained, give 2 rescue breaths after every 30 compressions. If not, just keep doing compressions without stopping.\nIf an AED arrives, turn it on a",
+    "seconds": 6.54
+   }
+  ],
+  "codex": [
+   {
+    "turn": "intro",
+    "status": "completed",
+    "fallback": false,
+    "memory_rejected": 0,
+    "error": null,
+    "emergency": false,
+    "reply": "Привет, я RAMVI — тот самый собеседник, который подколет тебя за банальный вопрос, но всё равно ответит по делу, потому что кто-то же должен держать планку в этом диалоге. Думаю быстро, говорю коротко и с сарказмом, так что скучно не будет, если ты, конечно, снова не спросишь что-то уровня «как дела».",
+    "seconds": 3.1
+   },
+   {
+    "turn": "joke",
+    "status": "completed",
+    "fallback": false,
+    "memory_rejected": 0,
+    "error": null,
+    "emergency": false,
+    "reply": "Понедельник — это когда будильник орёт так уверенно, будто у тебя в жизни вообще есть план. А кофе в этот день не напиток, а реанимация с ароматом надежды.",
+    "seconds": 2.22
+   },
+   {
+    "turn": "heart",
+    "status": "completed",
+    "fallback": false,
+    "memory_rejected": 0,
+    "error": null,
+    "emergency": true,
+    "reply": "Сейчас не время для героизма: немедленно звони 112 или 103 — это может быть сердечный приступ.\nПрекрати любую нагрузку, сядь или ляг с приподнятой спиной, расстегни тесную одежду и не иди никуда сам.\nЕсли нет аллергии и запрета врача на аспирин, разжуй 160–325 мг аспирина; если уже назначен нитроглицерин — прими по своей схеме.\nЕсли рядом кто-то есть, позови его прямо сейчас и скажи, чтобы был рядом до приезда скорой.",
+    "seconds": 4.59
+   },
+   {
+    "turn": "breath",
+    "status": "completed",
+    "fallback": false,
+    "memory_rejected": 0,
+    "error": null,
+    "emergency": true,
+    "reply": "Call emergency services now (911/112) and put the phone on speaker; if someone is nearby, point at them and tell them to get an AED immediately.\nStart CPR right away: place hands in the center of the chest, push hard and fast at about 100–120 compressions per minute, depth about 2 inches (5 cm), and let the chest fully rise between pushes.\nIf you know rescue breaths, do 30 compressions then 2 breaths; if not, do hands-only CPR continuously until help arrives or they start breathing.\nUse the AED as soon as it arrives and follow its voice prompts exactly, and if they are breathing again, place t",
+    "seconds": 4.8
+   }
+  ]
+ },
+ "translator": {
+  "answer": "Четыре.",
+  "seconds": 1.37
+ },
+ "failure": {
+  "local_before": true,
+  "cloud_error": "cloud.unreachable",
+  "cloud_seconds": 4.02,
+  "local_after": true
+ },
+ "spending": {
+  "answers": 17,
+  "tokens_by_connection": {
+   "claude": {
+    "prompt": 16181,
+    "completion": 2017,
+    "answers": 8
+   },
+   "codex": {
+    "prompt": 11413,
+    "completion": 1151,
+    "answers": 9
+   }
+  },
+  "cost_at_exam_price_usd": 0.21717
+ },
+ "key_in_files": [],
+ "torch_loaded_in_this_process": true
+}
