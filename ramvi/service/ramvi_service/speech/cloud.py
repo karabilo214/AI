@@ -5,6 +5,7 @@ import http.client
 import json
 import math
 import socket
+import sys
 import threading
 from collections.abc import Iterator
 from typing import Any
@@ -161,6 +162,10 @@ class CloudSpeech:
         if active_socket:
             try:
                 active_socket.shutdown(socket.SHUT_RDWR)
+                if sys.platform == "win32":
+                    # На Windows shutdown не будит recv в другом потоке: закрыть дескриптор
+                    # напрямую; detach — чтобы объект сокета не закрыл его второй раз.
+                    socket.close(active_socket.detach())
             except OSError:
                 pass
         if connection:

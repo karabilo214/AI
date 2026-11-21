@@ -111,8 +111,16 @@ def rss_mb() -> float:
         counters = Counters()
         counters.cb = ctypes.sizeof(counters)
         windll: Any = getattr(ctypes, "windll")  # noqa: B009 — есть только на Windows
-        process = windll.kernel32.GetCurrentProcess()
-        assert windll.psapi.GetProcessMemoryInfo(process, ctypes.byref(counters), counters.cb)
+        kernel32 = windll.kernel32
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE  # 64-битный дескриптор, не int
+        kernel32.K32GetProcessMemoryInfo.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(Counters),
+            wintypes.DWORD,
+        ]
+        kernel32.K32GetProcessMemoryInfo.restype = wintypes.BOOL
+        process = kernel32.GetCurrentProcess()
+        assert kernel32.K32GetProcessMemoryInfo(process, ctypes.byref(counters), counters.cb)
         return float(counters.WorkingSetSize) / 1024 / 1024
     out = subprocess.run(
         ["ps", "-o", "rss=", "-p", str(os.getpid())], capture_output=True, text=True

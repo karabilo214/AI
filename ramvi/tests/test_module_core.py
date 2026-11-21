@@ -102,7 +102,8 @@ def test_two_actual_workers_lifecycle_checkpoint_and_scoped_gateway(tmp_path: Pa
 
 
 def test_worker_crash_and_timeout_do_not_break_peer(tmp_path: Path) -> None:
-    host = ModuleHost(tmp_path, timeout=0.3)
+    # Запас на запуск процесса (на Windows CI он дольше 0,3 с); тайм-аут проверяется ниже.
+    host = ModuleHost(tmp_path, timeout=10)
     for name in ("first", "second"):
         host.register(Manifest(name, "1.0.0", "ramvi.tests.module_fixture:create"))
     try:
