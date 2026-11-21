@@ -459,7 +459,7 @@ def drive_kind(
         if not drive:
             return "unknown"
         try:
-            kind = ctypes.windll.kernel32.GetDriveTypeW(drive + "\\")  # type: ignore[attr-defined]
+            kind = ctypes.windll.kernel32.GetDriveTypeW(drive + "\\")  # type: ignore[attr-defined,unused-ignore]
         except (AttributeError, OSError):
             return "unknown"
         return _WINDOWS_DRIVES.get(kind, "unknown")
