@@ -1,0 +1,306 @@
+{
+ "config": "neutral",
+ "seed": 11,
+ "facts": {
+  "pet": "кролик",
+  "pet_name": "Маркиз",
+  "city": "Архангельске",
+  "new_city": "Рязани",
+  "colleague": "Ярослав",
+  "code": "9320",
+  "hobby": "резьбу по дереву"
+ },
+ "turns": 60,
+ "minutes": 24.8,
+ "answers": [
+  {
+   "fact": "pet_name",
+   "question": "Как зовут моего питомца?",
+   "expected": "Маркиз",
+   "reply": "Ты не упомянул имя питомца. Может, расскажешь, как его зовут?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "city",
+   "question": "В каком городе я сейчас живу?",
+   "expected": "Рязань",
+   "reply": "Ты не упомянул, в каком городе живёшь. Может, расскажешь, где ты находишься?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "colleague",
+   "question": "Как зовут моего начальника?",
+   "expected": "Ярослав",
+   "reply": "Ты не упомянул имя начальника. Может, расскажешь, как его зовут?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "code",
+   "question": "Какой код от моего шкафчика в спортзале?",
+   "expected": "9320",
+   "reply": "Ты не упомянул код от шкафчика. Может, вспомнишь, как его установили или где он записан?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "hobby",
+   "question": "Чем я занимаюсь по выходным?",
+   "expected": "резьбу по дереву",
+   "reply": "Ты не упомянул, чем занимаешься по выходным. Может, расскажешь, что делал или планируешь делать?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  }
+ ],
+ "state_before_restart": {
+  "acquired": {},
+  "memory": {
+   "available": true,
+   "namespace": "u:owner/c:default",
+   "error": null,
+   "background": {
+    "processed": 50,
+    "dropped": 0,
+    "errors": 0,
+    "forgotten": 0,
+    "feedback": 0
+   }
+  },
+  "records": [
+   {
+    "kind": "profile",
+    "subject": "кошки и коробки",
+    "value": "Кошки любят коробки как укрытие и место для отдыха",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "conversation style",
+    "value": "Owner prefers a friendly and supportive conversation style",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "python",
+    "value": "Использование отступов в Python",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "rainy sunday activity",
+    "value": "Owner suggested activities for a rainy Sunday",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "advice style",
+    "value": "Owner prefers practical and direct advice",
+    "status": "candidate",
+    "origin": "interpretation"
+   },
+   {
+    "kind": "episodic",
+    "subject": "toast",
+    "value": "Toast burning incident",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "file loss",
+    "value": "Owner lost an hour of work due to a file not being saved",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "medical_symptoms",
+    "value": "медицинская помощь: Сильная боль в груди и онемение руки",
+    "status": "candidate",
+    "origin": "interpretation"
+   },
+   {
+    "kind": "episodic",
+    "subject": "медицинская помощь",
+    "value": "Сильная боль в груди и онемение руки",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "ногти",
+    "value": "Как перестать грызть ногти?",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "semantic",
+    "subject": "математика",
+    "value": "15 процентов от 240 равно 36",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "interest in flight",
+    "value": "Owner is interested in basic physics and flight mechanics",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "код шкафчика",
+    "value": "Код от шкафчика в спортзале — 9320",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "for loop error",
+    "value": "Owner wrote a for loop without a colon",
+    "status": "candidate",
+    "origin": "interpretation"
+   },
+   {
+    "kind": "semantic",
+    "subject": "for loop error",
+    "value": "Owner wrote a for loop without a colon",
+    "status": "candidate",
+    "origin": "user_said"
+   }
+  ]
+ },
+ "state_after": {
+  "acquired": {},
+  "memory": {
+   "available": true,
+   "namespace": "u:owner/c:default",
+   "error": null,
+   "background": {
+    "processed": 1,
+    "dropped": 0,
+    "errors": 0,
+    "forgotten": 0,
+    "feedback": 0
+   }
+  },
+  "records": [
+   {
+    "kind": "profile",
+    "subject": "кошки и коробки",
+    "value": "Кошки любят коробки как укрытие и место для отдыха",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "conversation style",
+    "value": "Owner prefers a friendly and supportive conversation style",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "python",
+    "value": "Использование отступов в Python",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "rainy sunday activity",
+    "value": "Owner suggested activities for a rainy Sunday",
+    "status": "active",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "advice style",
+    "value": "Owner prefers practical and direct advice",
+    "status": "candidate",
+    "origin": "interpretation"
+   },
+   {
+    "kind": "episodic",
+    "subject": "toast",
+    "value": "Toast burning incident",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "file loss",
+    "value": "Owner lost an hour of work due to a file not being saved",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "medical_symptoms",
+    "value": "медицинская помощь: Сильная боль в груди и онемение руки",
+    "status": "candidate",
+    "origin": "interpretation"
+   },
+   {
+    "kind": "episodic",
+    "subject": "медицинская помощь",
+    "value": "Сильная боль в груди и онемение руки",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "ногти",
+    "value": "Как перестать грызть ногти?",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "semantic",
+    "subject": "математика",
+    "value": "15 процентов от 240 равно 36",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "interest in flight",
+    "value": "Owner is interested in basic physics and flight mechanics",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "profile",
+    "subject": "код шкафчика",
+    "value": "Код от шкафчика в спортзале — 9320",
+    "status": "candidate",
+    "origin": "user_said"
+   },
+   {
+    "kind": "episodic",
+    "subject": "for loop error",
+    "value": "Owner wrote a for loop without a colon",
+    "status": "candidate",
+    "origin": "interpretation"
+   },
+   {
+    "kind": "semantic",
+    "subject": "for loop error",
+    "value": "Owner wrote a for loop without a colon",
+    "status": "candidate",
+    "origin": "user_said"
+   }
+  ]
+ }
+}

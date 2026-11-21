@@ -1,0 +1,64 @@
+{
+ "config": "static",
+ "seed": 11,
+ "facts": {
+  "pet": "кролик",
+  "pet_name": "Маркиз",
+  "city": "Архангельске",
+  "new_city": "Рязани",
+  "colleague": "Ярослав",
+  "code": "9320",
+  "hobby": "резьбу по дереву"
+ },
+ "turns": 60,
+ "minutes": 5.8,
+ "answers": [
+  {
+   "fact": "pet_name",
+   "question": "Как зовут моего питомца?",
+   "expected": "Маркиз",
+   "reply": "Ты не сказал, что у тебя есть питомец. Может, ты просто любишь говорить о них?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "city",
+   "question": "В каком городе я сейчас живу?",
+   "expected": "Рязань",
+   "reply": "Ты не сказал, где живёшь. Может, ты просто любишь спрашивать странные вопросы?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "colleague",
+   "question": "Как зовут моего начальника?",
+   "expected": "Ярослав",
+   "reply": "Ты не сказал, кто твой начальник. Может, ты просто любишь загадки?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "code",
+   "question": "Какой код от моего шкафчика в спортзале?",
+   "expected": "9320",
+   "reply": "Ты не сказал, что у тебя есть шкафчик в спортзале. Может, ты просто любишь шифровать свои вещи?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "hobby",
+   "question": "Чем я занимаюсь по выходным?",
+   "expected": "резьбу по дереву",
+   "reply": "Ты не сказал, чем занимаешься. Может, ты просто любишь держать меня в неведении?",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  }
+ ],
+ "state_before_restart": {},
+ "state_after": {}
+}

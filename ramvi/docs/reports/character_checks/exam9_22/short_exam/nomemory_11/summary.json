@@ -1,0 +1,80 @@
+{
+ "config": "nomemory",
+ "seed": 11,
+ "facts": {
+  "pet": "кролик",
+  "pet_name": "Маркиз",
+  "city": "Архангельске",
+  "new_city": "Рязани",
+  "colleague": "Ярослав",
+  "code": "9320",
+  "hobby": "резьбу по дереву"
+ },
+ "turns": 60,
+ "minutes": 20.8,
+ "answers": [
+  {
+   "fact": "pet_name",
+   "question": "Как зовут моего питомца?",
+   "expected": "Маркиз",
+   "reply": "Твоего питомца зовут \"Кот\", потому что он у тебя дома, а не в магазине. Или, если хочешь, могу просто молчать и не мешать.",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "city",
+   "question": "В каком городе я сейчас живу?",
+   "expected": "Рязань",
+   "reply": "Ты живёшь в городе, где я могу спросить, почему ты не ответил на предыдущий вопрос. Или, если хочешь, могу просто молчать и не мешать.",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "colleague",
+   "question": "Как зовут моего начальника?",
+   "expected": "Ярослав",
+   "reply": "Твоего начальника зовут \"Коллега\", потому что он не в магазине, а в офисе. Или, если хочешь, могу просто молчать и не мешать.",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "code",
+   "question": "Какой код от моего шкафчика в спортзале?",
+   "expected": "9320",
+   "reply": "Твой код от шкафчика — это тайна, которую лучше оставить в секрете, как тайну кота, который знает, где ты спрятал корм. Или, если хочешь, могу просто молчать и не мешать.",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  },
+  {
+   "fact": "hobby",
+   "question": "Чем я занимаюсь по выходным?",
+   "expected": "резьбу по дереву",
+   "reply": "Ты, наверное, занимаешься чем-то, что не стоит рассказывать коту — например, чистить шкафчики или искать код. Или, если хочешь, могу просто молчать и не мешать.",
+   "status": "completed",
+   "recalled": false,
+   "stale": false
+  }
+ ],
+ "state_before_restart": {
+  "acquired": {},
+  "memory": {
+   "available": false,
+   "namespace": null,
+   "error": "NotImplementedError",
+   "background": null
+  }
+ },
+ "state_after": {
+  "acquired": {},
+  "memory": {
+   "available": false,
+   "namespace": null,
+   "error": "NotImplementedError",
+   "background": null
+  }
+ }
+}
