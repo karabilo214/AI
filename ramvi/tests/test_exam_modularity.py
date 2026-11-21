@@ -129,6 +129,26 @@ def rss_mb() -> float:
 
 
 def alive(pid: int) -> bool:
+    if sys.platform == "win32":  # os.kill(pid, 0) на Windows не проверка, а ошибка 87
+        import ctypes
+        from ctypes import wintypes
+
+        windll: Any = getattr(ctypes, "windll")  # noqa: B009 — есть только на Windows
+        kernel32 = windll.kernel32
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            return (
+                bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259
+            )
+        finally:
+            kernel32.CloseHandle(handle)  # 259 = STILL_ACTIVE
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

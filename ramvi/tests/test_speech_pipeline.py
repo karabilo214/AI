@@ -227,7 +227,9 @@ def test_dialogue_backpressure_is_cancellable_and_next_response_gets_first_slot(
         m.speech("configure", {"settings": {"enabled": True}})
         m.dialogue("start", {"text": "Old", "model": "one"})
         wait(lambda: m._speech.backpressure_waits > 0)
-        assert len(m._speech.queue) == SEGMENT_QUEUE
+        # Поток озвучки может как раз забрать кусок: очередь не больше предела и снова полна.
+        assert len(m._speech.queue) <= SEGMENT_QUEUE
+        wait(lambda: len(m._speech.queue) == SEGMENT_QUEUE)
         assert m.dialogue("poll")["job"]["state"] == "running"
         result = m.dialogue("cancel")
         assert "error" not in result
