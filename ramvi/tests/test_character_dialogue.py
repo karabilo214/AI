@@ -328,7 +328,30 @@ def test_owner_allows_profanity_and_the_model_is_told_to_swear() -> None:
     finish(m)
     second = svc.requests[-1]["messages"][0]["content"]
     assert "No profanity." not in second and "allowed swearing" in second
-    assert "обломался" in second  # не ведётся на «скажи триста»
+    assert "скажи «триста»" in second  # узнаёт ловушку
+    assert "обломался" not in second  # но готового ответа нет: модель не повторяет его по кругу
+    assert "Never repeat your earlier replies" in second
+    assert m.dialogue("status", {})["character"]["profanity_level"] == 2
+    assert "Swear moderately" in second  # по умолчанию «средне»
+    prompts = {}
+    for level in (1, 3):
+        m.dialogue("profanity_level", {"level": level})
+        m.dialogue("start", {"text": "Ещё", "model": "one"})
+        finish(m)
+        prompts[level] = svc.requests[-1]["messages"][0]["content"]
+    assert "Swear rarely" in prompts[1] and "Swear moderately" not in prompts[1]
+    assert "Swear a lot" in prompts[3] and "Swear rarely" not in prompts[3]
+    assert m.dialogue("profanity_level", {"level": 4})["error"] == "ValueError"
+    restored = CharacterModule()  # ползунок переживает перезапуск
+    restored.initialize({"services": svc, "checkpoint": m.checkpoint()})
+    restored.activate()
+    assert restored.dialogue("status", {})["character"]["profanity_level"] == 3
+    m.dialogue("boundary", {"name": "profanity", "allowed": False})
+    m.dialogue("start", {"text": "Ещё", "model": "one"})
+    finish(m)
+    off = svc.requests[-1]["messages"][0]["content"]
+    assert "No profanity." in off and "allowed swearing" not in off  # галочка выключена
+    restored.dispose()
     m.dispose()
 
 

@@ -476,6 +476,13 @@ class CharacterModule:
         self._personality.boundary(name, allowed)
         return self.status()
 
+    def set_profanity_level(self, level: int) -> dict[str, Any]:
+        # Ползунок владельца «сколько мата»: только явная настройка, не инструмент модели.
+        self._require_active()
+        self._dialogue.cancel()
+        self._personality.profanity_level(level)
+        return self.status()
+
     def react(
         self,
         event: str,
@@ -548,6 +555,8 @@ class CharacterModule:
                 self.select_profile(args["id"])
             elif operation == "boundary":
                 self.set_boundary(args["name"], args["allowed"])
+            elif operation == "profanity_level":
+                self.set_profanity_level(args["level"])
             elif operation == "presentation":
                 preferences = self._validate_presentation(args["settings"])
                 if self._dialogue.services is not None:
@@ -578,6 +587,7 @@ class CharacterModule:
                 "profile_id": self._personality.view()["base"]["id"],
                 # Настройка владельца «Разрешить нецензурную лексику».
                 "profanity": self._personality.view()["boundaries"]["profanity"],
+                "profanity_level": self._personality.view()["profanity_level"],
             }
             result["profiles"] = [
                 {"id": p["id"], "name": p["name"]} for p in self.profiles()["profiles"]

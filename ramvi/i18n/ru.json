@@ -959,5 +959,9 @@
   "character.profile.curious": "Любопытный",
   "character.profile.angry": "Злой",
   "character.profanity": "Разрешить нецензурную лексику",
-  "character.profanity_hint": "Персонаж будет ругаться матом. Выключено — говорит без мата."
+  "character.profanity_hint": "Персонаж будет ругаться матом. Выключено — говорит без мата.",
+  "character.profanity_amount": "Сколько мата",
+  "character.profanity_level.1": "минимум",
+  "character.profanity_level.2": "средне",
+  "character.profanity_level.3": "максимально"
 }

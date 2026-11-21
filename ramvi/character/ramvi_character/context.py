@@ -290,7 +290,11 @@ class ContextOrchestrator:
                     *[
                         "- " + line
                         for line in personality.get("style")
-                        or style_guide(personality["effective_traits"], personality["boundaries"])
+                        or style_guide(
+                            personality["effective_traits"],
+                            personality["boundaries"],
+                            personality.get("profanity_level", 2),
+                        )
                     ],
                 ]
             ),

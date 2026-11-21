@@ -12,6 +12,9 @@ TRAITS = frozenset(
     {"warmth", "humor", "sarcasm", "strictness", "curiosity", "verbosity", "initiative", "empathy"}
 )
 BOUNDARIES = {"teasing": True, "profanity": False, "personal_comments": True, "initiative": True}
+# «Сколько мата», когда он разрешён: 1 минимум, 2 средне, 3 максимально.
+PROFANITY_LEVELS = (1, 2, 3)
+PROFANITY_DEFAULT = 2
 VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 
 
@@ -48,7 +51,9 @@ def profile(value: Any) -> dict[str, Any]:
     }
 
 
-def style_guide(values: dict[str, float], boundaries: dict[str, bool]) -> list[str]:
+def style_guide(
+    values: dict[str, float], boundaries: dict[str, bool], profanity_level: int = PROFANITY_DEFAULT
+) -> list[str]:
     """Plain-language tone rules: small models ignore bare trait numbers."""
     t = values
     lines = []
@@ -98,11 +103,17 @@ def style_guide(values: dict[str, float], boundaries: dict[str, bool]) -> list[s
         )
     if boundaries.get("profanity", False):
         # Владелец сам разрешил мат: без явной просьбы модель всё равно говорит «чисто».
+        amount = {
+            1: "Swear rarely: at most one crude word now and then, only when really annoyed or"
+            " surprised; most replies stay clean.",
+            2: "Swear moderately: a мат word in some replies, when emotions run high.",
+            3: "Swear a lot: talk like a real foul-mouthed person, мат in most replies and"
+            ' freely within a reply ("охренеть", "бля", "какого хера").',
+        }[profanity_level]
         lines.append(
-            "The owner explicitly allowed swearing: talk like a real foul-mouthed person —"
-            " use Russian мат and crude words naturally in most replies, especially when"
-            ' annoyed, surprised or delighted ("охренеть", "бля", "какого хера").'
-            " Swear about things and situations; no slurs about groups of people and no threats."
+            "The owner explicitly allowed swearing (Russian мат and crude words). "
+            + amount
+            + " Swear about things and situations; no slurs about groups of people and no threats."
         )
     else:
         lines.append("No profanity.")
@@ -123,6 +134,7 @@ class Personality:
         self._selected = "neutral@1.0.0"
         self._overrides: dict[str, float] = {}
         self._boundaries: dict[str, bool] = {}
+        self._profanity_level = PROFANITY_DEFAULT
         self._acquired: dict[str, dict[str, float]] = {}
         if saved is not None:
             self._restore(saved)
@@ -188,6 +200,13 @@ class Personality:
             self._boundaries[name] = allowed
             self._revision += 1
 
+    def profanity_level(self, level: int) -> None:
+        if isinstance(level, bool) or level not in PROFANITY_LEVELS:
+            raise ValueError("invalid profanity level")
+        if self._profanity_level != level:
+            self._profanity_level = level
+            self._revision += 1
+
     def view(self) -> dict[str, Any]:
         base = self._profiles[self._selected]
         adjusted = dict(base["traits"])
@@ -206,9 +225,10 @@ class Personality:
                 "settings": self._overrides,
                 "explicit_boundaries": self._boundaries,
                 "boundaries": boundaries,
+                "profanity_level": self._profanity_level,
                 "acquired": self._acquired.get(self._selected, {}),
                 "effective_traits": adjusted,
-                "style": style_guide(adjusted, boundaries),
+                "style": style_guide(adjusted, boundaries, self._profanity_level),
             }
         )
 
@@ -224,6 +244,7 @@ class Personality:
                 "custom": self._custom,
                 "settings": self._overrides,
                 "boundaries": self._boundaries,
+                "profanity_level": self._profanity_level,
                 "acquired": self._acquired,
             }
         )
@@ -246,6 +267,7 @@ class Personality:
             raise ValueError("invalid explicit boundaries")
         for key, value in boundaries.items():
             self.boundary(key, value)
+        self.profanity_level(saved.get("profanity_level", PROFANITY_DEFAULT))
         acquired = saved.get("acquired", {})
         if not isinstance(acquired, dict) or len(acquired) > 16:
             raise ValueError("invalid acquired corrections")

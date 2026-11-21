@@ -959,5 +959,9 @@
   "character.profile.curious": "Curious",
   "character.profile.angry": "Angry",
   "character.profanity": "Allow profanity",
-  "character.profanity_hint": "The character will swear. Off — speaks without profanity."
+  "character.profanity_hint": "The character will swear. Off — speaks without profanity.",
+  "character.profanity_amount": "How much swearing",
+  "character.profanity_level.1": "minimum",
+  "character.profanity_level.2": "medium",
+  "character.profanity_level.3": "maximum"
 }

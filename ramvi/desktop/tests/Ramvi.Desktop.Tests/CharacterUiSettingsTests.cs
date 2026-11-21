@@ -107,6 +107,17 @@ public sealed class CharacterUiSettingsTests
             Assert.True(settings.IsEffectivelyVisible);
             Assert.Null(settings.FindControl<Expander>("CharacterInputSettings"));
             Assert.NotNull(settings.FindControl<StackPanel>("SpeechSettings"));
+            var level = settings.FindControl<StackPanel>("CharacterProfanityLevel")!;
+            var slider = settings.FindControl<Slider>("CharacterProfanitySlider")!;
+            Assert.Equal(2, slider.Value); // «средне» по умолчанию
+            Assert.False(level.IsEffectivelyEnabled); // мат выключен — ползунок недоступен
+            model.Character.Profanity = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(level.IsEffectivelyEnabled);
+            slider.Value = 3;
+            await MainViewModelTests.Until(() => calls.Contains("dialogue:profanity_level"), "profanity level sent");
+            Assert.Equal(3, model.Character.ProfanityLevel);
+            Assert.Equal("максимально", model.Character.ProfanityLevelText);
             Assert.Empty(settings.GetVisualDescendants().OfType<Expander>());
             Assert.Null(settings.FindControl<ComboBox>("CharacterModel"));
             Assert.Null(dialogue.FindControl<Expander>("SpeechSettings"));

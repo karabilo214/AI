@@ -7,6 +7,10 @@
   <ComboBox x:Name="CharacterProfile" ItemsSource="{Binding Profiles}" SelectedItem="{Binding Profile}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:CharacterProfile"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
   <CheckBox x:Name="CharacterProfanity" Content="{l:T character.profanity}" IsChecked="{Binding Profanity}"/>
   <TextBlock Text="{l:T character.profanity_hint}" TextWrapping="Wrap" Classes="muted"/>
+  <StackPanel x:Name="CharacterProfanityLevel" IsEnabled="{Binding Profanity}" Spacing="4">
+   <TextBlock><Run Text="{l:T character.profanity_amount}"/><Run Text=": "/><Run Text="{Binding ProfanityLevelText}"/></TextBlock>
+   <Slider x:Name="CharacterProfanitySlider" Minimum="1" Maximum="3" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding ProfanityLevel}" MaxWidth="320" HorizontalAlignment="Left" Width="320"/>
+  </StackPanel>
   <WrapPanel>
    <Button x:Name="CharacterChoosePack" Content="{l:T character.choose_pack}" Margin="0,0,8,8"/>
    <Button x:Name="CharacterDefaultPack" Content="{l:T character.default_pack}" Margin="0,0,8,8"/>

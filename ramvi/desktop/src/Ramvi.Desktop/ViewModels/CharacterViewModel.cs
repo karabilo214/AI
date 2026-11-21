@@ -209,6 +209,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
                 }
                 Profile = Profiles.FirstOrDefault(p => p.Id == character.GetProperty("profile_id").GetString());
                 Profanity = character.TryGetProperty("profanity", out var profanity) && profanity.ValueKind == JsonValueKind.True;
+                if (character.TryGetProperty("profanity_level", out var level) && level.ValueKind == JsonValueKind.Number) ProfanityLevel = level.GetInt32();
                 if (!Busy) ReadHistory(result);
             }
             finally { _loading = false; }
@@ -250,6 +251,22 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     {
         get => _profanity;
         set { if (Set(ref _profanity, value) && !_loading) _ = SetProfanityAsync(value); }
+    }
+    private int _profanityLevel = 2;
+    /// <summary>Ползунок «сколько мата»: 1 минимум, 2 средне, 3 максимально.</summary>
+    public int ProfanityLevel
+    {
+        get => _profanityLevel;
+        set { value = Math.Clamp(value, 1, 3); if (Set(ref _profanityLevel, value)) { Raise(nameof(ProfanityLevelText)); if (!_loading) _ = SetProfanityLevelAsync(value); } }
+    }
+    public string ProfanityLevelText => Localizer.Current["character.profanity_level." + _profanityLevel];
+    private async Task SetProfanityLevelAsync(int level)
+    {
+        InvalidateResponse();
+        await _commands.WaitAsync(_token).ConfigureAwait(true);
+        try { await CallAsync("profanity_level",new JsonObject { ["level"]=level }).ConfigureAwait(true); }
+        catch(Exception e) when(Handled(e)) { Error=Localizer.Current["character.request_error"]; }
+        finally { _commands.Release(); }
     }
     private async Task SetProfanityAsync(bool allowed)
     {
