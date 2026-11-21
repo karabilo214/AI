@@ -151,11 +151,11 @@ def test_stage_apply_and_rollback_keep_user_data(tmp_path: Path, app: Path) -> N
     assert digests(app, FILES) == before_files  # подготовка не трогает рабочие файлы
     result = updater.apply()
     assert result == {"applied": "0.9.0", "previous": "0.8.0", "files": 4}
-    assert (app / "ramvi/service/core.py").read_text() == "new core"
+    assert (app / "ramvi/service/core.py").read_text(encoding="utf-8") == "new core"
     assert (app / "ramvi/service/added.py").exists() and not (
         app / "ramvi/service/gone.py"
     ).exists()
-    assert (app / "RAMVI.exe").read_text() == "new shell"
+    assert (app / "RAMVI.exe").read_text(encoding="utf-8") == "new shell"
     assert up.current_version(app) == "0.9.0"
     assert user_data(app) == before_data
     assert updater.status()["health"] == "pending"
@@ -340,7 +340,9 @@ def test_ui_routes_report_and_stage(tmp_path: Path, app: Path) -> None:
         server.updater.keys = (PUBLIC,)
         staged = ui.ok("POST", "/updates/stage", {"path": str(pkg)})
         assert staged["staged"] == "0.9.0" and staged["current"] == "0.8.0"
-        assert (app / "ramvi/service/core.py").read_text() == "old core"  # применит оболочка
+        assert (app / "ramvi/service/core.py").read_text(
+            encoding="utf-8"
+        ) == "old core"  # применит оболочка
     finally:
         server.close()
         engines.stop()
@@ -399,7 +401,7 @@ def test_rollback_moves_new_files_aside_instead_of_deleting(
     monkeypatch.setattr(Path, "unlink", locked)  # любой занятый файл
     assert updater.rollback()["rolled_back"] == "0.9.0"
     monkeypatch.undo()
-    assert (app / "ramvi/service/core.py").read_text() == "old core"
+    assert (app / "ramvi/service/core.py").read_text(encoding="utf-8") == "old core"
     assert not (app / "ramvi/service/added.py").exists()
     assert (app / "updates/backup/0.9.0/rejected/ramvi/service/added.py").exists()
     assert updater.status()["current"] == "0.8.0"
@@ -423,7 +425,9 @@ def test_rollback_reports_files_it_could_not_restore(
         updater.rollback()
     assert error.value.code == "update.rollback_incomplete"
     assert error.value.params == {"files": "RAMVI.exe"}
-    assert (app / "ramvi/service/core.py").read_text() == "old core"  # остальное вернулось
+    assert (app / "ramvi/service/core.py").read_text(
+        encoding="utf-8"
+    ) == "old core"  # остальное вернулось
     monkeypatch.setattr(os, "replace", real)
     assert updater.status()["rollback_failed"] == ["RAMVI.exe"]
 

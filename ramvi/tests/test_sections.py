@@ -116,13 +116,15 @@ def test_discover_installed_modules_and_report_broken(
                     }
                 },
             }
-        )
+        ),
+        encoding="utf-8",
     )
     (modules / "broken").mkdir()
-    (modules / "broken" / "manifest.json").write_text("{not json")
+    (modules / "broken" / "manifest.json").write_text("{not json", encoding="utf-8")
     (modules / "plain").mkdir()  # модуль без раздела интерфейса
     (modules / "plain" / "manifest.json").write_text(
-        json.dumps({"module_id": "plain", "version": "1.0.0", "entrypoint": FIXTURE})
+        json.dumps({"module_id": "plain", "version": "1.0.0", "entrypoint": FIXTURE}),
+        encoding="utf-8",
     )
 
     registry.discover(modules)
@@ -174,7 +176,8 @@ def test_sections_over_http_and_chat_unaffected(tmp_path: Path) -> None:
                     }
                 },
             }
-        )
+        ),
+        encoding="utf-8",
     )
     add_models(app / "data", "model-a")
     server, engines = build(app / "data", TOKEN, engine_command=ENGINE, app_dir=app)

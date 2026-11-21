@@ -334,7 +334,7 @@ def test_edit_replaces_one_unique_fragment(project: Path) -> None:
         runner, "edit_file", path="src/main.py", old_text="return 42", new_text="return 7"
     )
     assert result.data["proposal"].after.decode().endswith("    return 7\n")
-    assert "return 42" in (project / "src" / "main.py").read_text()
+    assert "return 42" in (project / "src" / "main.py").read_text(encoding="utf-8")
     missing = _run(runner, "edit_file", path="src/main.py", old_text="zzz", new_text="y")
     assert missing.error == "agent.tool.edit_not_found"
     (project / "dup.txt").write_bytes(b"a\na\n")

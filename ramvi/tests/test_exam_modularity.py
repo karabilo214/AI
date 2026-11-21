@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -58,7 +59,9 @@ def probe_package(root: Path, version: str, migrations: dict[str, str]) -> Path:
     folder = root / f"probe-{version}"
     shutil.rmtree(folder, ignore_errors=True)
     (folder / "code" / "probe_module").mkdir(parents=True)
-    (folder / "code" / "probe_module" / "__init__.py").write_text(f"VERSION = {version!r}\n" + CODE)
+    (folder / "code" / "probe_module" / "__init__.py").write_text(
+        f"VERSION = {version!r}\n" + CODE, encoding="utf-8"
+    )
     manifest = {
         "module_id": "probe",
         "version": version,
@@ -66,10 +69,10 @@ def probe_package(root: Path, version: str, migrations: dict[str, str]) -> Path:
         "permissions": ["data", "resources", "events"],
         "resource_limits": {"audio_input": 1},
     }
-    (folder / "manifest.json").write_text(json.dumps(manifest))
+    (folder / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (folder / "migrations").mkdir()
     for name, sql in migrations.items():
-        (folder / "migrations" / name).write_text(sql)
+        (folder / "migrations" / name).write_text(sql, encoding="utf-8")
     target = root / f"probe-{version}.zip"
     build_package(folder, target)
     return target
@@ -86,7 +89,31 @@ def chat_ms(ui: Client, chat: str, n: int = 5) -> float:
 
 
 def rss_mb() -> float:
-    """Текущая RSS процесса сервиса (ps есть и на Linux, и на macOS)."""
+    """Текущая RSS процесса сервиса (ps есть на Linux и macOS; на Windows — рабочий набор)."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        class Counters(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        counters = Counters()
+        counters.cb = ctypes.sizeof(counters)
+        windll: Any = getattr(ctypes, "windll")  # noqa: B009 — есть только на Windows
+        process = windll.kernel32.GetCurrentProcess()
+        assert windll.psapi.GetProcessMemoryInfo(process, ctypes.byref(counters), counters.cb)
+        return float(counters.WorkingSetSize) / 1024 / 1024
     out = subprocess.run(
         ["ps", "-o", "rss=", "-p", str(os.getpid())], capture_output=True, text=True
     )
@@ -237,13 +264,13 @@ def test_character_installed_disabled_enabled_chat_keeps_working(tmp_path: Path)
         assert ui.events(f"/chats/{chat}/send", {"text": "раз"})[-1]["finish"] == "stop"
         marker = host.root / "character" / "keep.txt"
         marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text("данные персонажа")
+        marker.write_text("данные персонажа", encoding="utf-8")
         assert any(s["id"] == "character" for s in ui.ok("GET", "/sections")["sections"])
         ui.ok("POST", "/modules/character/disable")
         assert "character" not in host.status()
         assert not any(s["id"] == "character" for s in ui.ok("GET", "/sections")["sections"])
         assert ui.events(f"/chats/{chat}/send", {"text": "два"})[-1]["finish"] == "stop"
-        assert marker.read_text() == "данные персонажа"
+        assert marker.read_text(encoding="utf-8") == "данные персонажа"
         ui.ok("POST", "/modules/character/enable")
         assert host.status("character")["character"]["state"] == "registered"
         assert any(s["id"] == "character" for s in ui.ok("GET", "/sections")["sections"])

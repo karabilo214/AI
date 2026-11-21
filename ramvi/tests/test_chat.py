@@ -371,7 +371,7 @@ def test_service_process_starts_and_exits_with_shell(tmp_path: Path) -> None:
         client = Client(ready["port"])
         chat_id = client.ok("POST", "/chats")["chat"]["id"]
         assert client.events(f"/chats/{chat_id}/send", {"text": "hi"})[-1]["finish"] == "stop"
-        found = json.loads((tmp_path / "run" / "engine.json").read_text())
+        found = json.loads((tmp_path / "run" / "engine.json").read_text(encoding="utf-8"))
         engine_pid = found["target"]["pid"]
         process.stdin.close()  # оболочка закрылась
         assert process.wait(15) == 0
@@ -379,7 +379,10 @@ def test_service_process_starts_and_exits_with_shell(tmp_path: Path) -> None:
         while alive(engine_pid):
             assert time.monotonic() < deadline, "движок пережил сервис"
             time.sleep(0.05)
-        assert json.loads((tmp_path / "run" / "engine.json").read_text())["state"] == "stopped"
+        assert (
+            json.loads((tmp_path / "run" / "engine.json").read_text(encoding="utf-8"))["state"]
+            == "stopped"
+        )
     finally:
         process.kill()
         process.wait(5)

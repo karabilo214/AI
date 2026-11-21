@@ -85,7 +85,7 @@ def test_root_given_through_symlink_is_canonical(tree: tuple[Path, Path]) -> Non
     alias.symlink_to(root, target_is_directory=True)
     ws = Workspace(alias)
     assert ws.root == Path(os.path.realpath(root))
-    assert ws.resolve("README.md").read_text() == "readme\n"
+    assert ws.resolve("README.md").read_text(encoding="utf-8") == "readme\n"
 
 
 def test_hardlink_to_outside_file_is_denied(tree: tuple[Path, Path]) -> None:

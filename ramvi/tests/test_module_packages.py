@@ -144,7 +144,12 @@ def test_install_update_rollback_disable_uninstall(setup: Any) -> None:
     # неудачное обновление: миграция падает — код и данные 1.1.0 на месте
     with pytest.raises(ChatError, match="module.update_failed"):
         packages.install(package(tmp_path, "1.2.0", BROKEN))
-    assert json.loads((packages.dir / "notes" / "manifest.json").read_text())["version"] == "1.1.0"
+    assert (
+        json.loads((packages.dir / "notes" / "manifest.json").read_text(encoding="utf-8"))[
+            "version"
+        ]
+        == "1.1.0"
+    )
     host.activate("notes")
     assert host.invoke("notes", "version") == {"version": "1.1.0"}
     assert [r[1] for r in rows(host)] == ["первая", "вторая"]

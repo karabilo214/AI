@@ -16,7 +16,9 @@ from test_agent_desktop import Setup
 from test_character_dialogue import Services, active, finish
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = json.loads((ROOT / "modules" / "character" / "manifest.json").read_text())
+MANIFEST = json.loads(
+    (ROOT / "modules" / "character" / "manifest.json").read_text(encoding="utf-8")
+)
 
 
 def with_character(setup: Setup) -> None:
@@ -83,12 +85,14 @@ def test_explicit_task_uses_agent_confirmations_journal_and_reports(
         assert pending["source_module"] == "character" and "+    return a + b" in pending["diff"]
         waiting = delegation(setup, lambda v: v["task"]["phase"] == "waiting_approval")
         assert waiting["task"]["state"] == "running"
-        assert "a - b" in setup.file.read_text()  # без решения владельца файл не тронут
+        assert "a - b" in setup.file.read_text(
+            encoding="utf-8"
+        )  # без решения владельца файл не тронут
         busy = character(setup, "delegate", goal="Another task")["delegation"]
         assert busy["error"] == "agent_busy"
         setup.route("POST", "decision", id=pending["id"], action=answer)
         done = delegation(setup, lambda v: v["task"]["state"] != "running")["task"]
-        assert ("a + b" in setup.file.read_text()) == (answer == "approve")
+        assert ("a + b" in setup.file.read_text(encoding="utf-8")) == (answer == "approve")
         assert done["state"] == "done" and done["result"] == "Done"
 
         runs = AgentRuns(setup.db)
@@ -115,7 +119,7 @@ def test_character_cancels_its_own_task_and_settings_change_revokes_binding(
         setup.wait(lambda s: s["pending"] is not None)
         character(setup, "delegate_cancel")
         ended = delegation(setup, lambda v: v["task"]["state"] != "running")["task"]
-        assert ended["state"] == "cancelled" and "a - b" in setup.file.read_text()
+        assert ended["state"] == "cancelled" and "a - b" in setup.file.read_text(encoding="utf-8")
         assert AgentRuns(setup.db).get(task_id).status == "cancelled"
         assert setup.route("GET", "state")["pending"] is None
         assert character(setup, "status")["history"][-1]["status"] == "cancelled"
@@ -126,7 +130,7 @@ def test_character_cancels_its_own_task_and_settings_change_revokes_binding(
         setup.route("POST", "settings", **defaults())  # новые права — старая привязка не годна
         refused = character(setup, "delegate", goal="Fix add")["delegation"]
         assert refused["error"] == "agent_unavailable" and not refused["enabled"]
-        assert "a - b" in setup.file.read_text()
+        assert "a - b" in setup.file.read_text(encoding="utf-8")
 
         enable(setup)
         setup.route("POST", "delegate", module="character", enabled=False)
@@ -248,7 +252,7 @@ def test_follower_reads_feed_bounds_result_and_forgets_handle() -> None:
 
 def test_character_package_does_not_import_agent() -> None:
     for path in (ROOT / "character" / "ramvi_character").glob("*.py"):
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             names = (
                 [a.name for a in node.names]
@@ -306,7 +310,7 @@ def test_deactivating_character_cancels_its_task(tmp_path: Path) -> None:
         while AgentRuns(setup.db).get(task_id).status == "running" and time.monotonic() < deadline:
             time.sleep(0.02)
         assert AgentRuns(setup.db).get(task_id).status == "cancelled"
-        assert "a - b" in setup.file.read_text()
+        assert "a - b" in setup.file.read_text(encoding="utf-8")
     finally:
         setup.close()
 

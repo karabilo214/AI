@@ -72,7 +72,7 @@ def test_actual_workers_delegate_through_same_policy(
         result = wait(gateway, owner, task_id)
         assert result["source_module"] == "character"
         assert result["result"]["run_id"] == task_id
-        assert ("a + b" in (env.root / "src/calc.py").read_text()) == approve
+        assert ("a + b" in (env.root / "src/calc.py").read_text(encoding="utf-8")) == approve
         assert env.runs.tool_calls(task_id)[0].permission == ("approved" if approve else "denied")
         events = host.invoke(
             "character",

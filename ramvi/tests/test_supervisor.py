@@ -166,7 +166,9 @@ def test_engine_start_discovery_and_auto_restart_after_crash(tmp_path: Path) -> 
         first_pid = found["target"]["pid"]
         assert found["target"]["base_url"] == target.base_url
         assert found["owner"]["pid"] == os.getpid()
-        assert target._key not in (tmp_path / "engine.json").read_text()  # ключ не утекает
+        assert target._key not in (tmp_path / "engine.json").read_text(
+            encoding="utf-8"
+        )  # ключ не утекает
 
         with pytest.raises(OSError):
             urllib.request.urlopen(target.base_url + "/crash", timeout=2)
@@ -251,7 +253,7 @@ def test_stale_state_file_pid_is_never_killed(tmp_path: Path) -> None:
             "target": {"pid": stranger.pid, "base_url": "http://127.0.0.1:9"},
             "updated_at": 0,
         }
-        (tmp_path / "engine.json").write_text(json.dumps(stale))
+        (tmp_path / "engine.json").write_text(json.dumps(stale), encoding="utf-8")
         found = discover(tmp_path, "engine")
         assert found is not None and not found["live"]  # владелец не держит блокировку
         sup = Supervisor(engine(), tmp_path, policy=fast(), interval=0.05)
@@ -303,7 +305,7 @@ def test_engine_exits_by_itself_when_service_is_killed(tmp_path: Path) -> None:
         assert gone(pid, 10), "движок остался сиротой"
         if sys.platform != "win32":
             # Мягкий путь: serve_forever прерван, finally выполнился (а не os._exit по сроку).
-            assert (tmp_path / "mark").read_text() == "graceful"
+            assert (tmp_path / "mark").read_text(encoding="utf-8") == "graceful"
         # На Windows движок лежит в Job-объекте сервиса (KILL_ON_JOB_CLOSE): смерть
         # сервиса завершает его сразу, без мягкого пути. Сирот нет и там.
         found = discover(tmp_path, "engine")
@@ -439,5 +441,5 @@ def test_invalid_names_and_settings_are_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         Supervisor(engine(), tmp_path, interval=0)
     assert discover(tmp_path, "engine") is None
-    (tmp_path / "engine.json").write_text("{broken")
+    (tmp_path / "engine.json").write_text("{broken", encoding="utf-8")
     assert discover(tmp_path, "engine") is None

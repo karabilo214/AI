@@ -7,6 +7,7 @@ import ctypes
 import ntpath
 import os
 import platform
+import posixpath
 import shutil
 import subprocess
 import sys
@@ -113,7 +114,7 @@ def ram_available_mb() -> int | None:
     try:
         if sys.platform.startswith("linux"):
             info["ram_total_mb"], info["ram_available_mb"] = parse_meminfo(
-                Path("/proc/meminfo").read_text()
+                Path("/proc/meminfo").read_text(encoding="utf-8")
             )
         elif sys.platform == "win32":
             _windows_memory(info)
@@ -171,12 +172,12 @@ def parse_cpuinfo(text: str) -> tuple[str | None, set[str], int | None]:
 def _linux(info: dict[str, Any]) -> None:
     try:
         info["ram_total_mb"], info["ram_available_mb"] = parse_meminfo(
-            Path("/proc/meminfo").read_text()
+            Path("/proc/meminfo").read_text(encoding="utf-8")
         )
     except OSError:
         pass
     try:
-        name, flags, physical = parse_cpuinfo(Path("/proc/cpuinfo").read_text())
+        name, flags, physical = parse_cpuinfo(Path("/proc/cpuinfo").read_text(encoding="utf-8"))
         info.update(cpu_name=name, isa=_isa_from_flags(flags), cores_physical=physical)
     except OSError:
         pass
@@ -463,7 +464,8 @@ def drive_kind(
         except (AttributeError, OSError):
             return "unknown"
         return _WINDOWS_DRIVES.get(kind, "unknown")
-    text = os.path.abspath(raw)
+    # Пути macOS/Linux разбираются по правилам POSIX и при проверке на другой системе.
+    text = posixpath.abspath(raw)
     if system == "Darwin":
         return "removable" if text.startswith("/Volumes/") else "local"
     if system == "Linux":

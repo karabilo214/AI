@@ -117,7 +117,7 @@ def test_defaults_and_remote_egress_before_credentials_or_provider(rig: Any) -> 
     assert k.backend.get("voice", "api_key") == "STT-only"
     assert k.get("tts_openai") == "fake-tts-key"
     assert "fake-tts-key" not in json.dumps(s.catalog(d))
-    assert "fake-tts-key" not in (d.root / "speech.json").read_text()
+    assert "fake-tts-key" not in (d.root / "speech.json").read_text(encoding="utf-8")
     s.key(k, "openai", "")
     assert k.get("tts_openai") is None
 

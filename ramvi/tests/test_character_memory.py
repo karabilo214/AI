@@ -188,7 +188,9 @@ def test_expired_working_memory_is_not_returned(db: ModuleDatabase) -> None:
 
 
 def test_real_module_applies_migration_and_restores_state_after_restart(tmp_path: Path) -> None:
-    manifest = json.loads((ROOT / "modules" / "character" / "manifest.json").read_text())
+    manifest = json.loads(
+        (ROOT / "modules" / "character" / "manifest.json").read_text(encoding="utf-8")
+    )
 
     def host() -> ModuleHost:
         h = ModuleHost(tmp_path / "data")

@@ -33,13 +33,15 @@ def test_save_load_roundtrip_and_no_temp_left(tmp_path: Path) -> None:
 def test_invalid_rejected(tmp_path: Path, bad: Any) -> None:
     with pytest.raises(ValueError):
         st.Settings(**bad).validate()
-    (tmp_path / st.FILE_NAME).write_text(json.dumps(bad))
+    (tmp_path / st.FILE_NAME).write_text(json.dumps(bad), encoding="utf-8")
     with pytest.raises(ValueError):
         st.load(tmp_path)
 
 
 def test_unknown_keys_ignored(tmp_path: Path) -> None:
-    (tmp_path / st.FILE_NAME).write_text(json.dumps({"language": "en", "future_option": 1}))
+    (tmp_path / st.FILE_NAME).write_text(
+        json.dumps({"language": "en", "future_option": 1}), encoding="utf-8"
+    )
     assert st.load(tmp_path).language == "en"
 
 

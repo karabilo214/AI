@@ -352,19 +352,34 @@ def main(argv: list[str] | None = None) -> None:
             flush=True,
         )
     print(json.dumps({"event": "ready", "port": server.port, "api": api_url}), flush=True)
+    load: threading.Thread | None = None
     if args.model:
-        threading.Thread(
-            target=lambda: engines.ensure(args.model), name="ramvi-load", daemon=True
-        ).start()
+        model = args.model
+
+        def preload() -> None:
+            try:
+                engines.ensure(model)
+            except Exception:
+                # Сбой загрузки из-за выхода — не ошибка; иначе сообщаем как прежде.
+                if not stopped.is_set():
+                    raise
+
+        load = threading.Thread(target=preload, name="ramvi-load", daemon=True)
+        load.start()
     try:
         stopped.wait()
     except KeyboardInterrupt:
-        pass
+        stopped.set()
     finally:
+        stopped.set()
         server.close()
         if server.sections is not None:
             server.sections.host.close()  # остановить процессы открытых модулей
         engines.stop()
+        if load is not None:
+            # Не выходить, пока поток загрузки пишет в stderr: на Windows это роняло
+            # интерпретатор при завершении (0xC0000409) вместо обычного кода 0.
+            load.join(timeout=30)
     sys.exit(0)
 
 

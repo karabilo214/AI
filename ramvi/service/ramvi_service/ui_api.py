@@ -656,7 +656,7 @@ def _handler(server: UIServer) -> type[BaseHTTPRequestHandler]:
                     data = json.dumps(event, ensure_ascii=False, allow_nan=False)
                     self.wfile.write(f"data: {data}\n\n".encode())
                     self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError):
+            except ConnectionError:  # в т. ч. ConnectionAbortedError на Windows
                 pass  # интерфейс закрыл поток: close() ниже остановит генерацию
             finally:
                 events.close()

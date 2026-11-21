@@ -126,7 +126,7 @@ def _tree(pid: int) -> list[int]:
         for folder in Path("/proc").glob("[0-9]*"):
             try:
                 parents[int(folder.name)] = int(
-                    (folder / "stat").read_text().rsplit(")", 1)[1].split()[1]
+                    (folder / "stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()[1]
                 )
             except (OSError, ValueError, IndexError):
                 continue
@@ -156,7 +156,7 @@ def page_faults(pid: int | None) -> int | None:
 def _faults(pid: int) -> int | None:
     try:
         if sys.platform.startswith("linux"):
-            fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+            fields = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
             return int(fields[9])  # majflt — чтения с диска
         if sys.platform == "win32":
             import ctypes

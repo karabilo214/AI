@@ -18,6 +18,7 @@ import base64
 import json
 import re
 import socket
+import sys
 import threading
 import time
 import urllib.error
@@ -1023,6 +1024,11 @@ class CloudProvider:
             try:
                 if sock is not None:
                     sock.shutdown(socket.SHUT_RDWR)
+                    if sys.platform == "win32":
+                        # На Windows shutdown не будит recv в другом потоке, а close()
+                        # откладывается, пока файл ответа держит сокет. Закрыть дескриптор
+                        # напрямую; detach — чтобы объект не закрыл его второй раз.
+                        socket.close(sock.detach())
             except OSError:
                 pass
             try:

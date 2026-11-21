@@ -129,7 +129,10 @@ def test_settings_apply_at_once(svc: tuple[UIServer, EngineManager, Path]) -> No
         assert result["api_error"] == "api.port_busy"
     ui.ok("POST", "/settings", {"api_port": free_port()})
     assert server.api._server is not None
-    assert json.loads((app_dir / "settings.json").read_text())["network_access"] is False
+    assert (
+        json.loads((app_dir / "settings.json").read_text(encoding="utf-8"))["network_access"]
+        is False
+    )
 
 
 def test_real_connection_from_the_network_address(

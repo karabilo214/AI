@@ -35,7 +35,7 @@ def test_strategy_uses_observation_to_recover(tmp_path: Path, db: Database, valu
             return done(f"Read {value}")
 
     env = Env(tmp_path, db, Recover())
-    (env.root / "fresh.txt").write_text(str(value))
+    (env.root / "fresh.txt").write_text(str(value), encoding="utf-8")
     result = env.runtime.run("Read fresh.txt")
     assert result.status == "done"
     experience = records(env, result.run_id)
@@ -52,7 +52,7 @@ def test_strategy_uses_observation_to_recover(tmp_path: Path, db: Database, valu
 def test_lazy_finish_is_only_a_claim(tmp_path: Path, db: Database) -> None:
     env = Env(tmp_path, db, Script(done("Fixed it")))
     result = env.runtime.run("Fix add")
-    assert "a - b" in (env.root / "src/calc.py").read_text()
+    assert "a - b" in (env.root / "src/calc.py").read_text(encoding="utf-8")
     (record,) = records(env, result.run_id)
     assert record["evaluation"] == {
         "source": "runtime",
@@ -67,7 +67,7 @@ def test_strategy_cannot_bypass_approval(
 ) -> None:
     env = Env(tmp_path, db, Script(reply("", FIX), done("ok")), [Decision(decision)])
     result = env.runtime.run("Fix add")
-    text = (env.root / "src/calc.py").read_text()
+    text = (env.root / "src/calc.py").read_text(encoding="utf-8")
     assert ("a + b" in text) == (decision == "approve")
     record = records(env, result.run_id)[0]
     assert (

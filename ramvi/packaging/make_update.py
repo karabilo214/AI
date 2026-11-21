@@ -108,7 +108,7 @@ def main() -> None:
             )
         )
         return
-    secret = bytes.fromhex(args.key.read_text().strip())
+    secret = bytes.fromhex(args.key.read_text(encoding="utf-8").strip())
     print(
         json.dumps(
             build_package(args.bundle, args.version, secret, args.out, args.previous, args.notes)

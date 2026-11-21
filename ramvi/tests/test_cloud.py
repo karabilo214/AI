@@ -669,9 +669,9 @@ def test_connections_keep_the_key_in_the_os_store_only(tmp_path: Path, cloud: Cl
     )
     assert saved["id"] == "claude" or saved["id"]
     assert saved["has_key"] and secrets.values == {("cloud", saved["id"]): KEY}
-    assert KEY not in (tmp_path / "cloud.json").read_text() and KEY not in json.dumps(
-        connections.view()
-    )
+    assert KEY not in (tmp_path / "cloud.json").read_text(
+        encoding="utf-8"
+    ) and KEY not in json.dumps(connections.view())
     assert connections.remote_models({"id": saved["id"]}) == ["claude-x"]
     assert connections.remote_models(
         {"kind": "gemini", "url": cloud.url("gemini"), "key": KEY}

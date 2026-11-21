@@ -10,7 +10,9 @@ from jsonschema import Draft202012Validator, ValidationError  # type: ignore[imp
 
 from ramvi_character.context import encode, text
 
-SCHEMA = json.loads((Path(__file__).parent / "definitions" / "response.schema.json").read_text())
+SCHEMA = json.loads(
+    (Path(__file__).parent / "definitions" / "response.schema.json").read_text(encoding="utf-8")
+)
 
 # Generic service offers ("How can I help?") spoil the character; the model copies them
 # from history even when the prompt forbids them, so short sentences with them are removed.

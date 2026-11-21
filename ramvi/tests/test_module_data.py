@@ -29,7 +29,7 @@ def package(root: Path, module_id: str, files: dict[str, str]) -> Path:
     folder = root / module_id / "migrations"
     folder.mkdir(parents=True)
     for name, sql in files.items():
-        (folder / name).write_text(sql)
+        (folder / name).write_text(sql, encoding="utf-8")
     return folder
 
 
@@ -106,8 +106,8 @@ def test_failed_migration_rolls_back_whole_database(tmp_path: Path) -> None:
     first.activate("agent")
     first.invoke("agent", "db_write", {"text": "было"})
     first.close()
-    (folder / "0002_good.sql").write_text("CREATE TABLE extra (x);")
-    (folder / "0003_bad.sql").write_text("CREATE TABLE broken (;")
+    (folder / "0002_good.sql").write_text("CREATE TABLE extra (x);", encoding="utf-8")
+    (folder / "0003_bad.sql").write_text("CREATE TABLE broken (;", encoding="utf-8")
 
     second = ModuleHost(tmp_path / "data")
     register(second, "agent", folder)
@@ -195,7 +195,8 @@ def manifest_dir(app: Path, module_id: str, files: dict[str, str]) -> None:
                     }
                 },
             }
-        )
+        ),
+        encoding="utf-8",
     )
 
 

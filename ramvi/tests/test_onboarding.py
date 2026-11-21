@@ -281,7 +281,7 @@ def test_same_name_from_other_folder_gets_new_id(onboarding: Onboarding, tmp_pat
 def test_import_errors(onboarding: Onboarding, tmp_path: Path) -> None:
     llama = write_gguf(tmp_path / "llama.gguf", architecture="llama")
     text = tmp_path / "notes.gguf"
-    text.write_text("hello")
+    text.write_text("hello", encoding="utf-8")
 
     assert code_of(lambda: onboarding.import_model("relative/m.gguf"))[0] == "import.not_absolute"
     assert (
@@ -448,7 +448,9 @@ def test_scan_models_dir_imports_ollama_blobs_in_place(tmp_path: Path) -> None:
     blobs.mkdir(parents=True)
     model_file = write_gguf(blobs / ("sha256-" + "a" * 64), name="Qwen3 14B")
     write_gguf(blobs / ("sha256-" + "b" * 64), architecture="llama", name="Llama")
-    (blobs / ("sha256-" + "c" * 64)).write_text('{"license": "text"}')  # не модель
+    (blobs / ("sha256-" + "c" * 64)).write_text(
+        '{"license": "text"}', encoding="utf-8"
+    )  # не модель
     st.save(app, st.Settings(models_dir=str(ollama)))  # указана сама папка Ollama
     with open_core(data) as db:
         onboarding = Onboarding(

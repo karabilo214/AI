@@ -628,7 +628,10 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                             try:
                                 self.wfile.write(data)
                                 self.wfile.flush()
-                            except (TimeoutError, BrokenPipeError, ConnectionResetError):
+                            except (
+                                TimeoutError,
+                                ConnectionError,
+                            ):  # в т. ч. ConnectionAbortedError на Windows
                                 failed = True  # клиент ушёл: выход из цикла закрывает поток облака
                                 return
                     except ChatError as error:
@@ -716,7 +719,10 @@ def _handler(api: ApiServer) -> type[BaseHTTPRequestHandler]:
                     try:
                         self.wfile.write(chunk)
                         self.wfile.flush()
-                    except (TimeoutError, BrokenPipeError, ConnectionResetError):
+                    except (
+                        TimeoutError,
+                        ConnectionError,
+                    ):  # в т. ч. ConnectionAbortedError на Windows
                         cancel_engine(provider, request_id)  # клиент ушёл — остановить генерацию
                         return
             except (OSError, http.client.HTTPException):

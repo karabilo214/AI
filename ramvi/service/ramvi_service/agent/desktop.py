@@ -142,7 +142,7 @@ class AgentDesktop:
         self._delegates: dict[str, tuple[Owner, str]] = {}
         self._policy = defaults()
         try:
-            loaded = json.loads((root / "agent_settings.json").read_text())
+            loaded = json.loads((root / "agent_settings.json").read_text(encoding="utf-8"))
             self._policy = validate_policy(loaded)
         except FileNotFoundError:
             pass
@@ -518,6 +518,6 @@ class AgentDesktop:
     def _change_files(self, change_id: str) -> list[str]:
         path = self.changes / change_id / "manifest.json"
         try:
-            return [f["display"] for f in json.loads(path.read_text())["files"]]
+            return [f["display"] for f in json.loads(path.read_text(encoding="utf-8"))["files"]]
         except (OSError, KeyError, ValueError):
             return []

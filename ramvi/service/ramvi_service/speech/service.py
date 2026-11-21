@@ -18,7 +18,7 @@ from ramvi_service.speech.errors import failure
 from ramvi_service.speech.native import SystemSpeech
 from ramvi_service.speech.output import SoundOutput
 
-CATALOG = json.loads(Path(__file__).with_name("providers.json").read_text())
+CATALOG = json.loads(Path(__file__).with_name("providers.json").read_text(encoding="utf-8"))
 DEFAULTS = {"enabled": False, "provider": "system", "voice": "", "remote_text_enabled": False}
 
 

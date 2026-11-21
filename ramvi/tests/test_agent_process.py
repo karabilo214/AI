@@ -12,7 +12,7 @@ PY = sys.executable
 
 
 def _alive(pid_file: Path) -> bool:
-    pid = int(pid_file.read_text())
+    pid = int(pid_file.read_text(encoding="utf-8"))
     if sys.platform == "win32":
         import subprocess
 

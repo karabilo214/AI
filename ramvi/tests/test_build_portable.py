@@ -26,7 +26,13 @@ needs_jsonschema = pytest.mark.skipif(
 
 
 @pytest.fixture
-def inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
+def inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
+    if sys.platform == "win32":
+        # На Windows сборщик берёт VC++ из Visual Studio; это проверяет отдельный тест
+        # test_vc_runtime_comes_from_visual_studio_redist_unmodified, здесь — подмена.
+        monkeypatch.setattr(redist_mod, "find_visual_studio", lambda _: {"path": str(tmp_path)})
+        monkeypatch.setattr(redist_mod, "vc_redist_dir", lambda _: tmp_path / "14.44.35112")
+        monkeypatch.setattr(redist_mod, "copy_vc_runtime", lambda *_: [])
     shell = tmp_path / "pub"
     shell.mkdir()
     (shell / "RAMVI.exe").write_bytes(b"MZ")
@@ -48,7 +54,7 @@ def inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
         "merges.txt",
         "config.json",
     ):
-        (tok / name).write_text("{}")
+        (tok / name).write_text("{}", encoding="utf-8")
     (tok / "model-00001-of-00005.safetensors").write_bytes(b"x" * 1000)  # веса не должны попасть
     return shell, embed, tok
 
@@ -67,14 +73,14 @@ def test_layout_closure_and_manifest(tmp_path: Path, inputs: tuple[Path, Path, P
     assert (out / "modules/agent/manifest.json").is_file()
     assert (out / "modules/character/manifest.json").is_file()
     assert (out / "ramvi/character/ramvi_character/assets/pack.json").is_file()
-    pth_text = next((out / "runtime/python").glob("python*._pth")).read_text()
+    pth_text = next((out / "runtime/python").glob("python*._pth")).read_text(encoding="utf-8")
     assert "ramvi\\character" in pth_text
     assert (out / "ramvi/service/ramvi_service/system_context.py").is_file()
     assert (out / "ramvi/service/ramvi_service/native/windows_context.ps1").is_file()
     assert not list((out / "ramvi").rglob("__pycache__")) and not list(
         (out / "ramvi").rglob("tests")
     )
-    pth = (out / "runtime" / "python" / "python312._pth").read_text().splitlines()
+    pth = (out / "runtime" / "python" / "python312._pth").read_text(encoding="utf-8").splitlines()
     assert pth == [
         "python312.zip",
         ".",
@@ -168,7 +174,7 @@ def test_dev_files_for_triton_are_copied(tmp_path: Path) -> None:
     """Triton на Windows компилирует C-модуль: нужны Include/ и libs/ базового Python."""
     base = tmp_path / "python312"
     (base / "Include" / "cpython").mkdir(parents=True)
-    (base / "Include" / "Python.h").write_text("/* h */")
+    (base / "Include" / "Python.h").write_text("/* h */", encoding="utf-8")
     (base / "libs").mkdir()
     (base / "libs" / "python312.lib").write_bytes(b"lib")
     target = tmp_path / "runtime" / "python"
@@ -297,10 +303,14 @@ def test_nvidia_files_are_checked_against_license_lists(tmp_path: Path) -> None:
 def test_release_contains_no_models(tmp_path: Path) -> None:
     out = tmp_path / "RAMVI"
     (out / "runtime" / "tokenizers" / "Qwen3-8B").mkdir(parents=True)
-    (out / "runtime" / "tokenizers" / "Qwen3-8B" / "tokenizer.json").write_text("{}")
+    (out / "runtime" / "tokenizers" / "Qwen3-8B" / "tokenizer.json").write_text(
+        "{}", encoding="utf-8"
+    )
     site = out / "runtime" / "python" / "Lib" / "site-packages"
     site.mkdir(parents=True)
-    (site / "distutils-precedence.pth").write_text("import os")  # служебный файл Python
+    (site / "distutils-precedence.pth").write_text(
+        "import os", encoding="utf-8"
+    )  # служебный файл Python
     redist_mod.assert_no_models(out)
     (out / "runtime" / "big.gguf").write_bytes(b"x" * 2**20)
     with pytest.raises(SystemExit, match="big.gguf"):
@@ -315,7 +325,7 @@ def test_release_contains_no_models(tmp_path: Path) -> None:
 def test_licenses_folder_has_terms_and_texts(tmp_path: Path) -> None:
     out, shell, nuget = tmp_path / "RAMVI", tmp_path / "pub", tmp_path / "nuget"
     (out / "runtime" / "python").mkdir(parents=True)
-    (out / "runtime" / "python" / "LICENSE.txt").write_text("PSF")
+    (out / "runtime" / "python" / "LICENSE.txt").write_text("PSF", encoding="utf-8")
     shell.mkdir()
     (shell / "RAMVI.deps.json").write_text(
         json.dumps(
@@ -328,23 +338,25 @@ def test_licenses_folder_has_terms_and_texts(tmp_path: Path) -> None:
                     "RAMVI/1.0.0": {"type": "project"},
                 }
             }
-        )
+        ),
+        encoding="utf-8",
     )
     avalonia = nuget / "avalonia" / "12.1.6"
     avalonia.mkdir(parents=True)
     (avalonia / "avalonia.nuspec").write_text(
         '<package><metadata><license type="expression">MIT</license>'
-        "<copyright>Copyright 2013-2026 © The AvaloniaUI Project</copyright></metadata></package>"
+        "<copyright>Copyright 2013-2026 © The AvaloniaUI Project</copyright></metadata></package>",
+        encoding="utf-8",
     )
     runtime = nuget / "microsoft.netcore.app.runtime.win-x64" / "10.0.1"
     runtime.mkdir(parents=True)
-    (runtime / "LICENSE.TXT").write_text("MIT .NET")
-    (runtime / "THIRD-PARTY-NOTICES.TXT").write_text("notices")
+    (runtime / "LICENSE.TXT").write_text("MIT .NET", encoding="utf-8")
+    (runtime / "THIRD-PARTY-NOTICES.TXT").write_text("notices", encoding="utf-8")
     dists = bp.closure(("jsonschema",)) if bp.find_distribution("jsonschema") else {}
     result = redist_mod.write_licenses(out, dists, shell, nuget)
     terms = (out / "licenses" / "THIRD_PARTY_TERMS.txt").read_text(encoding="utf-8")
     assert "v13.2" in terms and "February 22, 2022" in terms and "Distributable Code" in terms
-    assert (out / "licenses" / "python" / "LICENSE.txt").read_text() == "PSF"
+    assert (out / "licenses" / "python" / "LICENSE.txt").read_text(encoding="utf-8") == "PSF"
     assert (
         out
         / "licenses"
@@ -407,11 +419,14 @@ def test_record_with_wheel_data_paths_is_copied(tmp_path: Path) -> None:
     info = source / "pkg-1.0.dist-info"
     info.mkdir(parents=True)
     (source / "pkg").mkdir()
-    (source / "pkg" / "__init__.py").write_text("")
+    (source / "pkg" / "__init__.py").write_text("", encoding="utf-8")
     (source / "whisper-abc.dll").write_bytes(b"dll")
-    (info / "METADATA").write_text("Metadata-Version: 2.1\nName: pkg\nVersion: 1.0\n")
+    (info / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: pkg\nVersion: 1.0\n", encoding="utf-8"
+    )
     (info / "RECORD").write_text(
-        "pkg/__init__.py,,\npkg-1.0.data/platlib/whisper-abc.dll,,\npkg-1.0.dist-info/RECORD,,\n"
+        "pkg/__init__.py,,\npkg-1.0.data/platlib/whisper-abc.dll,,\npkg-1.0.dist-info/RECORD,,\n",
+        encoding="utf-8",
     )
     dist = bp.md.PathDistribution(info)
     target = tmp_path / "site"

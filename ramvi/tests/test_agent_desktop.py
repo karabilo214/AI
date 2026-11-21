@@ -87,7 +87,7 @@ class Setup:
         self.project = root / "project"
         self.project.mkdir()
         self.file = self.project / "calc.py"
-        self.file.write_text("def add(a, b):\n    return a - b\n")
+        self.file.write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
 
     def route(self, method: str, endpoint: str, **body: Any) -> dict[str, Any]:
         return self.desktop.route(method, "/agent/" + endpoint, body)
@@ -126,12 +126,12 @@ def test_real_pending_diff_decision_and_rollback(tmp_path: Path, answer: str) ->
         state = setup.wait(lambda s: s["pending"] is not None)
         pending = state["pending"]
         assert "-    return a - b" in pending["diff"] and "+    return a + b" in pending["diff"]
-        assert "a - b" in setup.file.read_text()
+        assert "a - b" in setup.file.read_text(encoding="utf-8")
         with pytest.raises(ChatError):
             setup.route("POST", "decision", id="expired", action="approve")
         setup.route("POST", "decision", id=pending["id"], action=answer, reason="Keep the file")
         ended = setup.wait(lambda s: s["task"]["state"] != "running")
-        assert ("a + b" in setup.file.read_text()) == (answer == "approve")
+        assert ("a + b" in setup.file.read_text(encoding="utf-8")) == (answer == "approve")
         assert setup.route("GET", "history")["runs"][0]["id"] == task_id
         detail = setup.route("GET", "runs/" + task_id)
         if answer == "approve":
@@ -139,7 +139,7 @@ def test_real_pending_diff_decision_and_rollback(tmp_path: Path, answer: str) ->
             assert change["files"] == ["calc.py"]
             assert setup.route("POST", "why", path="calc.py", run_id=task_id)["reasons"]
             setup.route("POST", "rollback/" + change["id"], run_id=task_id)
-            assert "a - b" in setup.file.read_text()
+            assert "a - b" in setup.file.read_text(encoding="utf-8")
         elif answer == "stop":
             assert ended["task"]["state"] == "cancelled"
         setup.route("POST", "clear", confirm=True)
@@ -159,9 +159,9 @@ def test_save_policy_stops_waiting_task_and_persists_defaults(tmp_path: Path) ->
         policy["permissions"]["write"] = False
         policy["limits"]["max_steps"] = None
         setup.route("POST", "settings", **policy)
-        assert "a - b" in setup.file.read_text()
+        assert "a - b" in setup.file.read_text(encoding="utf-8")
         assert AgentRuns(setup.db).get(task_id).status == "cancelled"
-        persisted = json.loads((tmp_path / "data/agent_settings.json").read_text())
+        persisted = json.loads((tmp_path / "data/agent_settings.json").read_text(encoding="utf-8"))
         assert persisted["limits"]["max_steps"] is None and not persisted["permissions"]["write"]
     finally:
         setup.close()
@@ -202,7 +202,7 @@ def test_attached_text_is_data_and_does_not_expand_workspace(tmp_path: Path) -> 
         assert not (setup.project / "spec.txt").exists()
         setup.route("POST", "decision", id=state["pending"]["id"], action="deny")
         setup.wait(lambda s: s["task"]["state"] != "running")
-        assert "a - b" in setup.file.read_text()
+        assert "a - b" in setup.file.read_text(encoding="utf-8")
     finally:
         setup.close()
 

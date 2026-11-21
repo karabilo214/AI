@@ -764,7 +764,7 @@ def test_accel_download_checks_hash_then_extracts_only_needed_files(
     wait(lambda: env.voice.status()["download"]["state"] == "done")
     folder = vm_accel.CUDA.path(env.models)
     assert sorted(p.name for p in folder.iterdir()) == sorted(vm_accel.CUDA.files)
-    assert (folder / "ggml-cuda.dll").read_text() == "ggml-cuda.dll"
+    assert (folder / "ggml-cuda.dll").read_text(encoding="utf-8") == "ggml-cuda.dll"
     assert not (env.models / vm_accel.CUDA.archive(env.models)).exists()  # архив удалён
     assert env.voice.status()["accel"]["installed"] is True
     assert seen[-1] == {
@@ -1270,7 +1270,7 @@ def test_windows_dpapi_file_has_no_plaintext(tmp_path: Path) -> None:
 
     store = WindowsDpapi(tmp_path, protect=seal, unprotect=seal)
     store.set("voice", "api_key", "sk-secret")
-    raw = (tmp_path / "secrets.dpapi").read_text()
+    raw = (tmp_path / "secrets.dpapi").read_text(encoding="utf-8")
     assert "sk-secret" not in raw and "voice/api_key" in raw
     assert store.get("voice", "api_key") == "sk-secret"
 

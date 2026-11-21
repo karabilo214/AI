@@ -135,7 +135,7 @@ def test_pack_rejects_paths_outside_its_directory(tmp_path: Path) -> None:
     pack: dict[str, Any] = load_pack()
     pack["body"] = "../outside.png"
     path = tmp_path / "pack.json"
-    path.write_text(json.dumps(pack))
+    path.write_text(json.dumps(pack), encoding="utf-8")
     with pytest.raises(ValueError, match="resource"):
         load_pack(path)
 
@@ -153,7 +153,7 @@ def test_pack_rejects_incompatible_policy(tmp_path: Path, field: str, value: Any
     pack = load_pack()
     pack[field] = value
     path = tmp_path / "pack.json"
-    path.write_text(json.dumps(pack))
+    path.write_text(json.dumps(pack), encoding="utf-8")
     with pytest.raises(ValueError):
         load_pack(path)
 
@@ -163,7 +163,7 @@ def test_pack_rejects_invalid_clock(tmp_path: Path, duration: float) -> None:
     pack = load_pack()
     pack["animations"]["idle"]["duration_ms"] = duration
     path = tmp_path / "pack.json"
-    path.write_text(json.dumps(pack))
+    path.write_text(json.dumps(pack), encoding="utf-8")
     with pytest.raises(ValueError, match="duration"):
         load_pack(path)
 
@@ -173,6 +173,6 @@ def test_pack_rejects_invalid_effect(tmp_path: Path, minimum: float) -> None:
     pack = load_pack()
     pack["effects"]["pulse"]["minimum"] = minimum
     path = tmp_path / "pack.json"
-    path.write_text(json.dumps(pack))
+    path.write_text(json.dumps(pack), encoding="utf-8")
     with pytest.raises(ValueError, match="effect"):
         load_pack(path)
