@@ -60,6 +60,8 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
     public string Error { get=>_error=="" ? "" : Localizer.Current[_error]; }
     public string InventoryStatus=>_inventory=="" ? "" : Localizer.Current[_inventory];
     public string Status=>Localizer.Current["character.speech_state."+_state];
+    /// <summary>Голос сейчас готовится или звучит: есть что останавливать.</summary>
+    public bool Speaking=>_state is "queued" or "synthesizing" or "playing";
     public string Fallback { get=>_fallback;private set=>Set(ref _fallback,value); }
     public bool IsExternal=>Provider?.External==true;
     public SpeechVoice? Voice { get=>_voice;set { if(Set(ref _voice,value) && !_loading && !_selectingProvider) QueueStop(); } }
@@ -191,7 +193,7 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
                 if(result.TryGetProperty("generation",out var generation))
                     _generationChanged?.Invoke(generation.GetInt64(),result.TryGetProperty("response_id",out var response) && response.ValueKind==JsonValueKind.String ? response.GetString() : null,result.TryGetProperty("session_id",out var session) ? session.GetString() : null);
                 _playbackChanged?.Invoke(result, System.Diagnostics.Stopwatch.GetElapsedTime(requestedAt).TotalMilliseconds);
-                _state=result.GetProperty("state").GetString()!;Raise(nameof(Status));
+                _state=result.GetProperty("state").GetString()!;Raise(nameof(Status));Raise(nameof(Speaking));
                 TextOnly=result.TryGetProperty("mode",out var mode) && mode.GetString()=="text";
                 if(result.TryGetProperty("error",out var error) && error.ValueKind==JsonValueKind.String) SetError(ErrorKey(error.GetString()));
                 if(result.TryGetProperty("last",out var last) && last.ValueKind==JsonValueKind.Object)
@@ -223,7 +225,7 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
         _watch++;
         _playbackChanged?.Invoke(default, 0);
         if(!_available) return;
-        try { await _call("stop",null).ConfigureAwait(true);_state="off";TextOnly=Enabled;Raise(nameof(Status)); }
+        try { await _call("stop",null).ConfigureAwait(true);_state="off";TextOnly=Enabled;Raise(nameof(Status));Raise(nameof(Speaking)); }
         catch(Exception e) when(Handled(e)) { if(!_token.IsCancellationRequested) SetError("character.speech_error"); }
     }
     private static bool Handled(Exception e)=>e is ApiException or HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException or OperationCanceledException or NotSupportedException;

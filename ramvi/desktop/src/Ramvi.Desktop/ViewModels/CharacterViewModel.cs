@@ -82,6 +82,8 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
             pickFolder ?? (_ => Task.FromResult<string?>(null)), () => Model, ReloadTranscriptAsync);
         DelegateCommand = new Command(DelegateAsync, () => Model is not null && Agent.CanDelegate(Draft));
         Agent.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(CharacterAgentViewModel.Enabled) or nameof(CharacterAgentViewModel.Running)) DelegateCommand.Refresh(); };
+        Voice.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterVoiceViewModel.IsActive)) Raise(nameof(CanStopAll)); };
+        Speech.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterSpeechViewModel.Speaking)) Raise(nameof(CanStopAll)); };
         TextModeCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await Speech.TextModeAsync().ConfigureAwait(true); });
         DisconnectCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await StopAsync().ConfigureAwait(true); await Speech.StopAsync().ConfigureAwait(true); });
         Send = new Command(SendAsync, () => !string.IsNullOrWhiteSpace(Draft) && Model is not null);
@@ -107,6 +109,8 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     }
     public Command TextModeCommand { get; }
     public Command DisconnectCommand { get; }
+    /// <summary>«Остановить всё» видно, только когда есть что останавливать: ответ, микрофон или голос.</summary>
+    public bool CanStopAll => Busy || Voice.IsActive || Speech.Speaking;
     private bool _showAvatar = true;
     private string _packPath = "";
     public bool ShowAvatar { get => _showAvatar; set { if (Set(ref _showAvatar, value) && !_loading) _ = SavePresentationAsync(); } }
@@ -142,7 +146,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         catch (Exception e) when (Handled(e)) { FeedbackStatus = Localizer.Current["character.feedback_error"]; }
     }
     public string Error { get => _error; private set => Set(ref _error, value); }
-    public bool Busy { get => _busy; private set { Set(ref _busy, value); Send.Refresh(); Stop.Refresh(); Raise(nameof(CanRate)); RateCommand.Refresh(); if (value) FeedbackStatus = ""; } }
+    public bool Busy { get => _busy; private set { Set(ref _busy, value); Send.Refresh(); Stop.Refresh(); Raise(nameof(CanRate)); Raise(nameof(CanStopAll)); RateCommand.Refresh(); if (value) FeedbackStatus = ""; } }
     public ModelInfo? Model
     {
         get => _model;

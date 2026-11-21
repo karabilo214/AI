@@ -131,11 +131,15 @@ public sealed class CharacterUiSettingsTests
             Assert.Equal(window.FindControl<TextBox>("InputBox")!.MinHeight, input.MinHeight);
             Assert.True(dialogue.FindControl<Button>("CharacterSend")!.IsVisible);
             Assert.False(dialogue.FindControl<Button>("CharacterStop")!.IsVisible);
+            Assert.False(dialogue.FindControl<Button>("CharacterStopAll")!.IsVisible); // Nothing to stop yet.
+            var modeButtons = dialogue.FindControl<StackPanel>("CharacterModeButtons")!;
+            Assert.True(modeButtons.TranslatePoint(new Avalonia.Point(), window)!.Value.X >= composer.TranslatePoint(new Avalonia.Point(composer.Bounds.Width, 0), window)!.Value.X);
             Assert.True(character.IsAnimationRunning);
             Assert.True(picker.IsEffectivelyVisible);
             Assert.True(dialogue.FindControl<Avalonia.Controls.Shapes.Path>("MicrophoneSlash")!.IsVisible);
             await model.Character.Voice.ToggleCommand.RunAsync();
             Assert.False(dialogue.FindControl<Avalonia.Controls.Shapes.Path>("MicrophoneSlash")!.IsVisible);
+            Assert.True(dialogue.FindControl<Button>("CharacterStopAll")!.IsVisible); // Microphone is on.
             await model.Character.Voice.ToggleCommand.RunAsync();
             await MainViewModelTests.Until(() => !model.Character.Voice.IsActive, "microphone switched off");
             Assert.True(dialogue.FindControl<Avalonia.Controls.Shapes.Path>("MicrophoneSlash")!.IsVisible);
@@ -169,6 +173,12 @@ public sealed class CharacterUiSettingsTests
             Assert.Equal("model-b", sentModel);
             Assert.Contains("load model-b", api.EngineCalls);
             Assert.True(model.Character.Draft.Length == 0);
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var rating = window.GetVisualDescendants().OfType<CharacterRatingView>().Single().FindControl<StackPanel>("CharacterRating")!;
+            Assert.True(rating.IsEffectivelyVisible);
+            var ratingTop = rating.TranslatePoint(new Avalonia.Point(), window)!.Value;
+            Assert.True(ratingTop.X < dialogue.TranslatePoint(new Avalonia.Point(), window)!.Value.X); // Left, under the character.
+            Assert.True(ratingTop.Y > character.FindControl<CharacterCanvas>("CharacterSurface")!.TranslatePoint(new Avalonia.Point(), window)!.Value.Y);
             await model.Character.DisconnectCommand.RunAsync();
             Assert.Contains("dialogue:cancel", calls);
         }
