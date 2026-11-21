@@ -118,7 +118,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             () => _api,
             Models,
             pickModelFile ?? (() => Task.FromResult<string?>(null)),
-            OnboardingCompletedAsync);
+            OnboardingCompletedAsync,
+            () => Settings.OpenAsync("connections"));
         _copy = copy ?? (_ => Task.CompletedTask);
         _openFolder = openFolder ?? (_ => Task.CompletedTask);
         _status = () => L["status.connecting"];

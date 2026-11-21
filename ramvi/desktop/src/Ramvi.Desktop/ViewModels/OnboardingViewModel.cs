@@ -40,6 +40,8 @@ public sealed class OnboardingViewModel : ObservableObject
     private readonly Func<IChatApi> _api;
     private readonly Func<Task<string?>> _pickFile;
     private readonly Func<OnboardingState, Task> _completed;
+    private readonly Func<Task> _openCloud;
+    private bool _cloudOnly;
     private bool _isOpen;
     private int _step = 1;
     private bool _isChecking;
@@ -51,9 +53,11 @@ public sealed class OnboardingViewModel : ObservableObject
         Func<IChatApi> api,
         ObservableCollection<ModelInfo> models,
         Func<Task<string?>> pickFile,
-        Func<OnboardingState, Task> completed)
+        Func<OnboardingState, Task> completed,
+        Func<Task>? openCloud = null)
     {
         _api = api;
+        _openCloud = openCloud ?? (() => Task.CompletedTask);
         Models = models;
         _pickFile = pickFile;
         _completed = completed;
@@ -61,7 +65,7 @@ public sealed class OnboardingViewModel : ObservableObject
         {
             Step = 2;
             return Task.CompletedTask;
-        }, () => Step == 1);
+        }, () => Step == 1 && !CloudOnly);
         BackCommand = new Command(() =>
         {
             Step = 1;
@@ -70,6 +74,29 @@ public sealed class OnboardingViewModel : ObservableObject
         ImportCommand = new Command(ImportAsync, () => !IsImporting);
         StartCommand = new Command(() => FinishAsync(Selected?.Id), () => Selected is not null && !IsImporting);
         SkipCommand = new Command(() => FinishAsync(null), () => !IsImporting);
+        CloudCommand = new Command(async () =>
+        {
+            if (await FinishAsync(null).ConfigureAwait(true))
+            {
+                await _openCloud().ConfigureAwait(true); // «Подключения» → «Облачные модели»
+            }
+        });
+    }
+
+    /// <summary>B.12: облачная модель вместо локальной — мастер закрывается, открываются «Подключения».</summary>
+    public Command CloudCommand { get; }
+
+    /// <summary>Локальные модели здесь не работают (Mac): шаг выбора модели не нужен.</summary>
+    public bool CloudOnly
+    {
+        get => _cloudOnly;
+        private set
+        {
+            if (Set(ref _cloudOnly, value))
+            {
+                Refresh();
+            }
+        }
     }
 
     private static Localizer L => Localizer.Current;
@@ -177,6 +204,7 @@ public sealed class OnboardingViewModel : ObservableObject
         try
         {
             var report = await _api().SystemAsync().ConfigureAwait(true);
+            CloudOnly = report.CloudOnly;
             foreach (var check in report.Checks)
             {
                 Checks.Add(new CheckItem(check.Id, check.Status, check.Code, Params(check.Params)));
@@ -225,17 +253,19 @@ public sealed class OnboardingViewModel : ObservableObject
         }
     }
 
-    private async Task FinishAsync(string? modelId)
+    private async Task<bool> FinishAsync(string? modelId)
     {
         try
         {
             var state = await _api().CompleteOnboardingAsync(modelId).ConfigureAwait(true);
             IsOpen = false;
             await _completed(state).ConfigureAwait(true);
+            return true;
         }
         catch (Exception error) when (error is ApiException or HttpRequestException)
         {
             Error = Text(error);
+            return false;
         }
     }
 

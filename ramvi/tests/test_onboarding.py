@@ -107,23 +107,38 @@ def test_driver_check_names_the_needed_version() -> None:
     assert unknown["driver"]["params"] == {"version": "580.1"}
 
 
-def test_checks_mac_without_nvidia_explains_each_problem() -> None:
+def test_checks_on_mac_are_the_cloud_mode_not_errors() -> None:
+    """B.12: на Mac локальных моделей нет — мастер говорит об облачном режиме, без ошибок про NVIDIA."""
     hw = profile(
         os="Darwin 23.1.0", arch="arm64", gpus=(GPUInfo("Apple M1", "Apple"),), disk_free_mb=1500
     )
-    found = by_id(checks(hw, {"torch": "2.9.0", "cuda": False}))
+    found = by_id(checks(hw, {"skipped": "cloud_only"}))
 
-    assert (found["os"]["status"], found["os"]["code"]) == ("warn", "system.os_no_cuda")
-    assert (found["gpu"]["status"], found["gpu"]["code"]) == ("fail", "system.gpu_no_nvidia")
-    assert found["gpu"]["params"]["names"] == "Apple M1"
+    assert (found["os"]["status"], found["os"]["code"]) == ("ok", "system.os_cloud_only")
+    assert "gpu" not in found and "backend" not in found and "driver" not in found
+    assert (found["cloud"]["status"], found["cloud"]["code"]) == ("ok", "system.cloud_ready")
     assert (found["disk"]["status"], found["disk"]["code"]) == ("warn", "system.disk_low")
-    assert (found["backend"]["status"], found["backend"]["code"]) == (
-        "fail",
-        "system.backend_no_gpu",
-    )
+    assert all(c["status"] != "fail" for c in found.values())
     # Карта NVIDIA есть, а torch её не видит — тогда совет про драйвер.
     with_card = by_id(checks(profile(), {"torch": "2.9.0", "cuda": False}))
     assert with_card["backend"]["code"] == "system.backend_no_cuda"
+    no_card = by_id(checks(profile(gpus=(GPUInfo("Intel UHD", "Intel"),)), {"torch": "2.9.0", "cuda": False}))
+    assert (no_card["gpu"]["status"], no_card["backend"]["code"]) == ("fail", "system.backend_no_gpu")
+
+
+def test_mac_does_not_probe_torch(tmp_path: Path) -> None:
+    calls = []
+
+    def probe() -> dict[str, Any]:
+        calls.append(1)
+        return CUDA
+
+    mac = profile(os="Darwin 23.1.0", arch="arm64", gpus=(GPUInfo("Apple M1", "Apple"),))
+    with open_core(tmp_path) as db:
+        report = Onboarding(tmp_path, Models(db), hardware=lambda _: mac, backends=probe).system()
+        windows = Onboarding(tmp_path, Models(db), hardware=lambda _: profile(), backends=probe).system()
+    assert report["cloud_only"] is True and report["backends"] == {"skipped": "cloud_only"}
+    assert windows["cloud_only"] is False and len(calls) == 1  # torch проверен только для Windows
 
 
 def test_checks_unknown_values_and_missing_torch() -> None:
@@ -338,7 +353,12 @@ def test_wizard_choice_and_history_survive_restart(tmp_path: Path) -> None:
     try:
         assert client.ok("GET", "/onboarding") == {"done": False, "default_model": None}
         checks_ = client.ok("GET", "/system")["checks"]
-        assert [c["id"] for c in checks_] == ["os", "cpu", "ram", "gpu", "disk", "backend"]
+        expected = (  # B.12: на Mac — облачный режим, без проверок видеокарты и torch
+            ["os", "cpu", "ram", "disk", "cloud"]
+            if sys.platform == "darwin"
+            else ["os", "cpu", "ram", "gpu", "disk", "backend"]
+        )
+        assert [c["id"] for c in checks_] == expected
         imported = client.ok("POST", "/models/import", {"path": str(model_file)})["model"]
         status, error = client.request("POST", "/models/import", {"path": "relative.gguf"})
         assert status == 400 and error["error"]["code"] == "import.not_absolute"

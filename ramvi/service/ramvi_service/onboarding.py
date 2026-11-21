@@ -134,15 +134,22 @@ def _check(item: str, status: str, code: str, **params: Any) -> dict[str, Any]:
     return {"id": item, "status": status, "code": code, "params": params}
 
 
+def cloud_only(hw: HardwareProfile) -> bool:
+    """B.12: локальный движок нужен NVIDIA на Windows/Linux; на других системах — только облако."""
+    return (hw.os.split()[0] if hw.os else "") not in ("Windows", "Linux")
+
+
 def checks(hw: HardwareProfile, backends: dict[str, Any]) -> list[dict[str, Any]]:
     """Проверки для экрана мастера. Порядок: ОС, CPU, RAM, GPU, драйвер (если есть NVIDIA),
     диск, бэкенд."""
     result = []
     system = hw.os.split()[0] if hw.os else ""
+    cloud = cloud_only(hw)
     if system in ("Windows", "Linux"):
         result.append(_check("os", "ok", "system.os", name=hw.os, arch=hw.arch))
     else:
-        result.append(_check("os", "warn", "system.os_no_cuda", name=hw.os, arch=hw.arch))
+        # B.12: на Mac локальный движок не работает — это не ошибка, а облачный режим.
+        result.append(_check("os", "ok", "system.os_cloud_only", name=hw.os, arch=hw.arch))
     if hw.cpu_name or hw.cores_logical:
         cores = hw.cores_physical or hw.cores_logical
         result.append(
@@ -170,7 +177,9 @@ def checks(hw: HardwareProfile, backends: dict[str, Any]) -> list[dict[str, Any]
     else:
         result.append(_check("ram", "unknown", "system.ram_unknown"))
     nvidia = [g for g in hw.gpus if g.vendor == "NVIDIA"]
-    if nvidia:
+    if cloud:
+        pass  # видеокарта и бэкенд облачному режиму не нужны
+    elif nvidia:
         best = max(nvidia, key=lambda g: g.vram_total_mb or 0)
         result.append(
             _check(
@@ -194,7 +203,9 @@ def checks(hw: HardwareProfile, backends: dict[str, Any]) -> list[dict[str, Any]
         status = "warn" if hw.disk_free_mb < DISK_LOW_MB else "ok"
         code = "system.disk_low" if status == "warn" else "system.disk"
         result.append(_check("disk", status, code, free_gb=_gb(hw.disk_free_mb), path=hw.disk_path))
-    if backends.get("cuda"):
+    if cloud:
+        result.append(_check("cloud", "ok", "system.cloud_ready"))
+    elif backends.get("cuda"):
         result.append(
             _check(
                 "backend",
@@ -334,11 +345,18 @@ class Onboarding:
 
     def system(self) -> dict[str, Any]:
         hw = self._hardware(self.data_dir)
+        cloud = cloud_only(hw)
         with self._lock:  # первая проверка бэкенда долгая; повторные — из кеша
             if self._backends is None:
-                self._backends = self._probe()
+                # В облачном режиме torch не проверяется: его нет и он не нужен.
+                self._backends = {"skipped": "cloud_only"} if cloud else self._probe()
             backends = self._backends
-        return {"hardware": hw.to_dict(), "backends": backends, "checks": checks(hw, backends)}
+        return {
+            "hardware": hw.to_dict(),
+            "backends": backends,
+            "checks": checks(hw, backends),
+            "cloud_only": cloud,
+        }
 
     def _state(self) -> dict[str, Any]:
         """Состояние мастера папки данных; испорченный файл — ошибка, а не тихий сброс."""

@@ -194,7 +194,8 @@ public sealed record ChatEvent(
 /// <summary>Одна проверка мастера: статус ok / warn / fail / unknown и текст по ключу.</summary>
 public sealed record SystemCheck(string Id, string Status, string Code, Dictionary<string, JsonElement>? Params);
 
-public sealed record SystemReport(IReadOnlyList<SystemCheck> Checks);
+/// <summary>CloudOnly (B.12): локальные модели здесь не работают (Mac) — только облачные.</summary>
+public sealed record SystemReport(IReadOnlyList<SystemCheck> Checks, bool CloudOnly = false);
 
 public sealed record OnboardingState(bool Done, string? DefaultModel);
 

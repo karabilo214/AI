@@ -948,5 +948,8 @@
   "cloud.price_cleared": "Price of {model} removed",
   "cloud.price_source_required": "Enter where the price comes from",
   "cloud.price_missing": "Model {model} has no price while a spending limit is on: without a price the cost cannot be counted. Set the price in Connections → Cloud models",
-  "cloud.limit_reached": "The cloud spending limit is reached: ${spent} of ${limit} spent. New requests are not sent; raise the limit in Connections → Cloud models"
+  "cloud.limit_reached": "The cloud spending limit is reached: ${spent} of ${limit} spent. New requests are not sent; raise the limit in Connections → Cloud models",
+  "system.os_cloud_only": "System: {name} ({arch}). Local models run only on Windows and Linux with an NVIDIA GPU — here RAMVI works with cloud models via API",
+  "system.cloud_ready": "Cloud models via API: connect OpenAI (incl. Codex), Claude or Gemini with your key",
+  "onboarding.cloud": "Connect a cloud model"
 }

@@ -41,6 +41,20 @@ public sealed class OnboardingTests
     }
 
     [Fact]
+    public async Task On_a_mac_the_wizard_leads_to_cloud_models()
+    {
+        var api = new FakeChatApi { Onboarding = new OnboardingState(false, null), CloudOnly = true };
+        var model = await Open(api);
+        var wizard = model.Onboarding;
+        await MainViewModelTests.Until(() => wizard.CloudOnly, "облачный режим из проверки компьютера");
+        Assert.False(wizard.NextCommand.CanExecute(null)); // шага выбора локальной модели нет
+        await wizard.CloudCommand.RunAsync();
+        Assert.False(wizard.IsOpen);
+        Assert.True(model.Settings.IsOpen && model.Settings.IsConnectionsTab); // сразу «Подключения»
+        Assert.Contains("complete -", api.Calls); // мастер пройден без локальной модели
+    }
+
+    [Fact]
     public async Task Finished_wizard_is_not_shown_again()
     {
         var api = new FakeChatApi { Onboarding = new OnboardingState(true, "model-b") };

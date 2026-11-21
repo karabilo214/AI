@@ -816,7 +816,10 @@
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button x:Name="SkipButton1" Content="{l:T onboarding.skip}" Command="{Binding Onboarding.SkipCommand}" />
                 <Button x:Name="NextButton" Classes="accent" Content="{l:T onboarding.next}"
-                        Command="{Binding Onboarding.NextCommand}" />
+                        Command="{Binding Onboarding.NextCommand}" IsVisible="{Binding !Onboarding.CloudOnly}" />
+                <!-- B.12: на Mac локальных моделей нет — сразу к облачным -->
+                <Button x:Name="CloudButton" Classes="accent" Content="{l:T onboarding.cloud}"
+                        Command="{Binding Onboarding.CloudCommand}" IsVisible="{Binding Onboarding.CloudOnly}" />
               </StackPanel>
             </StackPanel>
 

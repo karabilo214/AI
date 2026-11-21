@@ -1,0 +1,80 @@
+{
+ "machine": "Darwin arm64",
+ "python": "3.12.16",
+ "system": {
+  "checks": [
+   {
+    "id": "os",
+    "status": "ok",
+    "code": "system.os_cloud_only",
+    "params": {
+     "name": "Darwin 23.1.0",
+     "arch": "arm64"
+    }
+   },
+   {
+    "id": "cpu",
+    "status": "ok",
+    "code": "system.cpu",
+    "params": {
+     "name": "Apple M1 Pro",
+     "cores": 10,
+     "threads": 10
+    }
+   },
+   {
+    "id": "ram",
+    "status": "ok",
+    "code": "system.ram",
+    "params": {
+     "total_gb": 16.0,
+     "available_gb": 4.7
+    }
+   },
+   {
+    "id": "disk",
+    "status": "ok",
+    "code": "system.disk",
+    "params": {
+     "free_gb": 35.5,
+     "path": "/private/var/folders/9x/3qn10mxd3_jfsg53_wrnj_3w0000gn/T/ramvi-macbundle-bxmr0fg9"
+    }
+   },
+   {
+    "id": "cloud",
+    "status": "ok",
+    "code": "system.cloud_ready",
+    "params": {}
+   }
+  ],
+  "cloud_only": true
+ },
+ "sections": [
+  "chat",
+  "models",
+  "agent",
+  "character"
+ ],
+ "chat": {
+  "answer": "Париж",
+  "error": null,
+  "seconds": 1.86
+ },
+ "agent": {
+  "state": "done",
+  "result": "{'run_id': '7eb3bb451cb7432582ece3481bd785b6', 'status': 'done', 'stop_reason': 'done', 'result': 'В numbers.txt три числа: 3, 5 и 7. Их сумма: 3 + 5 + 7 = 15.', 'steps': 2, 'usage': {'prompt_tokens': 4259, 'completion_tokens': 175}, 'error': None}",
+  "seconds": 4.0
+ },
+ "character": {
+  "status": "completed",
+  "reply": "Привет, я RAMVI — твой собеседник с характером, острым языком и, к несчастью для тебя, отличным чувством юмора.",
+  "error": null,
+  "fallback": false,
+  "seconds": 4.07
+ },
+ "spending": {
+  "today": 0.0,
+  "unknown_today": 4
+ },
+ "torch_in_service_process": false
+}

@@ -261,10 +261,13 @@ internal sealed class FakeChatApi : IChatApi
     /// <summary>Что вернёт импорт по пути: модель или ошибку.</summary>
     public Dictionary<string, object> Imports { get; } = [];
 
+    /// <summary>B.12: система без локальных моделей (Mac).</summary>
+    public bool CloudOnly { get; set; }
+
     public Task<SystemReport> SystemAsync(CancellationToken cancel = default)
     {
         Calls.Add("system");
-        return Task.FromResult(new SystemReport(SystemChecks));
+        return Task.FromResult(new SystemReport(SystemChecks, CloudOnly));
     }
 
     public Task<OnboardingState> OnboardingAsync(CancellationToken cancel = default) => Task.FromResult(Onboarding);

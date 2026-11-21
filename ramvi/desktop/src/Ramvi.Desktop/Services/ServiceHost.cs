@@ -13,15 +13,31 @@ public sealed record ServiceOptions(
     string? AppDir = null,
     IReadOnlyDictionary<string, string>? Environment = null)
 {
-    /// <summary>Встроенный Python комплекта (PORT-02): `runtime/python/python.exe`.</summary>
-    public const string BundledPython = "runtime/python/python.exe";
+    /// <summary>Встроенный Python комплекта (PORT-02): `runtime/python/python.exe` на Windows,
+    /// `runtime/python/bin/python3` в комплекте для macOS (B.12, python-build-standalone).</summary>
+    public static string BundledPython => OperatingSystem.IsWindows() ? "runtime/python/python.exe" : "runtime/python/bin/python3";
 
     /// <summary>Токенизатор комплекта для GGUF-движка (вместо кеша Hugging Face).</summary>
     public const string BundledTokenizer = "runtime/tokenizers/Qwen3-8B";
 
     /// <summary>Папка приложения с `settings.json` (3.7): `RAMVI_APP_DIR` или папка exe.</summary>
     public static string AppDirectory =>
-        System.Environment.GetEnvironmentVariable("RAMVI_APP_DIR") ?? AppContext.BaseDirectory;
+        System.Environment.GetEnvironmentVariable("RAMVI_APP_DIR")
+        ?? MacBundleResources(AppContext.BaseDirectory)
+        ?? AppContext.BaseDirectory;
+
+    /// <summary>B.12: в RAMVI.app содержимое комплекта лежит в `Contents/Resources` (рядом с
+    /// исполняемым `RAMVI` папка `ramvi` невозможна: файловая система Mac не различает регистр).</summary>
+    internal static string? MacBundleResources(string exeDir)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return null;
+        }
+
+        var resources = Path.GetFullPath(Path.Combine(exeDir, "..", "Resources"));
+        return Directory.Exists(Path.Combine(resources, "ramvi")) ? resources : null;
+    }
 
     /// <summary>
     /// Для разработки: `RAMVI_PYTHON`, `RAMVI_ROOT`, `RAMVI_DATA_DIR`. В комплекте (3.9):

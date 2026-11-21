@@ -52,7 +52,9 @@ public sealed class PortableTests : IDisposable
     {
         var app = Path.Combine(_dir, "RAMVI");
         Directory.CreateDirectory(Path.Combine(app, "runtime", "python"));
-        File.WriteAllText(Path.Combine(app, "runtime", "python", "python.exe"), "");
+        var python = Path.Combine(app, ServiceOptions.BundledPython);
+        Directory.CreateDirectory(Path.GetDirectoryName(python)!);
+        File.WriteAllText(python, "");
         Directory.CreateDirectory(Path.Combine(app, "runtime", "tokenizers", "Qwen3-8B"));
         Directory.CreateDirectory(Path.Combine(app, "ramvi", "service", "ramvi_service"));
         File.WriteAllText(Path.Combine(app, "ramvi", "service", "ramvi_service", "app.py"), "");
@@ -67,12 +69,33 @@ public sealed class PortableTests : IDisposable
         var options = ServiceOptions.Resolve(app, app);
 
         Assert.Equal(Path.Combine(app, ServiceOptions.BundledPython), options.Python);
+        Assert.EndsWith(OperatingSystem.IsWindows() ? "python.exe" : Path.Combine("bin", "python3"), options.Python, StringComparison.Ordinal);
         Assert.Equal(Path.Combine(app, "ramvi"), options.RamviRoot);
         Assert.Equal(Path.Combine(app, "data"), options.DataDir);
         Assert.Equal(app, options.AppDir);
         var env = options.Environment!;
         Assert.Equal(Path.GetFullPath(Path.Combine(app, ServiceOptions.BundledTokenizer)), env["RAMVI_TOKENIZER"]);
         Assert.Equal(("1", "1", "1"), (env["PYTHONNOUSERSITE"], env["HF_HUB_OFFLINE"], env["TRANSFORMERS_OFFLINE"]));
+    }
+
+    [Fact]
+    public void Mac_app_bundle_keeps_its_contents_in_resources()
+    {
+        var contents = Path.Combine(_dir, "RAMVI.app", "Contents");
+        var macos = Path.Combine(contents, "MacOS");
+        Directory.CreateDirectory(macos);
+        Assert.Null(ServiceOptions.MacBundleResources(macos)); // без ramvi/ — обычная папка
+        var resources = Path.Combine(contents, "Resources");
+        Directory.CreateDirectory(Path.Combine(resources, "ramvi"));
+        var found = ServiceOptions.MacBundleResources(macos + Path.DirectorySeparatorChar);
+        if (OperatingSystem.IsMacOS())
+        {
+            Assert.Equal(Path.GetFullPath(resources), found);
+        }
+        else
+        {
+            Assert.Null(found); // на Windows раскладка прежняя
+        }
     }
 
     [Fact]
