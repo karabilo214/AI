@@ -7,6 +7,7 @@
     {"id":"friendly","name":"Friendly","traits":{"warmth":0.9,"humor":0.6,"sarcasm":0.05,"strictness":0.2,"curiosity":0.65,"verbosity":0.6,"initiative":0.5,"empathy":0.9}},
     {"id":"sarcastic","name":"Sarcastic","traits":{"warmth":0.55,"humor":0.85,"sarcasm":0.85,"strictness":0.35,"curiosity":0.6,"verbosity":0.5,"initiative":0.4,"empathy":0.65}},
     {"id":"strict","name":"Strict","traits":{"warmth":0.3,"humor":0.1,"sarcasm":0.0,"strictness":0.95,"curiosity":0.4,"verbosity":0.3,"initiative":0.3,"empathy":0.5}},
-    {"id":"curious","name":"Curious","traits":{"warmth":0.65,"humor":0.45,"sarcasm":0.05,"strictness":0.3,"curiosity":0.95,"verbosity":0.65,"initiative":0.7,"empathy":0.65}}
+    {"id":"curious","name":"Curious","traits":{"warmth":0.65,"humor":0.45,"sarcasm":0.05,"strictness":0.3,"curiosity":0.95,"verbosity":0.65,"initiative":0.7,"empathy":0.65}},
+    {"id":"angry","name":"Angry","traits":{"warmth":0.05,"humor":0.3,"sarcasm":0.75,"strictness":0.85,"curiosity":0.2,"verbosity":0.35,"initiative":0.6,"empathy":0.1}}
   ]
 }

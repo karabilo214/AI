@@ -951,5 +951,13 @@
   "cloud.limit_reached": "Лимит расходов на облачные модели исчерпан: потрачено ${spent} из ${limit}. Новые запросы не уходят; лимит можно поднять в «Подключения» → «Облачные модели»",
   "system.os_cloud_only": "Система: {name} ({arch}). Локальные модели работают только на Windows и Linux с видеокартой NVIDIA — здесь RAMVI работает с облачными моделями по API",
   "system.cloud_ready": "Облачные модели по API: подключите OpenAI (в т. ч. Codex), Claude или Gemini своим ключом",
-  "onboarding.cloud": "Подключить облачную модель"
+  "onboarding.cloud": "Подключить облачную модель",
+  "character.profile.neutral": "Нейтральный",
+  "character.profile.friendly": "Дружелюбный",
+  "character.profile.sarcastic": "Саркастичный",
+  "character.profile.strict": "Строгий",
+  "character.profile.curious": "Любопытный",
+  "character.profile.angry": "Злой",
+  "character.profanity": "Разрешить нецензурную лексику",
+  "character.profanity_hint": "Персонаж будет ругаться матом. Выключено — говорит без мата."
 }

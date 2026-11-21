@@ -79,12 +79,20 @@ def test_checkpoint_restart_and_shutdown_leave_other_worker_untouched(tmp_path: 
 
 def test_pack_is_self_contained_and_has_no_baked_idle_blink_or_speech_sfx() -> None:
     pack = load_pack()
-    assert len(pack["expressions"]) == 13 and len(pack["sounds"]) == 62
+    # 14 лиц: + «в ярости» (красные глаза, сведённые брови) для злости.
+    assert len(pack["expressions"]) == 14 and len(pack["sounds"]) == 62
+    assert pack["expressions"]["furious"]["eyes"] == "furious"
+    # Живые жесты из частей набора — рисует оболочка, кадров нет.
+    for gesture in ("jump", "turn_away", "shout", "laugh"):
+        assert (
+            pack["animations"][gesture]["kind"] == "gesture"
+            and "frames" not in pack["animations"][gesture]
+        )
     idle = pack["animations"]["idle"]
     assert idle["kind"] == "expression_bob" and "frames" not in idle
     assert pack["speech"] == "tts" and pack["auto_blink"] is False
     pngs = list(DEFAULT_PACK.parent.rglob("*.png"))
-    assert len(pngs) == 72
+    assert len(pngs) == 74  # + глаза и лицо «в ярости»
     assert not (DEFAULT_PACK.parent / "animations" / "idle").exists()
     for path in pngs:
         header = path.read_bytes()[:26]

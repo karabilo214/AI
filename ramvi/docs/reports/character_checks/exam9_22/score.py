@@ -47,7 +47,9 @@ def ask_judge(prompt: str, max_tokens: int, url: str) -> str:
     reply = JUDGE.complete(
         {
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max(1024, max_tokens),  # модель сначала рассуждает: малый лимит даёт пустой ответ
+            "max_tokens": max(
+                1024, max_tokens
+            ),  # модель сначала рассуждает: малый лимит даёт пустой ответ
             "temperature": 0,
         },
         threading.Event(),

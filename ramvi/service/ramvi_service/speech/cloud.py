@@ -107,16 +107,29 @@ class CloudSpeech:
                 },
                 "generation_config": {"speech_config": [{"voice": request.voice}]},
             }
-            result = json.loads(b"".join(self._stream("/v1beta/interactions", body, cancel)))
-            parts = [
-                content
-                for step in result.get("steps", [])
-                for content in step.get("content", [])
-                if content.get("type") == "audio"
-            ]
-            if not parts:
+            # Поток (SSE): первый звук через ~2 с вместо ~4,5 с у ответа целиком (замер 9.23).
+            body["stream"] = True
+            produced = 0
+            for event in sse_events(self._stream("/v1beta/interactions?alt=sse", body, cancel)):
+                kind = event.get("event_type")
+                if kind == "error" or "error" in event:
+                    raise RuntimeError("speech.api_error")
+                delta = event.get("delta") if kind == "step.delta" else None
+                if not isinstance(delta, dict) or delta.get("type") != "audio":
+                    continue
+                if delta.get("sample_rate", 24000) != 24000 or delta.get("channels", 1) != 1:
+                    raise ValueError("unexpected Gemini audio format")
+                pcm = base64.b64decode(delta["data"], validate=True)
+                produced += len(pcm)
+                if produced > 24000 * 2 * 120:
+                    raise ValueError("invalid cloud audio size")
+                if cancel.is_set():
+                    raise InterruptedError("speech cancelled")
+                if pcm:
+                    yield AudioPiece(pcm, 24000)
+            if not produced:
                 raise ValueError("missing Gemini audio")
-            audio = b"".join(base64.b64decode(part["data"], validate=True) for part in parts)
+            return
         else:
             body = {
                 "model_id": self.model,
@@ -156,6 +169,24 @@ class CloudSpeech:
     def close(self) -> None:
         self.cancel()
         self.key = ""
+
+
+def sse_events(chunks: Iterator[bytes]) -> Iterator[dict[str, Any]]:
+    """События `data: {...}` потока SSE; строки собираются через границы кусков."""
+    buffer = b""
+    for chunk in chunks:
+        buffer += chunk
+        while b"\n" in buffer:
+            line, buffer = buffer.split(b"\n", 1)
+            line = line.rstrip(b"\r")
+            if not line.startswith(b"data:"):
+                continue
+            data = line[5:].strip()
+            if data == b"[DONE]":
+                return
+            event = json.loads(data)
+            if isinstance(event, dict):
+                yield event
 
 
 def validate_alignment(value: Any) -> dict[str, Any]:

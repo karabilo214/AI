@@ -576,6 +576,8 @@ class CharacterModule:
                 "draft": self._draft,
                 "model": self._model,
                 "profile_id": self._personality.view()["base"]["id"],
+                # Настройка владельца «Разрешить нецензурную лексику».
+                "profanity": self._personality.view()["boundaries"]["profanity"],
             }
             result["profiles"] = [
                 {"id": p["id"], "name": p["name"]} for p in self.profiles()["profiles"]

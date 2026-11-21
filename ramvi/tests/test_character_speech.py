@@ -106,3 +106,49 @@ def test_late_segment_wrong_response_queue_backpressure_and_cancel_wakes():
     finally:
         speech.close()
         producer.join(2)
+
+
+def test_next_segment_starts_synthesis_while_the_current_one_plays():
+    """Пока звучит первая фраза, вторая уже отдана в синтез; после первой — играет вторая."""
+    playing = threading.Event()
+
+    class Playing(SpeechServices):
+        def call(self, method, payload):
+            if method == "speech.status":
+                done = not playing.is_set() and payload["job_id"] == "1" or payload["job_id"] != "1"
+                return {
+                    "job": {
+                        "state": "completed" if done else "playing",
+                        "settled": done,
+                        "metadata": {},
+                        "error": None,
+                    }
+                }
+            return super().call(method, payload)
+
+    svc = Playing()
+    speech = SpeechOutput(svc)
+    try:
+        speech.configure({"enabled": True})  # запускает поток вывода
+        playing.set()
+        generation = speech.begin("r")
+        for i in (1, 2):
+            speech.offer(
+                "r",
+                {
+                    "id": f"s{i}",
+                    "text": f"фраза {i}",
+                    "emotion": "joy",
+                    "intensity": 0.5,
+                    "voice_style": "neutral",
+                },
+                generation,
+            )
+        speech.finish("r", generation)
+        wait(lambda: len(svc.starts) == 2)  # вторая — пока первая звучит
+        assert [s["segment_id"] for s in svc.starts] == ["s1", "s2"]
+        playing.clear()
+        wait(lambda: not speech.queue)
+        assert len(svc.starts) == 2  # вторую не запускают повторно
+    finally:
+        speech.close()

@@ -250,8 +250,19 @@ class SpeechService:
                 and len(fence["seen"]) - int(preface_id is not None) >= 8
             ):
                 raise RuntimeError("speech.segment_limit")
-            if any(j["owner"] == owner and not self._settled(j) for j in self.jobs.values()):
-                raise RuntimeError("speech.busy")
+            # Одна фраза звучит, следующая того же ответа может синтезироваться заранее:
+            # пауза между фразами — не время синтеза. Больше одной в очереди нельзя.
+            active = [j for j in self.jobs.values() if j["owner"] == owner and not self._settled(j)]
+            after = None
+            if active:
+                if (
+                    len(active) > 1
+                    or preface
+                    or active[0]["generation"] != generation
+                    or active[0]["response_id"] != response_id
+                ):
+                    raise RuntimeError("speech.busy")
+                after = active[0]
             self._prune(owner)
             if len(self.jobs) >= 128:
                 raise RuntimeError("speech.busy")
@@ -283,10 +294,11 @@ class SpeechService:
                 "bytes": 0,
                 "rate": None,
                 "submitted_audio_s": 0.0,
+                "after": after,
             }
             provider = self.provider_factory(info, key)
             job["provider"] = provider
-            job["buffer"] = PCMBuffer(job["cancel"])
+            job["buffer"] = PCMBuffer(job["cancel"], 6000) if after else PCMBuffer(job["cancel"])
             thread = threading.Thread(
                 target=self._run, args=(job, adapted), name="speech-output", daemon=True
             )
@@ -388,6 +400,17 @@ class SpeechService:
                 job["metadata"]["alignment"] = getattr(job["provider"], "timings", None)
                 if output is None:
                     job["metadata"]["first_pcm_ms"] = (time.monotonic() - started) * 1000
+                    previous = job.pop("after", None)
+                    if previous is not None:
+                        # Звук готов — ждём, пока доиграет предыдущая фраза (её устройство
+                        # и аренда динамика освобождаются до конца её потока).
+                        job["state"] = "waiting"
+                        waited = time.monotonic()
+                        while not self._settled(previous):
+                            if job["cancel"].is_set():
+                                raise InterruptedError("speech cancelled")
+                            time.sleep(0.005)
+                        started += time.monotonic() - waited  # ожидание — не время задания
                     if self.resources:
                         lease = self.resources.acquire(
                             job["owner"], {SPEAKER: 1}, timeout=10, cancel=job["cancel"]
@@ -490,7 +513,8 @@ class SpeechService:
                 raise PermissionError("speech.not_owner")
             if not matches:
                 return {"job": None}
-            job = matches[-1]
+            # Без id — звучащая фраза, а не заранее синтезируемая следующая.
+            job = next((j for j in matches if not self._settled(j)), matches[-1])
             result = {
                 k: copy.deepcopy(job[k])
                 for k in [

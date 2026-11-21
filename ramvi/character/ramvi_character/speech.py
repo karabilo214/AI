@@ -289,6 +289,7 @@ class SpeechOutput:
                     "id": "~reaction",
                     "text": chosen[1],
                     "emotion": record["emotion"],
+                    "expression": record.get("expression", "neutral"),
                     "intensity": record["intensity"],
                     "voice_style": "neutral",
                     "animation": "idle",
@@ -374,10 +375,54 @@ class SpeechOutput:
                 }
             )
 
+    def _start(self, generation: int, identifier: str, record: dict[str, Any]) -> dict[str, Any]:
+        request = {
+            "text": record["text"],
+            "language": "auto",
+            "emotion": record["emotion"],
+            "intensity": record["intensity"],
+            "style": f"Use a {record['emotion']} tone at relative intensity {record['intensity']:.2f}. Delivery: {record['voice_style']}.",
+        }
+        result: dict[str, Any] = self.services.call(
+            "speech.start",
+            {
+                "request": request,
+                "generation": generation,
+                "response_id": identifier,
+                "segment_id": record["id"],
+                "preview": record["id"] == "preview",
+                "preface": bool(record.get("_preface")),
+            },
+        )
+        return result
+
+    def _prefetch(self) -> tuple[str, int] | None:
+        """Следующая готовая фраза того же ответа — в синтез заранее; реплика-ожидание не берётся."""
+        with self.changed:
+            if not self.queue or self.preview_mode:
+                return None
+            if not (self.finished or len(self.queue) >= self.delivery["buffer"]):
+                return None
+            generation, identifier, record = self.queue[0]
+            if record.get("_preface") or not self._audio_current(identifier, generation):
+                return None
+            self.queue.popleft()
+            self.changed.notify_all()
+        try:
+            return self._start(generation, identifier, record)["job_id"], generation
+        except RuntimeError as error:
+            if str(error) != "speech.busy":
+                raise
+            with self.changed:
+                self.queue.appendleft((generation, identifier, record))
+            return None
+
     def _run(self) -> None:
         job_id: str | None = None
         job_generation = -1
         failed = False
+        # Следующая фраза синтезируется, пока звучит текущая (служба играет её после).
+        next_job: tuple[str, int] | None = None
         try:
             while not self.closed.is_set():
                 operation_generation = self.audio_generation
@@ -408,6 +453,11 @@ class SpeechOutput:
                                             "response_id": packet["response_id"],
                                             "segment_id": record["id"],
                                             "emotion": record["emotion"],
+                                            # Лицо набора (anger → furious); оболочка берёт его.
+                                            "expression": record.get("expression", "neutral"),
+                                            "eyes": record.get("eyes"),
+                                            "mouth": record.get("mouth"),
+                                            "moves": record.get("moves", []),
                                             "animation": record.get("animation", "idle"),
                                             "reaction_label": record.get("_reaction_id", "").split(
                                                 ":"
@@ -434,8 +484,18 @@ class SpeechOutput:
                                 self._degrade(
                                     packet.get("error") or "speech.failed", job_generation
                                 )
+                            if (
+                                not packet.get("settled")
+                                and next_job is None
+                                and packet["state"] == "playing"
+                                and job_generation == self.audio_generation
+                            ):
+                                next_job = self._prefetch()
                             if packet.get("settled"):
                                 job_id = None
+                                if next_job is not None:
+                                    job_id, job_generation = next_job
+                                    next_job, failed = None, False
                                 with self.lock:
                                     if (
                                         self.preview_mode
@@ -447,6 +507,7 @@ class SpeechOutput:
                         else:
                             job_id = None
                     if not job_id:
+                        next_job = None
                         with self.changed:
                             item = self._next()
                             self.changed.notify_all()
@@ -462,25 +523,8 @@ class SpeechOutput:
                                     "data.set",
                                     {"path": "reaction_history.json", "value": self.bank.recent},
                                 )
-                            request = {
-                                "text": record["text"],
-                                "language": "auto",
-                                "emotion": record["emotion"],
-                                "intensity": record["intensity"],
-                                "style": f"Use a {record['emotion']} tone at relative intensity {record['intensity']:.2f}. Delivery: {record['voice_style']}.",
-                            }
                             try:
-                                result = self.services.call(
-                                    "speech.start",
-                                    {
-                                        "request": request,
-                                        "generation": generation,
-                                        "response_id": identifier,
-                                        "segment_id": record["id"],
-                                        "preview": record["id"] == "preview",
-                                        "preface": bool(record.get("_preface")),
-                                    },
-                                )
+                                result = self._start(generation, identifier, record)
                                 job_id, job_generation, failed = result["job_id"], generation, False
                             except (RuntimeError, PermissionError, OSError):
                                 if self._audio_current(identifier, generation):

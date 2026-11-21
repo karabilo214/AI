@@ -12,9 +12,10 @@ PCM_BLOCKS = 4
 
 
 class PCMBuffer:
-    def __init__(self, cancel: threading.Event) -> None:
+    def __init__(self, cancel: threading.Event, blocks: int = PCM_BLOCKS) -> None:
         self.cancel = cancel
-        self.queue: queue.Queue[AudioPiece] = queue.Queue(PCM_BLOCKS)
+        # Заранее синтезируемая фраза копит весь звук (до 120 с = 6000 блоков, ~5,8 МБ).
+        self.queue: queue.Queue[AudioPiece] = queue.Queue(blocks)
         self.done = threading.Event()
         self.error: Exception | None = None
         self.high_water = 0

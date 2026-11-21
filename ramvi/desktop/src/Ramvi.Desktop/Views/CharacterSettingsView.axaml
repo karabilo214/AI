@@ -5,6 +5,8 @@
  <StackPanel Spacing="16">
   <TextBlock Text="{l:T character.profile}"/>
   <ComboBox x:Name="CharacterProfile" ItemsSource="{Binding Profiles}" SelectedItem="{Binding Profile}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate x:DataType="vm:CharacterProfile"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+  <CheckBox x:Name="CharacterProfanity" Content="{l:T character.profanity}" IsChecked="{Binding Profanity}"/>
+  <TextBlock Text="{l:T character.profanity_hint}" TextWrapping="Wrap" Classes="muted"/>
   <WrapPanel>
    <Button x:Name="CharacterChoosePack" Content="{l:T character.choose_pack}" Margin="0,0,8,8"/>
    <Button x:Name="CharacterDefaultPack" Content="{l:T character.default_pack}" Margin="0,0,8,8"/>

@@ -23,6 +23,59 @@
         "none"
       ]
     },
+    "eyes": {
+      "enum": [
+        "normal"
+      ]
+    },
+    "mouth": {
+      "enum": [
+        "neutral"
+      ]
+    },
+    "move": {
+      "type": "object",
+      "properties": {
+        "do": {
+          "$ref": "#/$defs/animation"
+        },
+        "x": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0.7,
+          "maximum": 1.4
+        },
+        "squash": {
+          "type": "number",
+          "minimum": 0.7,
+          "maximum": 1.3
+        },
+        "eyes": {
+          "$ref": "#/$defs/eyes"
+        },
+        "mouth": {
+          "$ref": "#/$defs/mouth"
+        },
+        "ms": {
+          "type": "integer",
+          "minimum": 80,
+          "maximum": 3000
+        }
+      },
+      "required": [
+        "ms"
+      ],
+      "additionalProperties": false
+    },
     "voice_style": {
       "enum": [
         "neutral"
@@ -173,6 +226,19 @@
         },
         "animation": {
           "$ref": "#/$defs/animation"
+        },
+        "eyes": {
+          "$ref": "#/$defs/eyes"
+        },
+        "mouth": {
+          "$ref": "#/$defs/mouth"
+        },
+        "moves": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/move"
+          },
+          "maxItems": 8
         }
       },
       "required": [

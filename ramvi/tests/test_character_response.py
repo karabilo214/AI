@@ -234,3 +234,48 @@ def test_nonstream_accepts_one_record_per_line_like_the_prompt_example() -> None
         planner().complete(json.dumps(r[0]) + "\n" + json.dumps(r[2]))  # no segment
     with pytest.raises(json.JSONDecodeError):
         planner().complete("[" + json.dumps(r[0]))
+
+
+def test_body_language_is_chosen_by_the_model_and_bad_parts_are_dropped() -> None:
+    """Живой персонаж: глаза с бровями, рот и раскадровка движений — из ответа модели."""
+    p = ResponsePlanner(
+        emotions=["anger"],
+        animations=["jump", "shout"],
+        eyes=["furious", "half"],
+        mouths=["wide", "o"],
+        sources=["current"],
+    )
+    prompt = p.prompt(True)
+    assert "moves" in prompt and "turn_away" in prompt and "furious" in prompt
+    r = records()
+    r[1].update(
+        {
+            "emotion": "anger",
+            "animation": "shout",
+            "eyes": "furious",
+            "mouth": "wide",
+            "moves": [
+                {"x": 0.5, "scale": 1.15, "ms": 500},
+                {"x": 5, "ms": 100},
+                {"do": "jump", "squash": 0.85, "ms": 900},
+            ],
+        }
+    )
+    out = p.complete(json.dumps(r))
+    assert out[1]["moves"] == [
+        {"x": 0.5, "scale": 1.15, "ms": 500},
+        {"do": "jump", "squash": 0.85, "ms": 900},
+    ]
+    assert (out[1]["eyes"], out[1]["mouth"], p.rejected) == ("furious", "wide", 1)
+    r[1].update({"eyes": "../x", "mouth": "exec", "moves": "nope"})
+    p = ResponsePlanner(
+        emotions=["anger"],
+        animations=["shout"],
+        eyes=["furious"],
+        mouths=["wide"],
+        sources=["current"],
+    )
+    out = p.complete(json.dumps(r))  # ответ цел, украшения отброшены
+    assert (
+        "eyes" not in out[1] and "mouth" not in out[1] and "moves" not in out[1] and p.rejected == 3
+    )

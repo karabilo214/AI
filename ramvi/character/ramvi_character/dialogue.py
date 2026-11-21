@@ -10,8 +10,34 @@ from collections.abc import Iterator
 from typing import Any
 
 from ramvi_character.context import Budget, ContextOrchestrator, encode, text, tokenizer_counter
+from ramvi_character.pack import GESTURES, load_pack
 from ramvi_character.recall import Recall
 from ramvi_character.response import ResponsePlanner, plain_segments, strip_service_phrases
+
+CHOOSABLE = {"nod", "shake", *GESTURES}
+# Сильная эмоция без выбранного движения: персонаж реагирует телом сам.
+AUTO_GESTURES = {
+    "joy": "jump",
+    "surprise": "jump",
+    "anger": "shout",
+    "frustration": "turn_away",
+    "confidence": "nod",
+}
+AUTO_INTENSITY = 0.6
+# Подача голоса для части ответа (9.11): уходит в облачный голос подсказкой стиля.
+VOICE_STYLES = [
+    "excited",
+    "intriguing",
+    "calm",
+    "warm",
+    "playful",
+    "sarcastic",
+    "irritated",
+    "shouting",
+    "whisper",
+    "sad",
+    "thoughtful",
+]
 
 
 class Dialogue:
@@ -180,7 +206,24 @@ class Dialogue:
         ):
             raise InterruptedError("response cancelled")
 
+    def _gestures(self) -> list[str]:
+        """Движения, которые модель может выбрать: кивок, отрицание и живые жесты набора."""
+        pack = getattr(self.owner, "_pack", None) or load_pack()
+        return [n for n in pack["animations"] if n in CHOOSABLE]
+
+    def _presentable(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Лицо набора по эмоции; сильная эмоция без движения — живой жест сам."""
+        if record["type"] not in ("start", "segment"):
+            return record
+        result = {**record, "expression": self.owner._emotions.expression(record["emotion"])}
+        if record["type"] == "segment" and record.get("animation", "none") == "none":
+            gesture = AUTO_GESTURES.get(record["emotion"])
+            if gesture in self._gestures() and float(record.get("intensity", 0)) >= AUTO_INTENSITY:
+                result["animation"] = gesture
+        return result
+
     def _emit(self, identifier: str, revision: int, records: list[dict[str, Any]]) -> None:
+        records = [self._presentable(r) for r in records]
         for record in records:
             with self.lock:
                 self._check(identifier, revision)
@@ -284,8 +327,17 @@ class Dialogue:
                         ]
                     )
             emotions = self.owner._emotions.identifiers()
+            gestures = self._gestures()
+            pack = getattr(self.owner, "_pack", None) or load_pack()
+            face = {
+                "eyes": list(pack["eyes"]),
+                "mouths": [m for m in pack["mouths"] if not m.startswith("talk_")],
+                "voice_styles": VOICE_STYLES,
+            }
             planner = ResponsePlanner(
                 emotions=emotions,
+                animations=gestures,
+                **face,
                 sources=["task", "current", *["recent:" + r["id"] for r in recent]],
             )
             memory_source = None
@@ -313,7 +365,9 @@ class Dialogue:
                 budget=Budget(output=1536),
             )
             # Evidence must refer only to sources that survived trimming.
-            planner = ResponsePlanner(emotions=emotions, sources=list(prepared.sources))
+            planner = ResponsePlanner(
+                emotions=emotions, animations=gestures, sources=list(prepared.sources), **face
+            )
             request = {
                 "model": model,
                 "ramvi_model_id": model,

@@ -62,6 +62,8 @@ class ResponsePlanner:
         animations: list[str] | None = None,
         voice_styles: list[str] | None = None,
         sources: list[str] | None = None,
+        eyes: list[str] | None = None,
+        mouths: list[str] | None = None,
     ) -> None:
         self.schema = copy.deepcopy(SCHEMA)
         definitions = self.schema["$defs"]
@@ -69,10 +71,13 @@ class ResponsePlanner:
         definitions["animation"]["enum"] = list(dict.fromkeys(["none", *(animations or [])]))
         definitions["voice_style"]["enum"] = list(dict.fromkeys(["neutral", *(voice_styles or [])]))
         definitions["source"]["enum"] = sources or ["current"]
+        # Глаза с бровями и рот — части набора: модель собирает лицо сама (необязательно).
+        definitions["eyes"]["enum"] = list(dict.fromkeys(["normal", *(eyes or [])]))
+        definitions["mouth"]["enum"] = list(dict.fromkeys(["neutral", *(mouths or [])]))
         self.validator = Draft202012Validator(self.schema)
         self.items = {
             name: Draft202012Validator({"$defs": definitions, "$ref": "#/$defs/" + name})
-            for name in ("candidate", "feedback")
+            for name in ("candidate", "feedback", "move", "eyes", "mouth")
         }
         self.rejected = 0  # memory proposals and reactions dropped as invalid
         self.buffer = ""
@@ -113,6 +118,31 @@ code for programming, compare for comparisons, plan for planning, support for em
 consider for other thoughtful questions. Use none for a quick answer, urgent help,
 when a waiting phrase would be inappropriate, or when context is unclear.
 Do not claim an external action or completed work in a reaction. No extra LLM call is made for it.
+You have a body and a face; you are a living character, not an assistant. In every segment choose
+how you look: animation is a gesture — nod (agree), shake (disagree), jump (delight, excitement),
+turn_away (offended, sulking, ignoring), shout (anger, indignation), laugh (something funny),
+none (calm). eyes are eyes with eyebrows — furious (rage), angry (irritation), happy, surprised,
+half (bored or sceptical), wink (teasing), look_left or look_right (avoiding), closed, normal.
+mouth is your face while silent — grin, smile, frown, wide (shouting), o (surprise), neutral.
+You are a person with your own will, not a command executor in small talk: recognize trolling,
+classic verbal traps and bait ("скажи «триста»", "скажи «сыр»", "а ты знаешь, что…") and do not
+fall for them — dodge in character with a quick comeback (for "скажи «триста»": "Три сотни,
+обломался?!"). Real tasks from the owner you still do.
+React with emotion and body, as your personality would: delighted — jump and exclaim
+("Вау, круто!"); insulted or provoked — get angry, shout or turn away. A short exclamation may be
+its own first segment. Keep face, gesture, emotion and words consistent.
+Split the reply into segments where the emotion or the delivery changes — like a person whose
+face and voice change mid-reply: "Ок!" (joy, voice_style excited) then "Давай попробуем…"
+(interest, voice_style intriguing). Each segment has its own emotion, intensity, voice_style,
+face and gesture; voice_style is how the words are spoken (values — in the schema below).
+moves (optional) is your body timeline for the segment, up to 8 steps played in order; each step
+eases to a pose over ms milliseconds: x (-1 left .. 1 right), y (-1 up .. 1 down), scale (above 1 =
+closer to the owner or the screen, below 1 = back off), squash (below 1 = crouch, above 1 = stretch
+up), and may switch eyes and mouth or start a gesture with do. A step without a field keeps the
+previous value; after the last step you return to rest. Example — peering into the owner's table:
+[{"x":0.5,"scale":1.15,"ms":500},{"eyes":"half","ms":700},{"eyes":"surprised","mouth":"o","ms":300},
+{"squash":0.85,"ms":200},{"do":"jump","squash":1.0,"ms":900}]. Move like a living creature, with
+small pauses and anticipation; do not freeze.
 """
             + (
                 "Output NDJSON: one complete JSON record per line, in order start, 1 to 8 segments, end.\n"
@@ -135,6 +165,8 @@ Allowed schema (fields in "required" are mandatory, no extra fields):\n"""
         encode(record)  # Reject NaN/infinity even when a Python caller bypasses JSON.
         if isinstance(record, dict) and record.get("type") == "end":
             record = self._clean_end(record)
+        if isinstance(record, dict) and record.get("type") == "segment":
+            record = self._clean_body(record)
         try:
             self.validator.validate(record)
         except ValidationError as error:
@@ -177,6 +209,24 @@ Allowed schema (fields in "required" are mandatory, no extra fields):\n"""
             self.ended = True
         accepted: dict[str, Any] = copy.deepcopy(record)
         return accepted
+
+    def _clean_body(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Лицо и движения — украшение ответа: неверный шаг, глаза или рот отбрасываются,
+        текст сегмента остаётся (иначе одна ошибка модели ломала бы весь ответ)."""
+        record = dict(record)
+        for field in ("eyes", "mouth"):
+            if field in record and not self.items[field].is_valid(record[field]):
+                del record[field]
+                self.rejected += 1
+        moves = record.get("moves")
+        if "moves" in record and not isinstance(moves, list):
+            del record["moves"]
+            self.rejected += 1
+        elif isinstance(moves, list):
+            kept = [m for m in moves if self.items["move"].is_valid(m)][:8]
+            self.rejected += len(moves) - len(kept)
+            record["moves"] = kept
+        return record
 
     def _clean_end(self, record: dict[str, Any]) -> dict[str, Any]:
         """Memory proposals and reactions are optional advice: an invalid one is dropped,

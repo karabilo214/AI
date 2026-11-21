@@ -56,6 +56,11 @@ class EmotionalState:
     def identifiers(self) -> list[str]:
         return list(self._definitions)
 
+    def expression(self, emotion: str) -> str:
+        """Лицо набора для эмоции ответа (anger → furious); неизвестная — нейтральное."""
+        item = self._definitions.get(emotion)
+        return item["expression"] if item is not None else "neutral"
+
     def add(self, value: dict[str, Any]) -> None:
         item = definition(value)
         if item["id"] in self._definitions or len(self._custom) >= 16:

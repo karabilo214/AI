@@ -9,6 +9,11 @@ public sealed record CharacterPlayback(long Epoch, string? ResponseId, long Audi
     string? SegmentId, string Emotion, string Animation, IReadOnlyList<PlaybackWindow> Windows, double Stamp = 0)
 {
     public long ReceivedAt { get; init; }
+    /// <summary>Глаза с бровями и рот, выбранные моделью для сегмента (части набора).</summary>
+    public string? Eyes { get; init; }
+    public string? Mouth { get; init; }
+    /// <summary>Раскадровка движений сегмента от модели.</summary>
+    public IReadOnlyList<CharacterMove> Moves { get; init; } = [];
     public static CharacterPlayback Waiting(long epoch, string? response, bool enabled) => new(epoch, response, -1, enabled, null, "neutral", "idle", []);
     public static CharacterPlayback Read(JsonElement packet, long epoch, string? response, bool enabled, double transportMs = 0)
     {
@@ -50,18 +55,41 @@ public sealed record CharacterPlayback(long Epoch, string? ResponseId, long Audi
                 items.Add(new(start - transportMs, end - transportMs, position, amplitude, kind, cue));
             }
             var segment = sync.GetProperty("segment_id").GetString();
-            var emotion = sync.GetProperty("emotion").GetString();
+            // Лицо набора (anger → furious) приходит в expression; emotion — для старых модулей.
+            var emotion = sync.TryGetProperty("expression", out var expression) && expression.ValueKind == JsonValueKind.String
+                ? expression.GetString() : sync.GetProperty("emotion").GetString();
             var animation = sync.GetProperty("animation").GetString();
             if (string.IsNullOrWhiteSpace(segment) || segment.Length > 64 || string.IsNullOrWhiteSpace(emotion) || emotion.Length > 64 || string.IsNullOrWhiteSpace(animation) || animation.Length > 64)
                 return waiting;
             return new(epoch, response, generation, true, segment, emotion, animation, items, stamp)
-            { ReceivedAt = System.Diagnostics.Stopwatch.GetTimestamp() };
+            { ReceivedAt = System.Diagnostics.Stopwatch.GetTimestamp(), Eyes = Part(sync, "eyes"), Mouth = Part(sync, "mouth"), Moves = ParseMoves(sync) };
         }
         catch (Exception error) when (error is InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
         {
             return waiting;
         }
     }
+
+    /// <summary>Шаги раскадровки (не больше 8); неверные поля отбрасываются, значения ограничиваются.</summary>
+    internal static IReadOnlyList<CharacterMove> ParseMoves(JsonElement record)
+    {
+        if (!record.TryGetProperty("moves", out var moves) || moves.ValueKind != JsonValueKind.Array) return [];
+        var result = new List<CharacterMove>();
+        foreach (var move in moves.EnumerateArray().Take(8))
+        {
+            if (move.ValueKind != JsonValueKind.Object || !move.TryGetProperty("ms", out var ms) || !ms.TryGetDouble(out var duration) ||
+                !double.IsFinite(duration) || duration is < 80 or > 3000)
+                continue;
+            static double? Number(JsonElement item, string name, double low, double high) =>
+                item.TryGetProperty(name, out var value) && value.TryGetDouble(out var number) && double.IsFinite(number) ? Math.Clamp(number, low, high) : null;
+            result.Add(new(Part(move, "do"), Number(move, "x", -1, 1), Number(move, "y", -1, 1), Number(move, "scale", 0.7, 1.4),
+                Number(move, "squash", 0.7, 1.3), Part(move, "eyes"), Part(move, "mouth"), duration));
+        }
+        return result;
+    }
+
+    internal static string? Part(JsonElement record, string name) =>
+        record.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 and <= 64 } text ? text : null;
 }
 
 /// <summary>Clock advances independently of idle; missing/stale packets close the mouth.</summary>

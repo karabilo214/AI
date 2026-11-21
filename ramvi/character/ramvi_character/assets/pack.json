@@ -1,6 +1,6 @@
 {
   "schema": "ramvi.character.pack/1",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "canvas": [
     768,
     768
@@ -16,7 +16,8 @@
     "angry": "parts/eyes/angry.png",
     "look_left": "parts/eyes/look_left.png",
     "look_right": "parts/eyes/look_right.png",
-    "sleep": "parts/eyes/sleep.png"
+    "sleep": "parts/eyes/sleep.png",
+    "furious": "parts/eyes/furious.png"
   },
   "mouths": {
     "neutral": "parts/mouths/neutral.png",
@@ -95,6 +96,11 @@
       "eyes": "look_right",
       "mouth": "smile",
       "file": "sprites/expressions/side_eye.png"
+    },
+    "furious": {
+      "eyes": "furious",
+      "mouth": "frown",
+      "file": "sprites/expressions/furious.png"
     }
   },
   "turns": {
@@ -176,6 +182,30 @@
         "animations/shake/008.png",
         "animations/shake/009.png"
       ]
+    },
+    "jump": {
+      "kind": "gesture",
+      "duration_ms": 900,
+      "speed": 1,
+      "loop": false
+    },
+    "turn_away": {
+      "kind": "gesture",
+      "duration_ms": 2400,
+      "speed": 1,
+      "loop": false
+    },
+    "shout": {
+      "kind": "gesture",
+      "duration_ms": 1100,
+      "speed": 1,
+      "loop": false
+    },
+    "laugh": {
+      "kind": "gesture",
+      "duration_ms": 1200,
+      "speed": 1,
+      "loop": false
     }
   },
   "sounds": [
@@ -1004,7 +1034,11 @@
     }
   ],
   "effects": {
-    "pulse": { "kind": "opacity", "minimum": 0.7, "duration_ms": 1200 }
+    "pulse": {
+      "kind": "opacity",
+      "minimum": 0.7,
+      "duration_ms": 1200
+    }
   },
   "speech": "tts",
   "auto_blink": false

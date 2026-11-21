@@ -14,6 +14,28 @@ public sealed class CharacterSyncTests
         [new(100, 140, 0, amplitude, kind, cue)]);
 
     [Fact]
+    public void With_voice_the_face_waits_until_every_part_of_the_reply_is_spoken()
+    {
+        using var pack = new CharacterPack(PackPath);
+        var player = new CharacterPlayer(pack);
+        player.Apply(new(1, "reply", null, "neutral", "idle"));
+        player.SetPlayback(CharacterPlayback.Waiting(1, "reply", true));
+        player.Apply(new(1, "reply", "s1", "sad", "talk"));
+        player.Apply(new(1, "reply", "s2", "cheerful", "talk"));
+        player.Apply(new(1, "reply", CharacterPlayer.EndOfReply, "neutral", "idle")); // текст кончился раньше голоса
+        player.SetPlayback(Packet());
+        player.Tick(100);
+        Assert.Equal("sad", player.Emotion);                // звучит первая часть
+        player.Tick(CharacterPlayer.RelaxAfterMs + 500);    // пауза перед второй частью
+        Assert.Equal("sad", player.Emotion);                // вторая не прозвучала — лицо держится
+        player.SetPlayback(new(1, "reply", 2, true, "s2", "cheerful", "talk", [new(100, 140, 0, 0.15, null, null)]));
+        player.Tick(100);
+        Assert.Equal("cheerful", player.Emotion);
+        player.Tick(CharacterPlayer.RelaxAfterMs + 200);    // всё прозвучало — обычное лицо
+        Assert.Equal("neutral", player.Emotion);
+    }
+
+    [Fact]
     public void Delayed_speech_keeps_idle_alive_and_changes_emotion_only_at_device_time()
     {
         using var pack = new CharacterPack(PackPath);
@@ -121,6 +143,7 @@ public sealed class CharacterSyncTests
         await MainViewModelTests.Until(() => vm.Playback?.SegmentId == "s1", "device-clock segment");
         Assert.Equal("cheerful", vm.Presentation!.Emotion);
         Assert.Equal("sad", vm.Playback!.Emotion);
+        Assert.Equal(("reply", CharacterPlayer.EndOfReply), (vm.ReplyEnd!.ResponseId, vm.ReplyEnd.SegmentId)); // ответ закончен
         Assert.Contains("Next 999983", vm.Transcript);
         await vm.StopAsync();
         await Task.Delay(100);

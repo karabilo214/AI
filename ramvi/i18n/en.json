@@ -951,5 +951,13 @@
   "cloud.limit_reached": "The cloud spending limit is reached: ${spent} of ${limit} spent. New requests are not sent; raise the limit in Connections → Cloud models",
   "system.os_cloud_only": "System: {name} ({arch}). Local models run only on Windows and Linux with an NVIDIA GPU — here RAMVI works with cloud models via API",
   "system.cloud_ready": "Cloud models via API: connect OpenAI (incl. Codex), Claude or Gemini with your key",
-  "onboarding.cloud": "Connect a cloud model"
+  "onboarding.cloud": "Connect a cloud model",
+  "character.profile.neutral": "Neutral",
+  "character.profile.friendly": "Friendly",
+  "character.profile.sarcastic": "Sarcastic",
+  "character.profile.strict": "Strict",
+  "character.profile.curious": "Curious",
+  "character.profile.angry": "Angry",
+  "character.profanity": "Allow profanity",
+  "character.profanity_hint": "The character will swear. Off — speaks without profanity."
 }

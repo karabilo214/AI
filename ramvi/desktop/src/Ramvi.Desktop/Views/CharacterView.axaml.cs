@@ -13,6 +13,8 @@ namespace Ramvi.Desktop.Views;
 
 public sealed partial class CharacterView : UserControl, IDisposable
 {
+    public static readonly StyledProperty<CharacterDirective?> ReplyEndProperty = AvaloniaProperty.Register<CharacterView,CharacterDirective?>(nameof(ReplyEnd));
+    public CharacterDirective? ReplyEnd { get => GetValue(ReplyEndProperty); set => SetValue(ReplyEndProperty, value); }
     public static readonly StyledProperty<CharacterDirective?> ResponseProperty = AvaloniaProperty.Register<CharacterView,CharacterDirective?>(nameof(Response));
     public CharacterDirective? Response { get => GetValue(ResponseProperty); set => SetValue(ResponseProperty,value); }
     public static readonly StyledProperty<CharacterPlayback?> PlaybackProperty = AvaloniaProperty.Register<CharacterView,CharacterPlayback?>(nameof(Playback));
@@ -41,6 +43,7 @@ public sealed partial class CharacterView : UserControl, IDisposable
             _player?.Apply(directive);
             CharacterSurface?.InvalidateVisual();
         }
+        if(change.Property==ReplyEndProperty && ReplyEnd is {} end) _player?.Apply(end);
     }
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(33) };
     private readonly Stopwatch _clock = new();

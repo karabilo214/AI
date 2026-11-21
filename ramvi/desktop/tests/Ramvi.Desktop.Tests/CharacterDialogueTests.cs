@@ -41,6 +41,28 @@ public sealed class CharacterDialogueTests
         Assert.Equal(new[] { "status", "memory", "cancel", "status", "start", "poll" }, calls);
     }
     [AvaloniaFact]
+    public async Task Profanity_checkbox_reads_the_module_and_sends_the_owner_boundary()
+    {
+        var sent = new List<string>();
+        var api = new FakeChatApi();
+        api.ModuleHandler = (section, command, body) =>
+        {
+            if (command is "voice" or "speech") return Task.FromResult(Json("{\"available\":false}"));
+            var operation = body.GetProperty("operation").GetString()!;
+            if (operation == "boundary") sent.Add(body.GetProperty("arguments").GetRawText());
+            return Task.FromResult(operation == "status"
+                ? Json(Status.Replace("\"profile_id\":\"friendly\"", "\"profile_id\":\"friendly\",\"profanity\":true"))
+                : Json("{}"));
+        };
+        using var vm = new CharacterViewModel(() => api, new ObservableCollection<ModelInfo>(api.Models));
+        await vm.LoadAsync();
+        Assert.True(vm.Profanity);   // загрузка из модуля не отправляет команду
+        Assert.Empty(sent);
+        vm.Profanity = false;
+        for (var i = 0; i < 50 && sent.Count == 0; i++) await Task.Delay(10);
+        Assert.Equal(["{\"name\":\"profanity\",\"allowed\":false}"], sent);
+    }
+    [AvaloniaFact]
     public async Task Rating_buttons_send_dimension_and_direction_for_the_last_reply()
     {
         var sent = new List<string>();

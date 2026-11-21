@@ -58,6 +58,7 @@ def test_custom_versions_roundtrip_without_changing_builtin_profiles() -> None:
         "Sarcastic",
         "Strict",
         "Curious",
+        "Angry",  # злой: вспыльчивый, огрызается — без ненависти и угроз
     }
     custom = {
         "id": "custom_researcher",
@@ -74,7 +75,7 @@ def test_custom_versions_roundtrip_without_changing_builtin_profiles() -> None:
     assert p.view()["base"]["traits"]["curiosity"] == 0.5
     restored = Personality(p.checkpoint())
     assert restored.view() == p.view()
-    assert restored.catalog()[:5] == Personality().catalog()
+    assert restored.catalog()[:6] == Personality().catalog()  # шесть встроенных, затем свои
     modified = restored.view()
     modified["base"]["traits"]["curiosity"] = 0
     assert restored.view()["base"]["traits"]["curiosity"] == 0.5

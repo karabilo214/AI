@@ -31,7 +31,7 @@ public sealed class CharacterTests
             player.Tick(1); Assert.Equal("idle", player.Animation);
             Assert.Equal("sad", player.Emotion); Assert.Equal(1, player.Speed);
         }
-        for (var i = 0; i < 24; i++)
+        for (var i = 0; i < 20; i++) // 2,3 с — до возврата лица в обычное (RelaxAfterMs)
         {
             Assert.All(player.Layers(), layer => Assert.Equal("sprites/expressions/sad.png", layer.File));
             player.Tick(115);

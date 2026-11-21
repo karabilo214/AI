@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_PACK = Path(__file__).parent / "assets" / "pack.json"
+BASE_ANIMATIONS = {"idle", "blink", "talk", "nod", "shake"}
+# Живые движения из частей набора: подпрыгнуть от радости, отвернуться от обиды,
+# накричать (рывок к зрителю с дрожью), рассмеяться.
+GESTURES = {"jump", "turn_away", "shout", "laugh"}
 
 
 def load_pack(path: Path = DEFAULT_PACK) -> dict[str, Any]:
@@ -36,7 +40,8 @@ def _load_pack(path: Path) -> dict[str, Any]:
         raise ValueError("pack must provide neutral and idle")
     if "front" not in value["turns"]:
         raise ValueError("pack must provide a front turn")
-    if set(value["animations"]) != {"idle", "blink", "talk", "nod", "shake"}:
+    names = set(value["animations"])
+    if not BASE_ANIMATIONS <= names or not names <= BASE_ANIMATIONS | GESTURES:
         raise ValueError("unsupported animation states")
     if (
         not {"closed", "half"} <= value["eyes"].keys()
@@ -66,6 +71,10 @@ def _load_pack(path: Path) -> dict[str, Any]:
                 or "frames" in item
             ):
                 raise ValueError("idle must not contain baked blinking frames")
+        elif item["kind"] == "gesture":
+            # Движение из частей набора (корпус, глаза, рот, повороты) — его рисует оболочка.
+            if name not in GESTURES or "frames" in item or not 200 <= duration <= 4_000:
+                raise ValueError("invalid gesture")
         elif name != "idle" and item["kind"] == "frames" and 2 <= len(item["frames"]) <= 256:
             if name in {"blink", "talk"} and len(item["frames"]) != {"blink": 6, "talk": 8}[name]:
                 raise ValueError("invalid facial frame count")

@@ -185,19 +185,31 @@ def test_official_adapter_protocol_on_loopback(provider):
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             observed.append((self.path, dict(self.headers), body))
-            result = (
-                pcm
-                if provider == "openai"
-                else json.dumps(
+            if provider == "gemini":
+                # Поток SSE, как у настоящего API: звук кусками в step.delta.
+                events = [{"event_type": "interaction.created"}, {"event_type": "step.start"}]
+                events += [
                     {
-                        "steps": [
-                            {"content": [{"type": "audio", "data": base64.b64encode(pcm).decode()}]}
-                        ]
+                        "event_type": "step.delta",
+                        "delta": {
+                            "type": "audio",
+                            "sample_rate": 24000,
+                            "channels": 1,
+                            "data": base64.b64encode(pcm[i : i + 3]).decode(),
+                        },
                     }
-                    if provider == "gemini"
-                    else {"audio_base64": base64.b64encode(pcm).decode(), "alignment": alignment}
-                ).encode()
-            )
+                    for i in range(0, len(pcm), 3)
+                ]
+                result = "".join(f"event: x\ndata: {json.dumps(e)}\n\n" for e in events).encode()
+                result += b"data: [DONE]\n\n"
+            else:
+                result = (
+                    pcm
+                    if provider == "openai"
+                    else json.dumps(
+                        {"audio_base64": base64.b64encode(pcm).decode(), "alignment": alignment}
+                    ).encode()
+                )
             self.send_response(200)
             self.send_header("Content-Length", str(len(result)))
             self.end_headers()
@@ -227,7 +239,10 @@ def test_official_adapter_protocol_on_loopback(provider):
                 and headers["Authorization"] == "Bearer fake-key"
             )
         elif provider == "gemini":
-            assert path == "/v1beta/interactions" and headers["x-goog-api-key"] == "fake-key"
+            assert (
+                path == "/v1beta/interactions?alt=sse" and headers["x-goog-api-key"] == "fake-key"
+            )
+            assert body["stream"] is True and len(result) > 1  # звук пришёл кусками
             assert body["response_format"]["sample_rate"] == 24000
             assert body["input"][0]["content"][0]["annotations"][0]["style"] == "cheerful"
         else:
@@ -434,3 +449,105 @@ def test_output_gates_only_its_own_microphone_session_and_releases(rig):
     wait(lambda: s.status("owner", identifier)["job"]["settled"])
     assert s.voice.calls == [(True, "owner"), (False, "owner")]
     assert outputs[0].closed
+
+
+def test_sse_events_join_lines_across_chunks_and_stop_at_done():
+    from ramvi_service.speech.cloud import sse_events
+
+    raw = b'event: a\r\ndata: {"event_type": "step.delta", "n": 1}\r\n\r\ndata: {"n": 2}\n\ndata: [DONE]\n\ndata: {"n": 3}\n'
+    chunks = [raw[i : i + 7] for i in range(0, len(raw), 7)]
+    assert [e.get("n") for e in sse_events(iter(chunks))] == [1, 2]
+
+
+def test_next_segment_is_synthesized_ahead_and_plays_after_the_current(tmp_path):
+    """Пауза между фразами — не время синтеза: следующая готовится, пока звучит текущая."""
+    gate, order, providers = threading.Event(), [], []
+
+    class Slow(Provider):
+        def synthesize(self, request, cancel):
+            self.requests.append(request)
+            order.append(("synth", request.text))
+            yield AudioPiece(b"\0" * 640, 16000)
+            if request.text == "первая":
+                gate.wait(3)  # первая «звучит», пока не отпустим
+            yield AudioPiece(b"\0" * 2, 16000)
+
+    class Logged(Output):
+        def start(self):
+            order.append(("play", len(order)))
+
+    def factory(info, key):
+        providers.append(Slow())
+        return providers[-1]
+
+    service = SpeechService(provider_factory=factory, output_factory=Logged)
+    data = ScopedData(tmp_path, "character")
+    secrets = ScopedSecrets(MemorySecrets(), "character")
+    try:
+        service.configure("owner", data, {"enabled": True})
+        service.advance("owner", 1, "r")
+
+        def go(segment, text):
+            return service.start(
+                "owner",
+                data,
+                secrets,
+                {
+                    "generation": 1,
+                    "response_id": "r",
+                    "segment_id": segment,
+                    "request": {"text": text},
+                },
+            )["job_id"]
+
+        first = go("s1", "первая")
+        wait(lambda: service.status("owner", first)["job"]["state"] == "playing")
+        second = go("s2", "вторая")  # не speech.busy: одна заранее
+        wait(lambda: ("synth", "вторая") in order)
+        wait(lambda: service.status("owner", second)["job"]["state"] == "waiting")
+        with pytest.raises(RuntimeError, match="busy"):
+            go("s3", "третья")  # больше одной в очереди нельзя
+        assert service.status("owner")["job"]["id"] == first  # без id — звучащая
+        assert sum(1 for x in order if x[0] == "play") == 1
+        gate.set()
+        wait(lambda: service.status("owner", second)["job"]["settled"])
+        assert service.status("owner", second)["job"]["state"] == "completed"
+        plays = [i for i, x in enumerate(order) if x[0] == "play"]
+        assert len(plays) == 2 and order.index(("synth", "вторая")) < plays[1]
+        # Новый ответ отменяет и звучащую, и заранее готовую.
+        gate.clear()
+        service.advance("owner", 2, "r2")
+        a = service.start(
+            "owner",
+            data,
+            secrets,
+            {
+                "generation": 2,
+                "response_id": "r2",
+                "segment_id": "s1",
+                "request": {"text": "первая"},
+            },
+        )["job_id"]
+        wait(lambda: service.status("owner", a)["job"]["state"] == "playing")
+        b = service.start(
+            "owner",
+            data,
+            secrets,
+            {
+                "generation": 2,
+                "response_id": "r2",
+                "segment_id": "s2",
+                "request": {"text": "вторая"},
+            },
+        )["job_id"]
+        service.advance("owner", 3, "r3")
+        wait(
+            lambda: (
+                service.status("owner", b)["job"]["settled"]
+                and service.status("owner", a)["job"]["settled"]
+            )
+        )
+        assert service.status("owner", b)["job"]["state"] == "cancelled"
+    finally:
+        gate.set()
+        service.close()

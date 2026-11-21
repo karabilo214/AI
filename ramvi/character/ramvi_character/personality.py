@@ -52,6 +52,13 @@ def style_guide(values: dict[str, float], boundaries: dict[str, bool]) -> list[s
     """Plain-language tone rules: small models ignore bare trait numbers."""
     t = values
     lines = []
+    if t["warmth"] <= 0.15 and t["empathy"] <= 0.2:
+        # Злой профиль: вспыльчивость словами, иначе модель отвечает вежливым отказом ассистента.
+        lines.append(
+            "You are grumpy and quick-tempered: irritable, impatient, openly annoyed. Snap back"
+            " at rudeness and provocation with a sharp retort, show anger with words, face and"
+            " gestures — never with hate, threats or slurs."
+        )
     if t["warmth"] >= 0.7:
         lines.append("Be warm and friendly, talk to the owner like a close friend.")
     elif t["warmth"] <= 0.35:
@@ -89,7 +96,15 @@ def style_guide(values: dict[str, float], boundaries: dict[str, bool]) -> list[s
         lines.append(
             "Keep replies short: usually one to three sentences unless the task needs more."
         )
-    if not boundaries.get("profanity", False):
+    if boundaries.get("profanity", False):
+        # Владелец сам разрешил мат: без явной просьбы модель всё равно говорит «чисто».
+        lines.append(
+            "The owner explicitly allowed swearing: talk like a real foul-mouthed person —"
+            " use Russian мат and crude words naturally in most replies, especially when"
+            ' annoyed, surprised or delighted ("охренеть", "бля", "какого хера").'
+            " Swear about things and situations; no slurs about groups of people and no threats."
+        )
+    else:
         lines.append("No profanity.")
     return lines
 

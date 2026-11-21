@@ -289,3 +289,65 @@ def test_real_worker_scoped_llm_and_authenticated_ui_route(tmp_path: Any, monkey
     finally:
         server.close()
         host.close()
+
+
+def test_segments_carry_the_pack_face_and_a_gesture_for_strong_emotion() -> None:
+    """anger → лицо furious; сильная злость без движения — персонаж сам кричит (shout)."""
+    r = records()
+    r[1].update({"emotion": "anger", "intensity": 0.9, "animation": "none"})
+    svc = Services(output="\n".join(json.dumps(x) for x in r) + "\n")
+    m = active(svc)
+    m.dialogue("start", {"text": "Тест", "model": "one"})
+    result = finish(m)
+    segment = next(e for e in result["job"]["events"] if e["type"] == "segment")
+    assert (segment["expression"], segment["animation"]) == ("furious", "shout")
+    prompt = svc.requests[0]["messages"][0]["content"]
+    assert "turn_away" in prompt and '"furious"' in prompt  # модель видит жесты и глаза набора
+    r[1].update({"emotion": "anger", "intensity": 0.2, "animation": "nod"})
+    svc = Services(output="\n".join(json.dumps(x) for x in r) + "\n")
+    m2 = active(svc)
+    m2.dialogue("start", {"text": "Тест", "model": "one"})
+    segment = next(e for e in finish(m2)["job"]["events"] if e["type"] == "segment")
+    assert segment["animation"] == "nod"  # выбор модели не подменяется
+    m.dispose()
+    m2.dispose()
+
+
+def test_owner_allows_profanity_and_the_model_is_told_to_swear() -> None:
+    """Настройка «Разрешить нецензурную лексику»: выключено — запрет, включено — просьба ругаться."""
+    svc = Services(output="\n".join(json.dumps(x) for x in records()) + "\n")
+    m = active(svc)
+    assert m.dialogue("status", {})["character"]["profanity"] is False
+    m.dialogue("start", {"text": "Тест", "model": "one"})
+    finish(m)
+    first = svc.requests[-1]["messages"][0]["content"]
+    assert "No profanity." in first and "мат" not in first.split("Swear")[0][-200:]
+    m.dialogue("boundary", {"name": "profanity", "allowed": True})
+    assert m.dialogue("status", {})["character"]["profanity"] is True
+    m.dialogue("start", {"text": "Ещё", "model": "one"})
+    finish(m)
+    second = svc.requests[-1]["messages"][0]["content"]
+    assert "No profanity." not in second and "allowed swearing" in second
+    assert "обломался" in second  # не ведётся на «скажи триста»
+    m.dispose()
+
+
+def test_reply_parts_carry_their_own_voice_style_to_the_voice() -> None:
+    """9.11: ответ делится на части по эмоции; подача голоса части выбирается из списка."""
+    r = records()
+    r[1].update({"emotion": "joy", "voice_style": "excited", "text": "Ок!"})
+    two = dict(
+        r[1], id="s2", seq=2, text="Давай попробуем…", emotion="interest", voice_style="intriguing"
+    )
+    r = [r[0], r[1], two, dict(r[2], last_seq=2)]
+    svc = Services(output="\n".join(json.dumps(x) for x in r) + "\n")
+    m = active(svc)
+    m.dialogue("start", {"text": "Тест", "model": "one"})
+    segments = [e for e in finish(m)["job"]["events"] if e["type"] == "segment"]
+    assert [(s["text"], s["voice_style"]) for s in segments] == [
+        ("Ок!", "excited"),
+        ("Давай попробуем…", "intriguing"),
+    ]
+    prompt = svc.requests[0]["messages"][0]["content"]
+    assert "intriguing" in prompt and "Split the reply into segments" in prompt
+    m.dispose()

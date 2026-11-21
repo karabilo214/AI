@@ -27,6 +27,9 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     private bool _syncEnabled;
     private CharacterPlayback? _playback;
     public CharacterPlayback? Playback { get => _playback; private set => Set(ref _playback, value); }
+    private CharacterDirective? _replyEnd;
+    /// <summary>Модель закончила ответ: лицо вернётся в обычное, когда прозвучат все его части.</summary>
+    public CharacterDirective? ReplyEnd { get => _replyEnd; private set => Set(ref _replyEnd, value); }
     public CharacterDirective? Presentation
     {
         get => _presentation;
@@ -195,8 +198,13 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
                 if (!Busy && !preserveDraft) Draft = character.GetProperty("draft").GetString() ?? "";
                 Profiles.Clear();
                 foreach (var item in result.GetProperty("profiles").EnumerateArray())
-                    Profiles.Add(new(item.GetProperty("id").GetString()!, item.GetProperty("name").GetString()!));
+                {
+                    var id = item.GetProperty("id").GetString()!;
+                    var key = "character.profile." + id; // встроенные профили — по-русски
+                    Profiles.Add(new(id, Localizer.Current.Keys.Contains(key) ? Localizer.Current[key] : item.GetProperty("name").GetString()!));
+                }
                 Profile = Profiles.FirstOrDefault(p => p.Id == character.GetProperty("profile_id").GetString());
+                Profanity = character.TryGetProperty("profanity", out var profanity) && profanity.ValueKind == JsonValueKind.True;
                 if (!Busy) ReadHistory(result);
             }
             finally { _loading = false; }
@@ -229,6 +237,21 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     {
         await _commands.WaitAsync(_token).ConfigureAwait(true);
         try { await CallAsync("configure",new JsonObject { ["draft"]=Draft,["model"]=Model?.Id }).ConfigureAwait(true); }
+        catch(Exception e) when(Handled(e)) { Error=Localizer.Current["character.request_error"]; }
+        finally { _commands.Release(); }
+    }
+    private bool _profanity;
+    /// <summary>«Разрешить нецензурную лексику» — явная граница владельца в модуле.</summary>
+    public bool Profanity
+    {
+        get => _profanity;
+        set { if (Set(ref _profanity, value) && !_loading) _ = SetProfanityAsync(value); }
+    }
+    private async Task SetProfanityAsync(bool allowed)
+    {
+        InvalidateResponse();
+        await _commands.WaitAsync(_token).ConfigureAwait(true);
+        try { await CallAsync("boundary",new JsonObject { ["name"]="profanity",["allowed"]=allowed }).ConfigureAwait(true); }
         catch(Exception e) when(Handled(e)) { Error=Localizer.Current["character.request_error"]; }
         finally { _commands.Release(); }
     }
@@ -302,13 +325,19 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
                     if(!_segments.Add(segment)) continue;
                     Transcript+=record.GetProperty("text").GetString()+"\n";
                     if(record.TryGetProperty("animation",out var animation))
-                        Presentation=new(_presentationEpoch,id,segment,record.GetProperty("emotion").GetString()!,animation.GetString()!);
+                    {
+                        // Лицо набора — из expression (модуль переводит эмоцию модели), глаза и рот — выбор модели.
+                        var face=CharacterPlayback.Part(record,"expression") ?? record.GetProperty("emotion").GetString()!;
+                        Presentation=new(_presentationEpoch,id,segment,face,animation.GetString()!,CharacterPlayback.Part(record,"eyes"),CharacterPlayback.Part(record,"mouth"),CharacterPlayback.ParseMoves(record));
+                    }
                 }
                 cursor = job.GetProperty("cursor").GetInt32();
                 var state = job.GetProperty("state").GetString();
                 var settled = !job.TryGetProperty("settled", out var stopped) || stopped.GetBoolean();
                 if (state != "running" && settled)
                 {
+                    // Ответ закончен: лицо вернётся в обычное, когда прозвучат все его части.
+                    if (_responseId == id) ReplyEnd = new(_presentationEpoch, id, CharacterPlayer.EndOfReply, "neutral", "idle");
                     if (state == "error") Error = Localizer.Current["character.reply_error"];
                     break;
                 }

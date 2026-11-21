@@ -122,8 +122,13 @@ def test_checks_on_mac_are_the_cloud_mode_not_errors() -> None:
     # Карта NVIDIA есть, а torch её не видит — тогда совет про драйвер.
     with_card = by_id(checks(profile(), {"torch": "2.9.0", "cuda": False}))
     assert with_card["backend"]["code"] == "system.backend_no_cuda"
-    no_card = by_id(checks(profile(gpus=(GPUInfo("Intel UHD", "Intel"),)), {"torch": "2.9.0", "cuda": False}))
-    assert (no_card["gpu"]["status"], no_card["backend"]["code"]) == ("fail", "system.backend_no_gpu")
+    no_card = by_id(
+        checks(profile(gpus=(GPUInfo("Intel UHD", "Intel"),)), {"torch": "2.9.0", "cuda": False})
+    )
+    assert (no_card["gpu"]["status"], no_card["backend"]["code"]) == (
+        "fail",
+        "system.backend_no_gpu",
+    )
 
 
 def test_mac_does_not_probe_torch(tmp_path: Path) -> None:
@@ -136,7 +141,9 @@ def test_mac_does_not_probe_torch(tmp_path: Path) -> None:
     mac = profile(os="Darwin 23.1.0", arch="arm64", gpus=(GPUInfo("Apple M1", "Apple"),))
     with open_core(tmp_path) as db:
         report = Onboarding(tmp_path, Models(db), hardware=lambda _: mac, backends=probe).system()
-        windows = Onboarding(tmp_path, Models(db), hardware=lambda _: profile(), backends=probe).system()
+        windows = Onboarding(
+            tmp_path, Models(db), hardware=lambda _: profile(), backends=probe
+        ).system()
     assert report["cloud_only"] is True and report["backends"] == {"skipped": "cloud_only"}
     assert windows["cloud_only"] is False and len(calls) == 1  # torch проверен только для Windows
 

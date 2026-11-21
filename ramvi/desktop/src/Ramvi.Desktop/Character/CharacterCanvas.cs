@@ -38,7 +38,12 @@ public sealed class CharacterBitmapRenderer : ICharacterRenderer
                 _images[path] = bitmap;
             }
             using var opacity = context.PushOpacity(layer.Opacity);
-            context.DrawImage(bitmap, new Rect(x + layer.X * size / 768, y + layer.Y * size / 768, size, size));
+            // Масштаб — от нижнего центра (ближе/дальше, присел/вытянулся), сдвиг — в точках набора.
+            var width = size * layer.Scale;
+            var height = size * layer.Scale * layer.ScaleY;
+            var left = x + (size - width) / 2 + layer.X * size / 768;
+            var top = y + size - height + layer.Y * size / 768;
+            context.DrawImage(bitmap, new Rect(left, top, width, height));
         }
     }
 }
