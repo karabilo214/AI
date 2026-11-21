@@ -15,7 +15,7 @@ class SpeechServices(Services):
         self.starts: list[dict[str, Any]] = []
         self.cancels: list[dict[str, Any]] = []
 
-    def call(self, method, payload):
+    def call(self, method: Any, payload: Any) -> Any:
         if method == "speech.catalog":
             return {"settings": {"enabled": self.enabled}}
         if method == "speech.configure":
@@ -42,7 +42,7 @@ class SpeechServices(Services):
         return super().call(method, payload)
 
 
-def test_disabled_output_and_validated_segments_only_then_no_restart_audio():
+def test_disabled_output_and_validated_segments_only_then_no_restart_audio() -> None:
     svc = SpeechServices()
     m = active(svc)
     m.dialogue("start", {"text": "Hello", "model": "one"})
@@ -56,6 +56,7 @@ def test_disabled_output_and_validated_segments_only_then_no_restart_audio():
     assert svc.starts[0]["request"]["emotion"] == "neutral"
     assert svc.starts[0]["segment_id"] and not svc.starts[0]["preview"]
     checkpoint = m.checkpoint()
+    assert m._speech.thread is not None
     assert not m._speech.thread.is_alive()
     restored = type(m)()
     restored.initialize({"services": svc, "checkpoint": checkpoint})
@@ -65,7 +66,7 @@ def test_disabled_output_and_validated_segments_only_then_no_restart_audio():
     restored.dispose()
 
 
-def test_preview_is_tracked_even_when_output_disabled_and_heartbeat_stops():
+def test_preview_is_tracked_even_when_output_disabled_and_heartbeat_stops() -> None:
     svc = SpeechServices()
     speech = SpeechOutput(svc)
     try:
@@ -80,10 +81,11 @@ def test_preview_is_tracked_even_when_output_disabled_and_heartbeat_stops():
         assert not speech.queue
     finally:
         speech.close()
+    assert speech.thread is not None
     assert not speech.thread.is_alive()
 
 
-def test_late_segment_wrong_response_queue_backpressure_and_cancel_wakes():
+def test_late_segment_wrong_response_queue_backpressure_and_cancel_wakes() -> None:
     svc = SpeechServices()
     speech = SpeechOutput(svc)
     speech.enabled = speech.armed = True
@@ -108,12 +110,12 @@ def test_late_segment_wrong_response_queue_backpressure_and_cancel_wakes():
         producer.join(2)
 
 
-def test_next_segment_starts_synthesis_while_the_current_one_plays():
+def test_next_segment_starts_synthesis_while_the_current_one_plays() -> None:
     """Пока звучит первая фраза, вторая уже отдана в синтез; после первой — играет вторая."""
     playing = threading.Event()
 
     class Playing(SpeechServices):
-        def call(self, method, payload):
+        def call(self, method: Any, payload: Any) -> Any:
             if method == "speech.status":
                 done = not playing.is_set() and payload["job_id"] == "1" or payload["job_id"] != "1"
                 return {

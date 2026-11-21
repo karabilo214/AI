@@ -1,6 +1,7 @@
 """Adversarial ordering at generation, PCM and device boundaries. No paid providers."""
 
 import threading
+from typing import Any
 
 import pytest
 from ramvi_service.contracts.speech import AudioPiece
@@ -11,7 +12,15 @@ from test_speech import Output, Provider, rig, wait
 __all__ = ["rig"]
 
 
-def fenced_start(s, d, k, generation, response, segment="s1", text="Fresh 900731"):
+def fenced_start(
+    s: Any,
+    d: Any,
+    k: Any,
+    generation: Any,
+    response: Any,
+    segment: Any = "s1",
+    text: Any = "Fresh 900731",
+) -> Any:
     return s.start(
         "owner",
         d,
@@ -25,7 +34,7 @@ def fenced_start(s, d, k, generation, response, segment="s1", text="Fresh 900731
     )["job_id"]
 
 
-def test_generation_rejects_delayed_start_and_duplicate_never_replays(rig):
+def test_generation_rejects_delayed_start_and_duplicate_never_replays(rig: Any) -> None:
     s, d, k, providers, outputs = rig
     s.configure("owner", d, {"enabled": True})
     s.advance("owner", 1, "first")
@@ -47,11 +56,11 @@ def test_generation_rejects_delayed_start_and_duplicate_never_replays(rig):
     assert len(outputs) == 2 and len(s.jobs) == 1
 
 
-def test_fence_while_output_constructor_is_late_cannot_start_old_device(rig):
+def test_fence_while_output_constructor_is_late_cannot_start_old_device(rig: Any) -> None:
     s, d, k, _, outputs = rig
     entered, release = threading.Event(), threading.Event()
 
-    def delayed(rate):
+    def delayed(rate: Any) -> Any:
         entered.set()
         assert release.wait(3)
         output = Output(rate)
@@ -75,31 +84,31 @@ def test_fence_while_output_constructor_is_late_cannot_start_old_device(rig):
         release.set()
 
 
-def test_slow_device_applies_pcm_backpressure_and_fence_discards_buffer(rig):
+def test_slow_device_applies_pcm_backpressure_and_fence_discards_buffer(rig: Any) -> None:
     s, d, k, providers, outputs = rig
     blocked, release = threading.Event(), threading.Event()
 
     class Streaming(Provider):
         count = 0
 
-        def synthesize(self, request, cancel):
+        def synthesize(self, request: Any, cancel: Any) -> Any:
             for _ in range(500):
                 self.count += 1
                 yield AudioPiece(bytes(640), 16000)
 
     class Slow(Output):
-        def write(self, pcm):
+        def write(self, pcm: Any) -> Any:
             assert len(pcm) <= 640
             blocked.set()
             release.wait(0.2)
             super().write(pcm)
 
-    def provider(info, key):
+    def provider(info: Any, key: Any) -> Any:
         p = Streaming()
         providers.append(p)
         return p
 
-    def output(rate):
+    def output(rate: Any) -> Any:
         o = Slow(rate)
         outputs.append(o)
         return o
@@ -123,7 +132,7 @@ def test_slow_device_applies_pcm_backpressure_and_fence_discards_buffer(rig):
         release.set()
 
 
-def test_fence_is_scoped_and_wakes_resource_waiter(tmp_path):
+def test_fence_is_scoped_and_wakes_resource_waiter(tmp_path: Any) -> None:
     from ramvi_service.contracts.modules import Authority
     from ramvi_service.contracts.speech import SPEAKER
     from ramvi_service.resources import ResourceBroker
@@ -136,7 +145,7 @@ def test_fence_is_scoped_and_wakes_resource_waiter(tmp_path):
     lease = broker.acquire(b, {SPEAKER: 1})
     outputs = []
 
-    def output(rate):
+    def output(rate: Any) -> Any:
         o = Output(rate)
         outputs.append(o)
         return o
@@ -162,7 +171,7 @@ def test_fence_is_scoped_and_wakes_resource_waiter(tmp_path):
         s.close()
 
 
-def test_dialogue_backpressure_is_cancellable_and_next_response_gets_first_slot(rig):
+def test_dialogue_backpressure_is_cancellable_and_next_response_gets_first_slot(rig: Any) -> None:
     import json
 
     from ramvi_character.speech import SEGMENT_QUEUE
@@ -172,7 +181,7 @@ def test_dialogue_backpressure_is_cancellable_and_next_response_gets_first_slot(
     s, d, k, providers, outputs = rig
 
     class Blocking(Provider):
-        def synthesize(self, request, cancel):
+        def synthesize(self, request: Any, cancel: Any) -> Any:
             self.stopped.wait(3)
             if not cancel.is_set():
                 yield AudioPiece(bytes(640), 16000)
@@ -180,7 +189,7 @@ def test_dialogue_backpressure_is_cancellable_and_next_response_gets_first_slot(
     original = s.provider_factory
     first = True
 
-    def factory(info, key):
+    def factory(info: Any, key: Any) -> Any:
         nonlocal first
         if first:
             first = False
@@ -192,7 +201,7 @@ def test_dialogue_backpressure_is_cancellable_and_next_response_gets_first_slot(
     s.provider_factory = factory
 
     class Connected(Services):
-        def call(self, method, payload):
+        def call(self, method: Any, payload: Any) -> Any:
             if method == "speech.catalog":
                 return s.catalog(d)
             if method == "speech.configure":
@@ -236,7 +245,7 @@ def test_dialogue_backpressure_is_cancellable_and_next_response_gets_first_slot(
         m.dispose()
 
 
-def test_first_validated_segment_plays_before_llm_finishes(rig):
+def test_first_validated_segment_plays_before_llm_finishes(rig: Any) -> None:
     import json
 
     from test_character_dialogue import Services, active, finish
@@ -249,7 +258,7 @@ def test_first_validated_segment_plays_before_llm_finishes(rig):
     class Connected(Services):
         reads = 0
 
-        def call(self, method, payload):
+        def call(self, method: Any, payload: Any) -> Any:
             if method == "speech.catalog":
                 return s.catalog(d)
             if method == "speech.configure":
@@ -301,7 +310,7 @@ def test_first_validated_segment_plays_before_llm_finishes(rig):
         m.dispose()
 
 
-def test_sound_device_construction_cannot_start_playback(monkeypatch):
+def test_sound_device_construction_cannot_start_playback(monkeypatch: Any) -> None:
     import sys
     from types import SimpleNamespace
 
@@ -310,30 +319,30 @@ def test_sound_device_construction_cannot_start_playback(monkeypatch):
     calls = []
 
     class Stream:
-        def __init__(self, **kwargs):
+        def __init__(self, **kwargs: Any) -> None:
             calls.append("open")
             self.callback = kwargs["callback"]
             self.time = 1.0
 
         @property
-        def active(self):
+        def active(self) -> Any:
             calls.append("write")
             self.callback(bytearray(640), 320, SimpleNamespace(outputBufferDacTime=1.02), False)
             return True
 
-        def start(self):
+        def start(self) -> Any:
             calls.append("start")
 
-        def write(self, pcm):
+        def write(self, pcm: Any) -> Any:
             calls.append("write")
 
-        def stop(self):
+        def stop(self) -> Any:
             calls.append("stop")
 
-        def close(self):
+        def close(self) -> Any:
             calls.append("close")
 
-        def abort(self):
+        def abort(self) -> Any:
             calls.append("abort")
 
     monkeypatch.setitem(sys.modules, "sounddevice", SimpleNamespace(RawOutputStream=Stream))

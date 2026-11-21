@@ -288,15 +288,15 @@ def test_complete_only_provider_has_cancellable_async_job_without_claiming_strea
     class Plain:
         capabilities = ProviderCapabilities()
 
-        def complete(self, request, cancel):
+        def complete(self, request: Any, cancel: Any) -> Any:
             started.set()
             assert cancel.wait(3)
             raise InterruptedError("cancelled single completion")
 
-        def cancel(self):
+        def cancel(self) -> Any:
             pass
 
-        def unload(self):
+        def unload(self) -> Any:
             pass
 
     scope, _, _ = make_scope(tmp_path, Plain())
@@ -307,7 +307,9 @@ def test_complete_only_provider_has_cancellable_async_job_without_claiming_strea
         stream = scope._streams[identifier]
         assert started.wait(2)
         scope.call("llm.cancel", {"stream_id": identifier})
+        assert stream.thread is not None
         stream.thread.join(2)
+        assert stream.thread is not None
         assert not stream.thread.is_alive() and stream.finished
         assert not scope.call("llm.capabilities", {})["capabilities"]["streaming"]
     finally:
@@ -345,13 +347,13 @@ def test_complete_only_job_delivers_one_result_and_finish(tmp_path: Path) -> Non
     class Plain:
         capabilities = ProviderCapabilities()
 
-        def complete(self, request, cancel):
+        def complete(self, request: Any, cancel: Any) -> Any:
             return {"choices": [{"message": {"content": "Fresh 104729"}, "finish_reason": "stop"}]}
 
-        def cancel(self):
+        def cancel(self) -> Any:
             pass
 
-        def unload(self):
+        def unload(self) -> Any:
             pass
 
     scope, _, _ = make_scope(tmp_path, Plain())

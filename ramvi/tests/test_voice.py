@@ -1378,7 +1378,7 @@ def test_failed_native_start_closes_every_opened_microphone(
 
         return Stream()
 
-    sd.RawInputStream = broken
+    sd.RawInputStream = broken  # type: ignore[method-assign]
     mic = SoundDeviceMicrophone(platform="darwin")
     monkeypatch.setattr(mic, "_sd", lambda: sd)
     with pytest.raises(ChatError):

@@ -232,7 +232,7 @@ def test_all_owned_cleanup_runs_even_if_microphone_and_detector_close_fail() -> 
     calls = []
 
     class Broken(Detector):
-        def close(self):
+        def close(self) -> Any:
             calls.append("detector")
             raise OSError("driver disappeared")
 
@@ -240,11 +240,11 @@ def test_all_owned_cleanup_runs_even_if_microphone_and_detector_close_fail() -> 
     session.start()
     assert mic.stream is not None
 
-    def fail():
+    def fail() -> Any:
         calls.append("microphone")
         raise OSError("close failed")
 
-    mic.stream.close = fail
+    mic.stream.close = fail  # type: ignore[method-assign]
     session.stop()
     session.join()
     assert calls == ["microphone", "release", "detector"] and recognizer.closed

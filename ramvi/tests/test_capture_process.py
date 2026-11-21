@@ -4,6 +4,7 @@ import base64
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 from ramvi_service.chat import ChatError
@@ -13,17 +14,17 @@ from test_voice import FakeTranscriber, wait
 from test_voice_session import Detector
 
 
-def test_failed_native_open_stops_process_without_capture():
+def test_failed_native_open_stops_process_without_capture() -> None:
     class Worker:
         stopped = False
 
-        def start(self):
+        def start(self) -> Any:
             pass
 
-        def request(self, *args, **kwargs):
+        def request(self, *args: Any, **kwargs: Any) -> Any:
             raise TimeoutError("private device name")
 
-        def stop(self, **kwargs):
+        def stop(self, **kwargs: Any) -> Any:
             self.stopped = True
 
     worker = Worker()
@@ -32,15 +33,15 @@ def test_failed_native_open_stops_process_without_capture():
     assert worker.stopped
 
 
-def test_native_reader_failure_is_propagated_to_session_and_closed():
+def test_native_reader_failure_is_propagated_to_session_and_closed() -> None:
     class Worker:
         stopped = threading.Event()
         reads = 0
 
-        def start(self):
+        def start(self) -> Any:
             pass
 
-        def request(self, method, payload, timeout):
+        def request(self, method: Any, payload: Any, timeout: Any) -> Any:
             if method == "start":
                 return {"rate": 16000}
             self.reads += 1
@@ -51,7 +52,7 @@ def test_native_reader_failure_is_propagated_to_session_and_closed():
                 }
             raise OSError("native capture lost")
 
-        def stop(self, **kwargs):
+        def stop(self, **kwargs: Any) -> Any:
             self.stopped.set()
 
     worker = Worker()
@@ -74,20 +75,20 @@ def test_native_reader_failure_is_propagated_to_session_and_closed():
         session.join()
 
 
-def test_buffered_audio_before_gate_cutoff_is_never_delivered_afterward():
+def test_buffered_audio_before_gate_cutoff_is_never_delivered_afterward() -> None:
     entered = threading.Event()
     release = threading.Event()
-    captured = []
+    captured: list[Any] = []
     old = time.monotonic() - 1
 
     class Worker:
         stopped = threading.Event()
         reads = 0
 
-        def start(self):
+        def start(self) -> Any:
             pass
 
-        def request(self, method, payload, timeout):
+        def request(self, method: Any, payload: Any, timeout: Any) -> Any:
             if method == "start":
                 return {"rate": 16000}
             self.reads += 1
@@ -103,7 +104,7 @@ def test_buffered_audio_before_gate_cutoff_is_never_delivered_afterward():
             self.stopped.wait(2)
             raise OSError("closed")
 
-        def stop(self, **kwargs):
+        def stop(self, **kwargs: Any) -> Any:
             self.stopped.set()
 
     worker = Worker()
@@ -119,7 +120,7 @@ def test_buffered_audio_before_gate_cutoff_is_never_delivered_afterward():
         stream.close()
 
 
-def test_native_capture_clock_is_comparable_across_owned_processes():
+def test_native_capture_clock_is_comparable_across_owned_processes() -> None:
     import sys
 
     from ramvi_engine.processes import ProcessSupervisor
@@ -136,19 +137,19 @@ for line in sys.stdin:
 """
     process = ProcessSupervisor([sys.executable, "-u", "-c", source], timeout=2)
     clock = []
-    received = []
+    received: list[Any] = []
 
     class Worker:
-        def start(self):
+        def start(self) -> Any:
             return process.start()
 
-        def request(self, method, payload, timeout):
+        def request(self, method: Any, payload: Any, timeout: Any) -> Any:
             result = process.request(method, payload, timeout=timeout)
             if method == "start":
                 clock.append(result["clock"])
             return result
 
-        def stop(self, **kwargs):
+        def stop(self, **kwargs: Any) -> Any:
             return process.stop(**kwargs)
 
     before = time.monotonic()
@@ -159,4 +160,5 @@ for line in sys.stdin:
         wait(lambda: bool(received))
     finally:
         stream.close()
+    assert stream.thread is not None
     assert process.status()["state"] == "stopped" and not stream.thread.is_alive()

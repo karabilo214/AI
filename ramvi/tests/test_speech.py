@@ -6,6 +6,7 @@ import threading
 import time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 
 import pytest
 from ramvi_service.contracts.speech import AudioPiece, SpeechRequest
@@ -22,16 +23,16 @@ def wait(predicate: Callable[[], bool]) -> None:
 
 
 class Provider:
-    def __init__(self):
-        self.requests = []
+    def __init__(self) -> None:
+        self.requests: list[Any] = []
         self.closed = False
         self.stopped = threading.Event()
         self.block = False
 
-    def voices(self):
+    def voices(self) -> Any:
         return [{"id": "local", "name": "Local", "languages": ["ru"]}]
 
-    def synthesize(self, request, cancel):
+    def synthesize(self, request: Any, cancel: Any) -> Any:
         self.requests.append(request)
         yield AudioPiece(b"\0" * (640 if self.block else 3), 16000)
         if self.block:
@@ -39,42 +40,42 @@ class Provider:
         if not cancel.is_set():
             yield AudioPiece(b"\0" * 5, 16000)
 
-    def cancel(self):
+    def cancel(self) -> Any:
         self.stopped.set()
 
-    def close(self):
+    def close(self) -> Any:
         self.closed = True
         self.cancel()
 
 
 class Output:
-    def __init__(self, rate):
+    def __init__(self, rate: Any) -> None:
         self.rate, self.pcm, self.closed, self.aborted = rate, b"", False, False
 
-    def start(self):
+    def start(self) -> Any:
         self.started = True
 
-    def write(self, pcm):
+    def write(self, pcm: Any) -> Any:
         assert len(pcm) % 2 == 0
         self.pcm += pcm
 
-    def close(self):
+    def close(self) -> Any:
         self.closed = True
 
-    def cancel(self):
+    def cancel(self) -> Any:
         self.aborted = True
 
 
 @pytest.fixture
-def rig(tmp_path):
+def rig(tmp_path: Any) -> Any:
     providers, outputs = [], []
 
-    def factory(info, key):
+    def factory(info: Any, key: Any) -> Any:
         p = Provider()
         providers.append(p)
         return p
 
-    def output(rate):
+    def output(rate: Any) -> Any:
         o = Output(rate)
         outputs.append(o)
         return o
@@ -86,7 +87,7 @@ def rig(tmp_path):
     service.close()
 
 
-def start(service, data, secrets, **extra):
+def start(service: Any, data: Any, secrets: Any, **extra: Any) -> Any:
     return service.start(
         "owner",
         data,
@@ -98,7 +99,7 @@ def start(service, data, secrets, **extra):
     )["job_id"]
 
 
-def test_defaults_and_remote_egress_before_credentials_or_provider(rig):
+def test_defaults_and_remote_egress_before_credentials_or_provider(rig: Any) -> None:
     s, d, k, p, o = rig
     with pytest.raises(RuntimeError, match="disabled"):
         start(s, d, k)
@@ -121,7 +122,7 @@ def test_defaults_and_remote_egress_before_credentials_or_provider(rig):
     assert k.get("tts_openai") is None
 
 
-def test_local_fallback_pcm_alignment_owner_and_cleanup(rig):
+def test_local_fallback_pcm_alignment_owner_and_cleanup(rig: Any) -> None:
     s, d, k, p, o = rig
     s.configure("owner", d, {"enabled": True})
     identifier = start(s, d, k)
@@ -139,11 +140,11 @@ def test_local_fallback_pcm_alignment_owner_and_cleanup(rig):
     assert s.status("owner")["job"] is None
 
 
-def test_preview_without_enabling_and_cancel_own_job(rig):
+def test_preview_without_enabling_and_cancel_own_job(rig: Any) -> None:
     s, d, k, p, o = rig
     original = s.provider_factory
 
-    def blocked(info, key):
+    def blocked(info: Any, key: Any) -> Any:
         obj = original(info, key)
         obj.block = True
         return obj
@@ -166,13 +167,13 @@ def test_preview_without_enabling_and_cancel_own_job(rig):
         {"text": "x", "intensity": True},
     ],
 )
-def test_invalid_request(fields):
+def test_invalid_request(fields: Any) -> None:
     with pytest.raises(ValueError):
         SpeechRequest(**fields)
 
 
 @pytest.mark.parametrize("provider", ["openai", "gemini", "elevenlabs"])
-def test_official_adapter_protocol_on_loopback(provider):
+def test_official_adapter_protocol_on_loopback(provider: Any) -> None:
     observed = []
     pcm = b"\0\0" * 120
     alignment = {
@@ -182,12 +183,15 @@ def test_official_adapter_protocol_on_loopback(provider):
     }
 
     class Handler(BaseHTTPRequestHandler):
-        def do_POST(self):
+        def do_POST(self) -> Any:
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             observed.append((self.path, dict(self.headers), body))
             if provider == "gemini":
                 # Поток SSE, как у настоящего API: звук кусками в step.delta.
-                events = [{"event_type": "interaction.created"}, {"event_type": "step.start"}]
+                events: list[dict[str, Any]] = [
+                    {"event_type": "interaction.created"},
+                    {"event_type": "step.start"},
+                ]
                 events += [
                     {
                         "event_type": "step.delta",
@@ -215,7 +219,7 @@ def test_official_adapter_protocol_on_loopback(provider):
             self.end_headers()
             self.wfile.write(result)
 
-        def log_message(self, *args):
+        def log_message(self, *args: Any) -> Any:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -247,6 +251,7 @@ def test_official_adapter_protocol_on_loopback(provider):
             assert body["input"][0]["content"][0]["annotations"][0]["style"] == "cheerful"
         else:
             assert "/voice/with-timestamps?" in path and headers["xi-api-key"] == "fake-key"
+            assert adapter.timings is not None
             assert adapter.timings["source"] == "provider" and adapter.timings["starts"] == [0, 0.1]
         assert body.get("model", body.get("model_id")) == "chosen-model"
     finally:
@@ -273,12 +278,12 @@ def test_official_adapter_protocol_on_loopback(provider):
         },
     ],
 )
-def test_bad_timings_rejected(value):
+def test_bad_timings_rejected(value: Any) -> None:
     with pytest.raises(ValueError):
         validate_alignment(value)
 
 
-def test_real_module_worker_scoped_preview_and_shutdown(tmp_path):
+def test_real_module_worker_scoped_preview_and_shutdown(tmp_path: Any) -> None:
     from pathlib import Path
 
     from ramvi_service.modules.host import ModuleHost
@@ -286,12 +291,12 @@ def test_real_module_worker_scoped_preview_and_shutdown(tmp_path):
 
     providers, outputs = [], []
 
-    def factory(info, key):
+    def factory(info: Any, key: Any) -> Any:
         p = Provider()
         providers.append(p)
         return p
 
-    def output(rate):
+    def output(rate: Any) -> Any:
         o = Output(rate)
         outputs.append(o)
         return o
@@ -317,7 +322,7 @@ def test_real_module_worker_scoped_preview_and_shutdown(tmp_path):
         host.speech.close()
 
 
-def test_alignment_fits_module_rpc_with_worst_case_unicode_and_timestamps():
+def test_alignment_fits_module_rpc_with_worst_case_unicode_and_timestamps() -> None:
     alignment = validate_alignment(
         {
             "characters": ["😀"] * 2048,
@@ -329,18 +334,18 @@ def test_alignment_fits_module_rpc_with_worst_case_unicode_and_timestamps():
     assert alignment["kind"] == "none" and alignment["reason"] == "alignment_size_limit"
 
 
-def test_cloud_rejects_redirect_without_leaking_response_or_following():
+def test_cloud_rejects_redirect_without_leaking_response_or_following() -> None:
     calls = []
 
     class Handler(BaseHTTPRequestHandler):
-        def do_POST(self):
+        def do_POST(self) -> Any:
             calls.append(self.path)
             self.send_response(307)
             self.send_header("Location", "https://example.org/steal")
             self.end_headers()
             self.wfile.write(b"private text and fake-key")
 
-        def log_message(self, *args):
+        def log_message(self, *args: Any) -> Any:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -360,13 +365,13 @@ def test_cloud_rejects_redirect_without_leaking_response_or_following():
         server.server_close()
 
 
-def test_cancelled_cloud_request_never_posts():
+def test_cancelled_cloud_request_never_posts() -> None:
     cancel = threading.Event()
     cancel.set()
 
     # TCP connection can be opened, but credentials/text must not be sent after cancellation.
     class Handler(BaseHTTPRequestHandler):
-        def do_POST(self):
+        def do_POST(self) -> Any:
             raise AssertionError("cancelled request sent")
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -385,11 +390,11 @@ def test_cancelled_cloud_request_never_posts():
         server.server_close()
 
 
-def test_cloud_cancel_interrupts_a_stalled_response_socket():
+def test_cloud_cancel_interrupts_a_stalled_response_socket() -> None:
     started, release = threading.Event(), threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
-        def do_POST(self):
+        def do_POST(self) -> Any:
             self.rfile.read(int(self.headers["Content-Length"]))
             self.send_response(200)
             self.send_header("Content-Length", "100000")
@@ -399,7 +404,7 @@ def test_cloud_cancel_interrupts_a_stalled_response_socket():
             started.set()
             release.wait(4)
 
-        def log_message(self, *args):
+        def log_message(self, *args: Any) -> Any:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -411,7 +416,7 @@ def test_cloud_cancel_interrupts_a_stalled_response_socket():
     cancel = threading.Event()
     errors = []
 
-    def read():
+    def read() -> Any:
         try:
             list(adapter.synthesize(SpeechRequest("fresh"), cancel))
         except Exception as error:
@@ -434,13 +439,13 @@ def test_cloud_cancel_interrupts_a_stalled_response_socket():
         server.server_close()
 
 
-def test_output_gates_only_its_own_microphone_session_and_releases(rig):
+def test_output_gates_only_its_own_microphone_session_and_releases(rig: Any) -> None:
     s, d, k, _, outputs = rig
 
     class Input:
         calls = []
 
-        def session_playback(self, active, *, owner):
+        def session_playback(self, active: Any, *, owner: Any) -> Any:
             self.calls.append((active, owner))
 
     s.voice = Input()
@@ -451,7 +456,7 @@ def test_output_gates_only_its_own_microphone_session_and_releases(rig):
     assert outputs[0].closed
 
 
-def test_sse_events_join_lines_across_chunks_and_stop_at_done():
+def test_sse_events_join_lines_across_chunks_and_stop_at_done() -> None:
     from ramvi_service.speech.cloud import sse_events
 
     raw = b'event: a\r\ndata: {"event_type": "step.delta", "n": 1}\r\n\r\ndata: {"n": 2}\n\ndata: [DONE]\n\ndata: {"n": 3}\n'
@@ -459,12 +464,12 @@ def test_sse_events_join_lines_across_chunks_and_stop_at_done():
     assert [e.get("n") for e in sse_events(iter(chunks))] == [1, 2]
 
 
-def test_next_segment_is_synthesized_ahead_and_plays_after_the_current(tmp_path):
+def test_next_segment_is_synthesized_ahead_and_plays_after_the_current(tmp_path: Any) -> None:
     """Пауза между фразами — не время синтеза: следующая готовится, пока звучит текущая."""
     gate, order, providers = threading.Event(), [], []
 
     class Slow(Provider):
-        def synthesize(self, request, cancel):
+        def synthesize(self, request: Any, cancel: Any) -> Any:
             self.requests.append(request)
             order.append(("synth", request.text))
             yield AudioPiece(b"\0" * 640, 16000)
@@ -473,10 +478,10 @@ def test_next_segment_is_synthesized_ahead_and_plays_after_the_current(tmp_path)
             yield AudioPiece(b"\0" * 2, 16000)
 
     class Logged(Output):
-        def start(self):
+        def start(self) -> Any:
             order.append(("play", len(order)))
 
-    def factory(info, key):
+    def factory(info: Any, key: Any) -> Any:
         providers.append(Slow())
         return providers[-1]
 
@@ -487,7 +492,7 @@ def test_next_segment_is_synthesized_ahead_and_plays_after_the_current(tmp_path)
         service.configure("owner", data, {"enabled": True})
         service.advance("owner", 1, "r")
 
-        def go(segment, text):
+        def go(segment: Any, text: Any) -> Any:
             return service.start(
                 "owner",
                 data,

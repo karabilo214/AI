@@ -2,6 +2,7 @@
 
 import json
 import threading
+from typing import Any
 
 import pytest
 from ramvi_service.contracts.modules import Authority
@@ -30,7 +31,7 @@ from test_speech import Output, Provider, wait
         ("http", "speech.api_http_503"),
     ],
 )
-def test_fault_cleanup_and_next_job(fault, code, tmp_path):
+def test_fault_cleanup_and_next_job(fault: Any, code: Any, tmp_path: Any) -> None:
     authority = Authority()
     owner = authority.issue("character", "user", "recovery")
     broker = ResourceBroker(authority, {SPEAKER: 1})
@@ -41,7 +42,7 @@ def test_fault_cleanup_and_next_job(fault, code, tmp_path):
     class Backend(Provider):
         bad = True
 
-        def synthesize(self, request, cancel):
+        def synthesize(self, request: Any, cancel: Any) -> Any:
             if self.bad and fault == "synth":
                 raise OSError("private input or credential must not escape")
             if self.bad and fault == "http":
@@ -53,7 +54,7 @@ def test_fault_cleanup_and_next_job(fault, code, tmp_path):
             if self.bad and fault == "idle_timeout":
                 self.stopped.wait(2)
 
-        def close(self):
+        def close(self) -> Any:
             super().close()
             if self.bad and fault == "provider_close":
                 raise OSError("private cleanup text")
@@ -61,17 +62,17 @@ def test_fault_cleanup_and_next_job(fault, code, tmp_path):
     class Device(Output):
         bad = True
 
-        def start(self):
+        def start(self) -> Any:
             if self.bad and fault == "start":
                 raise OSError("driver name private")
             super().start()
 
-        def write(self, pcm):
+        def write(self, pcm: Any) -> Any:
             if self.bad and fault == "write":
                 raise OSError("driver lost")
             super().write(pcm)
 
-        def close(self):
+        def close(self) -> Any:
             super().close()
             if self.bad and fault == "close":
                 raise OSError("close failed")
@@ -79,7 +80,7 @@ def test_fault_cleanup_and_next_job(fault, code, tmp_path):
     class Input:
         bad = True
 
-        def session_playback(self, active, *, owner):
+        def session_playback(self, active: Any, *, owner: Any) -> Any:
             gates.append(active)
             if self.bad and (
                 (fault == "gate" and active) or (fault == "gate_close" and not active)
@@ -89,13 +90,13 @@ def test_fault_cleanup_and_next_job(fault, code, tmp_path):
     healthy = False
     input = Input()
 
-    def backend(info, key):
+    def backend(info: Any, key: Any) -> Any:
         p = Backend()
         p.bad = not healthy
         providers.append(p)
         return p
 
-    def output(rate):
+    def output(rate: Any) -> Any:
         if not healthy and fault == "open":
             raise OSError("no output")
         o = Device(rate)
@@ -138,11 +139,11 @@ def test_fault_cleanup_and_next_job(fault, code, tmp_path):
 
 
 class Connected(Services):
-    def __init__(self, core, data, secret):
+    def __init__(self, core: Any, data: Any, secret: Any) -> None:
         super().__init__()
         self.core, self.disk, self.secret = core, data, secret
 
-    def call(self, method, payload):
+    def call(self, method: Any, payload: Any) -> Any:
         s = self.core
         if method == "speech.catalog":
             return s.catalog(self.disk, payload.get("refresh", False))
@@ -159,24 +160,24 @@ class Connected(Services):
         return super().call(method, payload)
 
 
-def test_failed_audio_preserves_entire_text_and_resume_never_replays_current(tmp_path):
+def test_failed_audio_preserves_entire_text_and_resume_never_replays_current(tmp_path: Any) -> None:
     providers = []
     outputs = []
     healthy = False
 
     class Backend(Provider):
-        def synthesize(self, request, cancel):
+        def synthesize(self, request: Any, cancel: Any) -> Any:
             self.requests.append(request)
             if not healthy:
                 raise OSError("private text")
             yield AudioPiece(b"\1\0" * 320, 16000)
 
-    def factory(info, key):
+    def factory(info: Any, key: Any) -> Any:
         p = Backend()
         providers.append(p)
         return p
 
-    def device(rate):
+    def device(rate: Any) -> Any:
         o = Output(rate)
         outputs.append(o)
         return o
@@ -212,23 +213,25 @@ def test_failed_audio_preserves_entire_text_and_resume_never_replays_current(tmp
         )
         m.dialogue("start", {"text": "Second", "model": "one"})
         finish(m)
-        wait(lambda: outputs and outputs[-1].closed)
+        wait(lambda: bool(outputs) and outputs[-1].closed)
+        assert m._speech.thread is not None
         assert m._speech.thread.is_alive() and core.status("owner")["job"]["state"] == "completed"
         m.speech("configure", {"settings": {"enabled": False}})
         assert not m._speech.armed and core.status("owner")["job"]["settled"]
     finally:
         m.dispose()
         core.close()
+    assert m._speech.thread is not None
     assert not m._speech.thread.is_alive()
 
 
-def test_inventory_failure_does_not_hold_job_lock_and_refresh_recovers(tmp_path):
+def test_inventory_failure_does_not_hold_job_lock_and_refresh_recovers(tmp_path: Any) -> None:
     release = threading.Event()
     entered = threading.Event()
     attempts = 0
 
     class Inventory(Provider):
-        def voices(self):
+        def voices(self) -> Any:
             nonlocal attempts
             attempts += 1
             entered.set()
@@ -237,7 +240,7 @@ def test_inventory_failure_does_not_hold_job_lock_and_refresh_recovers(tmp_path)
                 raise OSError("private inventory data")
             return super().voices()
 
-    def factory(info, key):
+    def factory(info: Any, key: Any) -> Any:
         return Inventory()
 
     core = SpeechService(provider_factory=factory)
@@ -257,22 +260,23 @@ def test_inventory_failure_does_not_hold_job_lock_and_refresh_recovers(tmp_path)
     finally:
         release.set()
         core.close()
+    assert core.inventory_thread is not None
     assert not core.inventory_thread.is_alive()
 
 
-def test_output_timeout_terminates_owned_worker():
+def test_output_timeout_terminates_owned_worker() -> None:
     from ramvi_service.speech.output import SoundOutput
 
     class Worker:
         stopped = False
 
-        def start(self):
+        def start(self) -> Any:
             pass
 
-        def request(self, *args, **kwargs):
+        def request(self, *args: Any, **kwargs: Any) -> Any:
             raise TimeoutError("private driver detail")
 
-        def stop(self, **kwargs):
+        def stop(self, **kwargs: Any) -> Any:
             self.stopped = True
 
     worker = Worker()
@@ -285,7 +289,7 @@ def test_output_timeout_terminates_owned_worker():
     output.close()
 
 
-def test_old_failure_cannot_disable_new_voice_selection():
+def test_old_failure_cannot_disable_new_voice_selection() -> None:
     from ramvi_character.speech import SpeechOutput
     from test_character_speech import SpeechServices
 
@@ -302,10 +306,10 @@ def test_old_failure_cannot_disable_new_voice_selection():
         output.close()
 
 
-def test_voice_switch_and_preview_keep_text_generation_valid(tmp_path):
+def test_voice_switch_and_preview_keep_text_generation_valid(tmp_path: Any) -> None:
     providers = []
 
-    def factory(info, key):
+    def factory(info: Any, key: Any) -> Any:
         p = Provider()
         providers.append(p)
         return p
@@ -331,7 +335,7 @@ def test_voice_switch_and_preview_keep_text_generation_valid(tmp_path):
         core.close()
 
 
-def test_failed_owner_does_not_interrupt_another_module(tmp_path):
+def test_failed_owner_does_not_interrupt_another_module(tmp_path: Any) -> None:
     import time
 
     authority = Authority()
@@ -341,7 +345,7 @@ def test_failed_owner_does_not_interrupt_another_module(tmp_path):
     outputs = []
 
     class Backend(Provider):
-        def synthesize(self, request, cancel):
+        def synthesize(self, request: Any, cancel: Any) -> Any:
             if request.text == "bad":
                 raise OSError("provider failed")
             for _ in range(100):
@@ -352,12 +356,12 @@ def test_failed_owner_does_not_interrupt_another_module(tmp_path):
     class Playing(Output):
         writes = 0
 
-        def write(self, pcm):
+        def write(self, pcm: Any) -> Any:
             time.sleep(0.01)
             self.writes += 1
             super().write(pcm)
 
-    def device(rate):
+    def device(rate: Any) -> Any:
         o = Playing(rate)
         outputs.append(o)
         return o
@@ -370,7 +374,7 @@ def test_failed_owner_does_not_interrupt_another_module(tmp_path):
         core.configure(other, a, {"enabled": True})
         core.configure(failed, b, {"enabled": True})
         running = core.start(other, a, secret, {"request": {"text": "healthy"}})["job_id"]
-        wait(lambda: outputs and outputs[0].writes >= 2)
+        wait(lambda: bool(outputs) and outputs[0].writes >= 2)
         bad = core.start(failed, b, secret, {"request": {"text": "bad"}})["job_id"]
         wait(lambda: core.status(failed, bad)["job"]["settled"])
         count = outputs[0].writes
@@ -385,7 +389,7 @@ def test_failed_owner_does_not_interrupt_another_module(tmp_path):
         core.close()
 
 
-def test_provider_switch_requires_explicit_remote_text_permission_again(tmp_path):
+def test_provider_switch_requires_explicit_remote_text_permission_again(tmp_path: Any) -> None:
     core = SpeechService(provider_factory=lambda *_: Provider(), output_factory=Output)
     data = ScopedData(tmp_path, "character")
     secret = ScopedSecrets(MemorySecrets(), "character")
@@ -402,12 +406,12 @@ def test_provider_switch_requires_explicit_remote_text_permission_again(tmp_path
         core.close()
 
 
-def test_late_failed_job_settlement_cannot_disarm_new_preview():
+def test_late_failed_job_settlement_cannot_disarm_new_preview() -> None:
     from ramvi_character.speech import SpeechOutput
     from test_character_speech import SpeechServices
 
     class Svc(SpeechServices):
-        def call(self, method, payload):
+        def call(self, method: Any, payload: Any) -> Any:
             result = super().call(method, payload)
             if method == "speech.status" and payload["job_id"] == "1":
                 result["job"].update(state="error", error="speech.device_lost")
@@ -417,11 +421,11 @@ def test_late_failed_job_settlement_cannot_disarm_new_preview():
     speech = SpeechOutput(svc)
     degrade = speech._degrade
 
-    def race(error, expected=None):
-        degrade(error, expected)
+    def race(error: BaseException | str, expected_generation: int | None = None) -> None:
+        degrade(error, expected_generation)
         speech.preview()  # explicit UI action between failure and old settlement
 
-    speech._degrade = race
+    speech._degrade = race  # type: ignore[method-assign]
     try:
         speech.preview()
         wait(lambda: len(svc.starts) == 2)
