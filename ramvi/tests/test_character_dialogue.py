@@ -332,6 +332,7 @@ def test_owner_allows_profanity_and_the_model_is_told_to_swear() -> None:
     assert "обломался" not in second  # но готового ответа нет: модель не повторяет его по кругу
     assert "Never repeat your earlier replies" in second
     assert "Absurd or impossible requests" in second  # не «гавкает», а отвечает по-человечески
+    assert "never how you sound" in second  # особые случаи не отменяют характер
     assert "гав" not in second.lower()  # без готовой реплики, которую модель повторяла бы
     assert m.dialogue("status", {})["character"]["profanity_level"] == 2
     assert "Swear moderately" in second  # по умолчанию «средне»
