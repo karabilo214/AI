@@ -79,9 +79,9 @@ def main() -> None:
                         )
                         break
                     except RuntimeError:  # 429 — подождать и повторить
-                        time.sleep(5 * (attempt + 1))
+                        time.sleep(10 * (attempt + 1))
                 else:
-                    pcm = b""
+                    raise RuntimeError("speech failed after retries")  # не подменять тишиной
                 audio += pcm + PAUSE
                 shown.append(
                     {
