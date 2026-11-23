@@ -1,7 +1,7 @@
 """Одна реплика персонажу на облачной модели: профиль, уровень мата, фраза владельца.
 
 usage: say_once.py <файл ключей> <токенизатор Qwen3> <модель: haiku|sonnet|openai:...> <профиль>
-                   <мат 0-3, 0 — запрещён> <фраза> [повторов]
+                   <мат 0-3, 0 — запрещён> <фраза> [повторов] [keep — повторы в одном диалоге]
 """
 
 import os
@@ -26,6 +26,7 @@ def main() -> None:
     os.environ["RAMVI_TOKENIZER"] = sys.argv[2]
     choice, profile, level, text = sys.argv[3], sys.argv[4], int(sys.argv[5]), sys.argv[6]
     repeats = int(sys.argv[7]) if len(sys.argv) > 7 else 1
+    keep = len(sys.argv) > 8 and sys.argv[8] == "keep"
     app = Path(tempfile.mkdtemp(prefix="ramvi-say-"))
     shutil.copytree(ROOT / "modules" / "character", app / "modules" / "character")
     server, _ = build(app / "data", TOKEN, app_dir=app, voice_options={"secrets": Secrets()})
@@ -43,10 +44,13 @@ def main() -> None:
         client.ok("POST", path, {"operation": "boundary", "arguments": allowed})
         if level:
             client.ok("POST", path, {"operation": "profanity_level", "arguments": {"level": level}})
-        print(f"модель {model.rsplit(':', 1)[-1]}, профиль {profile}, мат {level}")
+        mode = "в одном диалоге" if keep else "с чистой историей"
+        print(f"модель {model.rsplit(':', 1)[-1]}, профиль {profile}, мат {level}, {mode}")
         for number in range(repeats):
-            # Каждый повтор — заново, без истории: видно, разные ли ответы на одну фразу.
-            client.ok("POST", path, {"operation": "history_clear", "arguments": {}})
+            # Без keep каждый повтор — заново, без истории: видно, разные ли ответы на одну фразу;
+            # с keep — та же фраза подряд в одном диалоге.
+            if not keep:
+                client.ok("POST", path, {"operation": "history_clear", "arguments": {}})
             reply, seconds, error = say(client, path, text, model)
             print(f"{number + 1}. ({seconds} с) {reply or error}", flush=True)
     finally:

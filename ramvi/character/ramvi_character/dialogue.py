@@ -441,7 +441,8 @@ class Dialogue:
                 "ramvi_min_context": 8192,
                 "messages": prepared.messages,
                 "max_tokens": 1536,
-                "temperature": 0,
+                # Температура — по умолчанию у модели (движок и облако — 1): при 0 на одну и ту же
+                # фразу всегда одна и та же шутка (владелец 2026-11-23: повторные подколы запрещены).
                 "enable_thinking": False,
             }
             self._check(identifier, revision)
