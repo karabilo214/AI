@@ -143,6 +143,21 @@ class ToolAccess:
     confirm_destructive: bool = True
     max_series: int = 20
     command_timeout: float | None = 600.0
+    # 6.15: «Авто мод» на экране агента — действия без подтверждений. Выключенные инструменты,
+    # блок разрушительных команд и контрольные точки он не снимает.
+    auto_mode: bool = False
+
+    def effective(self) -> "ToolAccess":
+        """Доступ с учётом «Авто мода»: подтверждения выключены, остальное как задано."""
+        if not self.auto_mode:
+            return self
+        return replace(
+            self,
+            confirm_writes=False,
+            confirm_commands=False,
+            confirm_controls=False,
+            confirm_destructive=False,
+        )
 
 
 @dataclass(frozen=True)

@@ -104,7 +104,10 @@
               </PathIcon>
               <TextBlock VerticalAlignment="Center" Text="{l:T voice.transcribing}" />
             </StackPanel>
-            <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+              <!-- 6.15: действия без подтверждений; выключенные инструменты и блок опасных команд остаются -->
+              <CheckBox x:Name="AgentAutoMode" AutomationProperties.AutomationId="AgentAutoMode" VerticalAlignment="Center"
+                        Content="{l:T agent.auto_mode}" ToolTip.Tip="{l:T agent.auto_mode_hint}" IsChecked="{Binding AutoMode}" />
               <Button x:Name="AgentStart" AutomationProperties.AutomationId="AgentStart" Classes="accent" Command="{Binding StartCommand}" IsVisible="{Binding IsIdle}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <PathIcon Data="{StaticResource icon-send}" />

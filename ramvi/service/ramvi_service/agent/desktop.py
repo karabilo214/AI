@@ -72,6 +72,19 @@ def defaults() -> dict[str, Any]:
     }
 
 
+def with_new_fields(value: Any) -> Any:
+    """Настройки прежней версии: недостающие новые поля (например, auto_mode из 6.15) —
+    значениями по умолчанию, чтобы файл не сбрасывался целиком. Лишние поля не добавляются."""
+    if not isinstance(value, dict):
+        return value
+    upgraded = dict(value)
+    for group, spec in defaults().items():
+        current = upgraded.get(group)
+        if isinstance(current, dict):
+            upgraded[group] = {**{k: v for k, v in spec.items() if k not in current}, **current}
+    return upgraded
+
+
 def validate_policy(value: Any) -> dict[str, Any]:
     template = defaults()
     if not isinstance(value, dict) or set(value) != set(template):
@@ -145,7 +158,7 @@ class AgentDesktop:
         self._policy = defaults()
         try:
             loaded = json.loads((root / "agent_settings.json").read_text(encoding="utf-8"))
-            self._policy = validate_policy(loaded)
+            self._policy = validate_policy(with_new_fields(loaded))
         except FileNotFoundError:
             pass
         except (ValueError, TypeError):
@@ -235,7 +248,7 @@ class AgentDesktop:
             Restrictions(**policy["restrictions"]),
         )
         access_data = {**policy["access"], "disabled": frozenset(policy["access"]["disabled"])}
-        access = ToolAccess(**access_data)
+        access = ToolAccess(**access_data).effective()
         changes = ChangeStore(self.changes, ws)
         holder: dict[str, Any] = {}
 

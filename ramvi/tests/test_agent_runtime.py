@@ -516,3 +516,32 @@ def test_agent_sees_turned_off_tools_and_asks_to_turn_one_on(
         assert "run_command" not in script.tools[2]
     assert access.disabled == frozenset({"run_command"})  # настройки пользователя не меняются
     assert "agent.tool_requested" in env.kinds()
+
+
+def test_auto_mode_acts_without_confirmations_but_keeps_turned_off_tools(
+    tmp_path: Path, db: Database
+) -> None:
+    """6.15: «Авто мод» — правка без вопроса; выключенный инструмент так и остаётся выключенным."""
+    script = Script(reply("", FIX), reply("", call("run_command", command="python -V")), done("ok"))
+    env = Env(tmp_path, db, script, decisions=[])  # любой вопрос пользователю уронил бы тест
+    access = ToolAccess(auto_mode=True, disabled=frozenset({"run_command"})).effective()
+    assert not (access.confirm_writes or access.confirm_commands or access.confirm_destructive)
+    assert not access.allow_destructive_commands and "run_command" in access.disabled
+    env.gate = ApprovalGate(env.ask, ChangeStore(tmp_path / "changes2", env.ws), access)
+    env.tools = build_tools(env.ws, access, gate=env.gate)
+    env.runtime = AgentRuntime(script, env.tools, env.runs, emit=env.events.append)
+    result = env.runtime.run("fix add")
+    assert result.status == "done"
+    assert (env.root / "src" / "calc.py").read_text() == "def add(a, b):\n    return a + b\n"
+    assert "agent.tool.disabled" in script.seen[2][-1]["content"]
+    assert ToolAccess().effective() == ToolAccess()  # без авто мода ничего не меняется
+
+
+def test_old_agent_settings_without_new_fields_are_kept(tmp_path: Path) -> None:
+    from ramvi_service.agent.desktop import defaults, validate_policy, with_new_fields
+
+    old = defaults()
+    del old["access"]["auto_mode"]  # файл настроек до 6.15
+    old["permissions"]["write"] = True
+    policy = validate_policy(with_new_fields(old))
+    assert policy["permissions"]["write"] is True and policy["access"]["auto_mode"] is False

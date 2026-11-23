@@ -440,6 +440,8 @@
   "agent.stop": "Stop",
   "agent.running": "Running…",
   "agent.approval": "Your decision is required",
+  "agent.auto_mode": "Auto mode",
+  "agent.auto_mode_hint": "The agent writes files, runs commands and acts in windows without confirmation. Turned-off tools and the block on dangerous commands stay; it still asks at checkpoints.",
   "agent.approve": "Apply",
   "agent.continue": "Continue",
   "agent.deny": "Deny",

@@ -131,6 +131,29 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     public string Series { get; set; } = "0";
     public string SecretPatterns { get; set; } = "";
     public bool UseUi { get; set; }
+
+    /// <summary>
+    /// 6.15: «Авто мод» — агент действует без подтверждений (запись, команды, действия в окне).
+    /// Выключенные инструменты, блок разрушительных команд и контрольные точки остаются.
+    /// Сохраняется сразу и действует со следующей задачи.
+    /// </summary>
+    public bool AutoMode
+    {
+        get => _autoMode;
+        set { if (Set(ref _autoMode, value)) _ = SaveAutoModeAsync(); }
+    }
+    private bool _autoMode;
+
+    private async Task SaveAutoModeAsync()
+    {
+        if (_policy is null) return;
+        try
+        {
+            _policy["access"]!["auto_mode"] = _autoMode;
+            await CallAsync("settings", (JsonObject)_policy.DeepClone()).ConfigureAwait(true);
+        }
+        catch (Exception e) when (IsHandled(e)) { ShowError(e); }
+    }
     public bool GrantUi { get; set; }
     public bool GrantScreen { get; set; }
     public bool GrantControl { get; set; }
@@ -157,7 +180,13 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
             {
                 foreach (var field in group.Value!.AsObject())
                 {
-                    if (field.Value is JsonValue val && val.TryGetValue<bool>(out var flag))
+                    if (group.Key == "access" && field.Key == "auto_mode")
+                    {
+                        // 6.15: «Авто мод» — галочка на экране агента, а не в списке подтверждений.
+                        _autoMode = field.Value is JsonValue auto && auto.TryGetValue<bool>(out var on) && on;
+                        Raise(nameof(AutoMode));
+                    }
+                    else if (field.Value is JsonValue val && val.TryGetValue<bool>(out var flag))
                     {
                         var collection = group.Key == "permissions" ? Rights : group.Key == "restrictions" ? Restrictions : Confirmations;
                         collection.Add(new AgentOption(group.Key, field.Key, flag));
@@ -249,6 +278,7 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
             foreach (var option in Rights.Concat(Restrictions).Concat(Confirmations)) policy[option.Group]![option.Key] = option.Enabled;
             policy["restrictions"]!["secret_patterns"] = new JsonArray([.. SecretPatterns.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(s => (JsonNode?)JsonValue.Create(s))]);
             policy["access"]!["disabled"] = new JsonArray([.. Tools.Where(t => !t.Enabled).Select(t => (JsonNode?)JsonValue.Create(t.Key))]);
+            policy["access"]!["auto_mode"] = _autoMode;
             foreach (var limit in Limits)
             {
                 if (limit.Unlimited && limit.SupportsUnlimited) { policy[limit.Group]![limit.Key] = null; continue; }

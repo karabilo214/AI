@@ -126,6 +126,43 @@ public sealed class AgentTests
         finally { window.Close(); }
     }
 
+    [AvaloniaFact]
+    public async Task Auto_mode_is_a_checkbox_on_the_agent_screen_and_is_saved_at_once()
+    {
+        // 6.15: галочка «Авто мод» на экране агента; сохраняется сразу, в списке подтверждений её нет.
+        Localizer.Current = Localizer.Load("ru");
+        var api = new FakeChatApi();
+        api.Sections.Add(new SectionInfo("agent", "section.agent", "agent", 20, "agent", "agent", "available", null));
+        JsonElement? saved = null;
+        api.AgentHandler = (path, body) => path switch
+        {
+            "settings" when body is null => Json("""{"settings":{"permissions":{"read":true},"restrictions":{},"access":{"disabled":[],"confirm_writes":true,"auto_mode":false},"limits":{},"retention":{}},"tools":["read_file"]}"""),
+            "settings" => Save(body),
+            "history" => Json("""{"runs":[]}"""),
+            "state" => Json("""{"task":null,"pending":null}"""),
+            _ => throw new InvalidOperationException(path),
+        };
+        JsonElement Save(JsonElement? payload) { saved = payload; return Json("{}"); }
+        using var model = new MainViewModel(api, pickFolder: _ => Task.FromResult<string?>("/project"));
+        var window = new MainWindow { DataContext = model };
+        window.Show();
+        try
+        {
+            await model.InitializeAsync();
+            model.Sections.Selected = model.Sections.Items.Single(i => i.View == "agent");
+            await MainViewModelTests.Until(() => model.Agent.Rights.Count > 0, "Agent loaded");
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(model.Agent.AutoMode);
+            Assert.DoesNotContain(model.Agent.Confirmations, o => o.Key == "auto_mode");
+            Assert.True(window.GetVisualDescendants().OfType<CheckBox>().Single(c => c.Name == "AgentAutoMode").IsVisible);
+            model.Agent.AutoMode = true;
+            await MainViewModelTests.Until(() => saved is not null, "auto mode saved");
+            Assert.True(saved!.Value.GetProperty("access").GetProperty("auto_mode").GetBoolean());
+            Assert.True(saved.Value.GetProperty("access").GetProperty("confirm_writes").GetBoolean()); // остальное не тронуто
+        }
+        finally { window.Close(); }
+    }
+
     [Fact]
     public async Task Agent_tab_is_absent_when_module_is_not_installed()
     {
