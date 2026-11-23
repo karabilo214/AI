@@ -6,7 +6,7 @@
 даёт скрипт) и завершает задачу. Второй прогон — пользователь отказывает: агент должен
 честно закончить без запуска. Настройки после задачи остаются с выключенным run_command.
 
-usage: agent_tool_request_live.py <файл ключей> <модель: haiku|sonnet> <отчёт.json>
+usage: agent_tool_request_live.py <файл ключей> <модель OpenAI, например gpt-5.4-mini | claude:...> <отчёт.json>
 """
 
 import json
@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "docs" / "reports" / "character_checks" / "roast")
 
 from live_mac import Secrets, read_keys  # noqa: E402
 from ramvi_service.app import build  # noqa: E402
-from roast_live import connect  # noqa: E402
+from roast_live import pick  # noqa: E402
 from test_chat import TOKEN, Client  # noqa: E402
 
 GOAL = "Запусти тесты проекта (python -m unittest) и скажи, проходят ли они."
@@ -91,7 +91,7 @@ def main() -> None:
     client = Client(server.port)
     report: dict[str, Any] = {}
     try:
-        model = connect(client, keys, "anthropic", choice)
+        model = pick(client, keys, choice)
         report["model"] = model.rsplit(":", 1)[-1]
         assert client.ok("POST", "/sections/agent/open")["section"]["state"] == "active"
         settings = server.agent_ui.route("GET", "/agent/settings", {})["settings"]

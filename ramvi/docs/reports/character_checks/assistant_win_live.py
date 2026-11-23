@@ -7,7 +7,7 @@
 4. Поручение агенту действовать в окне — агент исправляет слово (подтверждения даёт скрипт).
 
 usage: assistant_win_live.py <папка комплекта> <подстрока модели> <отчёт.json> [файл ключей]
-С файлом ключей модель берётся из облака Claude (подстрока — haiku/sonnet); ключ — только в
+С файлом ключей модель берётся из облака OpenAI (подстрока, например gpt-5.5); ключ — только в
 памяти, подключение удаляется после проверки.
 """
 
@@ -93,12 +93,12 @@ CONNECTIONS: list[str] = []  # облачные подключения пров�
 
 def cloud_model(server: Any, keys: Path, hint: str) -> str:
     lines = [line.strip() for line in keys.read_text("utf-8").splitlines()]
-    key = next(line for line in lines[lines.index("Claude API key") + 1 :] if line)
+    key = next(line for line in lines[lines.index("Codex API key") + 1 :] if line)
     cloud = server.cloud
-    connection = cloud.save({"kind": "anthropic", "name": "Claude", "key": key})
+    connection = cloud.save({"kind": "openai", "name": "OpenAI", "key": key})
     CONNECTIONS.append(connection["id"])
     names = cloud.remote_models({"id": connection["id"]})
-    model = sorted(n for n in names if hint in n)[-1]
+    model = hint if hint in names else min((n for n in names if hint in n), key=len)
     cloud.enable(connection["id"], model, True)
     return f"cloud:{connection['id']}:{model}"
 

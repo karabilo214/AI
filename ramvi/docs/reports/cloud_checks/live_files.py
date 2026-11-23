@@ -61,10 +61,11 @@ def main() -> None:
         connection = client.ok(
             "POST",
             "/cloud/connections",
-            {"kind": "anthropic", "name": "Claude", "key": keys["anthropic"]},
+            {"kind": "openai", "name": "OpenAI", "key": keys["openai"]},
         )["connection"]
         names = client.ok("POST", "/cloud/models", {"id": connection["id"]})["models"]
-        model = sorted(n for n in names if "haiku" in n)[-1]
+        model = "gpt-5.4-mini"  # дешёвая модель OpenAI; Claude — не тратить (владелец 2026-11-23)
+        assert model in names
         client.ok(
             "POST",
             f"/cloud/connections/{connection['id']}/models",

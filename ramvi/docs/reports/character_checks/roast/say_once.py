@@ -1,6 +1,6 @@
 """Одна реплика персонажу на облачной модели: профиль, уровень мата, фраза владельца.
 
-usage: say_once.py <файл ключей> <токенизатор Qwen3> <модель: haiku|sonnet|openai:...> <профиль>
+usage: say_once.py <файл ключей> <токенизатор Qwen3> <модель OpenAI, например gpt-5.5 | claude:...> <профиль>
                    <мат 0-3, 0 — запрещён> <фраза> [повторов] [keep — повторы в одном диалоге]
 """
 
@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from live_mac import Secrets, read_keys  # noqa: E402
 from ramvi_service.app import build  # noqa: E402
-from roast_live import connect, say  # noqa: E402
+from roast_live import pick, say  # noqa: E402
 from test_chat import TOKEN, Client  # noqa: E402
 
 
@@ -33,10 +33,7 @@ def main() -> None:
     server.start()
     client = Client(server.port)
     try:
-        if choice.startswith("openai:"):
-            model = connect(client, keys, "openai", choice.removeprefix("openai:"))
-        else:
-            model = connect(client, keys, "anthropic", choice)
+        model = pick(client, keys, choice)
         assert client.ok("POST", "/sections/character/open")["section"]["state"] == "active"
         path = "/sections/character/commands/dialogue"
         client.ok("POST", path, {"operation": "profile", "arguments": {"id": profile}})

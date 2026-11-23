@@ -7,7 +7,8 @@
 ли к прежним промахам. Ключи — из файла владельца только в память.
 
 usage: roast_live.py <файл ключей> <токенизатор Qwen3> <модель персонажа> <отчёт.md> [ходов] [мат 1-3]
-модель персонажа: подстрока имени у Claude (haiku, sonnet) или openai:<подстрока>.
+модель персонажа: подстрока имени модели OpenAI (gpt-5.5, gpt-5.4-mini) или claude:<подстрока>.
+Собеседника играет дешёвая модель OpenAI (gpt-5.4-mini).
 """
 
 import json
@@ -38,12 +39,21 @@ OPENING = "Здорово. Скучно мне, давай поболтаем."
 CLOSING = "Ладно, мне работать пора, давай."
 
 
+def pick(client: Client, keys: dict[str, str], choice: str) -> str:
+    """Модель проверки: по умолчанию OpenAI (подстрока имени, например gpt-5.5); Claude —
+    только явно, claude:<подстрока> (владелец 2026-11-23: кредиты Claude на исходе)."""
+    if choice.startswith("claude:"):
+        return connect(client, keys, "anthropic", choice.removeprefix("claude:"))
+    return connect(client, keys, "openai", choice.removeprefix("openai:"))
+
+
 def connect(client: Client, keys: dict[str, str], kind: str, hint: str) -> str:
     connection = client.ok(
         "POST", "/cloud/connections", {"kind": kind, "name": kind, "key": keys[kind]}
     )["connection"]
     names = client.ok("POST", "/cloud/models", {"id": connection["id"]})["models"]
-    model = sorted(n for n in names if hint in n)[-1]
+    # Точное имя, иначе самое короткое совпадение: «gpt-5.5» — не дорогая «gpt-5.5-pro-…».
+    model = hint if hint in names else min((n for n in names if hint in n), key=len)
     client.ok(
         "POST", f"/cloud/connections/{connection['id']}/models", {"model": model, "enabled": True}
     )
@@ -75,11 +85,12 @@ def main() -> None:
     client = Client(server.port)
     lines: list[str] = []
     try:
-        friend_id = connect(client, keys, "anthropic", "haiku")
-        if choice.startswith("openai:"):
-            model = connect(client, keys, "openai", choice.removeprefix("openai:"))
-        else:
-            model = friend_id if "haiku" in choice else connect(client, keys, "anthropic", choice)
+        friend_id = connect(client, keys, "openai", "gpt-5.4-mini")
+        model = (
+            friend_id
+            if choice in ("gpt-5.4-mini", "openai:gpt-5.4-mini")
+            else pick(client, keys, choice)
+        )
         friend = server.cloud.provider(server.chat.models_repo.get(friend_id))
         assert client.ok("POST", "/sections/character/open")["section"]["state"] == "active"
         path = "/sections/character/commands/dialogue"

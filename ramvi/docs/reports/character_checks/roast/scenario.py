@@ -4,7 +4,7 @@
 Готового ответа на него в промптах нет; сценарий — только контрольный тест.
 Печатает каждую реплику с лицом, жестом и интонацией частей ответа.
 
-usage: scenario.py <файл ключей> <токенизатор Qwen3> <модель: haiku|sonnet|openai:...> <профиль>
+usage: scenario.py <файл ключей> <токенизатор Qwen3> <модель OpenAI, например gpt-5.5 | claude:...> <профиль>
                    <мат 0-3> [seeded | реплика ...]
 seeded — первые три хода ТЗ 6.3 с ответами Yeah, Day, Bill уже в истории (как в ТЗ),
 модель отвечает только на «Теперь соедини все три слова».
@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from live_mac import Secrets, read_keys  # noqa: E402
 from ramvi_service.app import build  # noqa: E402
-from roast_live import connect  # noqa: E402
+from roast_live import pick  # noqa: E402
 from test_chat import TOKEN, Client  # noqa: E402
 
 TZ_6_3 = [
@@ -84,10 +84,7 @@ def main() -> None:
     server.start()
     client = Client(server.port)
     try:
-        if choice.startswith("openai:"):
-            model = connect(client, keys, "openai", choice.removeprefix("openai:"))
-        else:
-            model = connect(client, keys, "anthropic", choice)
+        model = pick(client, keys, choice)
         assert client.ok("POST", "/sections/character/open")["section"]["state"] == "active"
         path = "/sections/character/commands/dialogue"
         client.ok("POST", path, {"operation": "profile", "arguments": {"id": profile}})
