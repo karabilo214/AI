@@ -142,6 +142,36 @@ public sealed class CharacterWindowTests
     }
 
     [AvaloniaFact]
+    public async Task Character_outside_keeps_talking_when_RAMVI_switches_to_chat()
+    {
+        // Вне окна RAMVI персонаж не замолкает, когда в главном окне открыли чат; в окне — замолкает.
+        Localizer.Current = Localizer.Load("ru");
+        var (api, calls, listening) = Api();
+        using var model = new MainViewModel(api);
+        var window = new MainWindow { DataContext = model, Width = 1180, Height = 700 }; window.Show();
+        try
+        {
+            await model.InitializeAsync();
+            model.Sections.Selected = model.Sections.Items.Single(x => x.View == "character");
+            await MainViewModelTests.Until(() => model.Character.Transcript.Length > 0, "history loaded");
+            await model.CharacterWindow.ShowCommand.RunAsync("companion");
+            await model.Character.Voice.ToggleCommand.RunAsync();
+            await MainViewModelTests.Until(() => model.Character.Voice.IsActive, "microphone on");
+            var before = calls.Count;
+            model.Sections.Selected = model.Sections.Items.Single(x => x.View == "chat");
+            Settle(window);
+            Assert.True(listening()); // слушает дальше
+            Assert.DoesNotContain(calls.Skip(before), c => c is "speech:stop" or "dialogue:cancel" or "voice:stop");
+            await model.CharacterWindow.ShowCommand.RunAsync("embedded");
+            model.Sections.Selected = model.Sections.Items.Single(x => x.View == "character");
+            Settle(window);
+            model.Sections.Selected = model.Sections.Items.Single(x => x.View == "chat");
+            await MainViewModelTests.Until(() => !listening(), "embedded character stops listening");
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
     public async Task Narrow_companion_window_puts_mode_buttons_under_full_width_input()
     {
         Localizer.Current = Localizer.Load("ru");
