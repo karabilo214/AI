@@ -254,6 +254,12 @@ class AgentDesktop:
             answer = self._wait("limit", shown, holder["gate"].cancel)
             return bool(answer["action"] == "approve")
 
+        def on_tool_request(request: Any) -> tuple[bool, str]:
+            # 6.14: «включить инструмент на эту задачу?» — решает пользователь в окне агента.
+            shown = {**asdict(request), "title": request.tool, "source_module": owner.module_id}
+            answer = self._wait("tool", shown, holder["gate"].cancel)
+            return answer["action"] == "approve", str(answer.get("reason", ""))
+
         target = self._target
         if use_ui and (target is None or self.host.context is None):
             raise ValueError("select an application first")
@@ -289,6 +295,7 @@ class AgentDesktop:
                 self.runs,
                 limits=RunLimits(**policy["limits"]),
                 on_limit=on_limit,
+                on_tool_request=on_tool_request,
             )
 
         preview = factory()

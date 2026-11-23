@@ -124,7 +124,9 @@ def test_multi_step_task_completes(tmp_path: Path, db: Database) -> None:
     assert (env.root / "src" / "calc.py").read_bytes() == b"def add(a, b):\n    return a + b\n"
     # Наблюдение возвращается модели: на втором шаге она видит найденный файл.
     assert "src/calc.py" in script.seen[1][-1]["content"]
-    assert script.seen[0][0] == {"role": "system", "content": SYSTEM_PROMPT}
+    system = script.seen[0][0]
+    assert system["role"] == "system" and system["content"].startswith(SYSTEM_PROMPT)
+    assert "All RAMVI agent tools and their state" in system["content"]  # 6.14: каталог
     assert "    2\t    return a + b" in script.seen[4][-1]["content"]
     # Сохранено: итог, причина, шаги, токены, журнал инструментов.
     run = env.runs.get(result.run_id)
@@ -468,3 +470,49 @@ def test_finish_is_always_offered_and_checked(tmp_path: Path, db: Database) -> N
     assert tool_message["role"] == "tool" and tool_message["content"].startswith(
         "ERROR agent.tool.invalid_args"
     )
+
+
+@pytest.mark.parametrize("allow", [True, False])
+def test_agent_sees_turned_off_tools_and_asks_to_turn_one_on(
+    tmp_path: Path, db: Database, allow: bool
+) -> None:
+    """6.14: модель знает все инструменты и их состояние; выключенный просит включить."""
+    script = Script(
+        reply("", call("run_command", command="python -V")),
+        reply(
+            "",
+            ToolCall(
+                "call-req", "request_tool", '{"name": "run_command", "reason": "run the tests"}'
+            ),
+        ),
+        reply("", call("run_command", command="python -V")) if allow else done("no tests", False),
+        done("checked"),
+    )
+    env = Env(tmp_path, db, script)
+    access = ToolAccess(disabled=frozenset({"run_command"}))
+    env.tools = build_tools(env.ws, access, gate=env.gate)
+    asked: list[tuple[str, str, str]] = []
+
+    def on_tool_request(request: Any) -> tuple[bool, str]:
+        asked.append((request.tool, request.why, env.runs.recent()[0].status))
+        return allow, "" if allow else "not now"
+
+    env.runtime = AgentRuntime(
+        script, env.tools, env.runs, emit=env.events.append, on_tool_request=on_tool_request
+    )
+    result = env.runtime.run("run tests")
+    system = script.seen[0][0]["content"]
+    assert "- run_command:" in system and "turned off by the user" in system
+    assert "run_command" not in script.tools[0] and "request_tool" in script.tools[0]
+    first = script.seen[1][-1]["content"]  # прямой вызов выключенного — ошибка с подсказкой
+    assert "agent.tool.disabled" in first and "request_tool" in first
+    assert asked == [("run_command", "run the tests", "waiting_approval")]
+    if allow:
+        assert "run_command" in script.tools[2] and "request_tool" not in script.tools[2]
+        assert result.status == "done"
+    else:
+        answer = script.seen[2][-1]["content"]
+        assert "agent.tool.request_denied" in answer and "not now" in answer
+        assert "run_command" not in script.tools[2]
+    assert access.disabled == frozenset({"run_command"})  # настройки пользователя не меняются
+    assert "agent.tool_requested" in env.kinds()

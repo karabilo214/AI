@@ -143,6 +143,48 @@ FINISH_TOOL = {
         },
     },
 }
+REQUEST_TOOL = "request_tool"
+
+
+def request_tool_spec(tools: ToolRunner) -> dict[str, Any] | None:
+    """6.14: попросить пользователя включить выключенный инструмент; нет выключенных — нет и
+    этого инструмента."""
+    names = sorted(s.name for s in tools.specs if tools.status(s) == "disabled")
+    if not names:
+        return None
+    return {
+        "type": "function",
+        "function": {
+            "name": REQUEST_TOOL,
+            "description": "Ask the user to turn on a tool that is currently turned off, when the "
+            "task really needs it. The user decides; you get the answer as the result.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "enum": names},
+                    "reason": {"type": "string", "description": "Why the task needs this tool"},
+                },
+                "required": ["name", "reason"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def tool_catalog(tools: ToolRunner) -> str:
+    """6.14: модель знает все инструменты RAMVI и состояние каждого, а не только доступные."""
+    label = {
+        "enabled": "on",
+        "disabled": "off — turned off by the user; ask with request_tool if the task needs it",
+        "unavailable": "not available in this task — needs a grant the user gives in the agent screen",
+    }
+    lines = [
+        f"- {spec.name}: {spec.description.split('. ')[0].rstrip('.')} [{label[tools.status(spec)]}]"
+        for spec in tools.specs
+    ]
+    return "All RAMVI agent tools and their state:\n" + "\n".join(lines)
+
+
 NUDGE = (
     "[RAMVI] You replied without calling a tool, so nothing was done. If the task is "
     "finished and checked, call `finish` with a short summary. Otherwise call the next "
@@ -163,6 +205,19 @@ class LimitRequest:
 
 
 OnLimit = Callable[[LimitRequest], bool]
+
+
+@dataclass(frozen=True)
+class ToolRequest:
+    """6.14: агент просит включить выключенный инструмент на эту задачу."""
+
+    run_id: str
+    tool: str
+    description: str
+    why: str  # объяснение модели — данные для пользователя, не команда
+
+
+OnToolRequest = Callable[[ToolRequest], tuple[bool, str]]  # (включить?, причина отказа)
 
 
 @dataclass(frozen=True)
@@ -215,12 +270,15 @@ class AgentRuntime:
         limits: RunLimits | None = None,
         emit: Callable[[dict[str, Any]], None] | None = None,
         on_limit: OnLimit | None = None,
+        on_tool_request: OnToolRequest | None = None,
     ) -> None:
         """`runs` — `AgentRuns` хранилища (или None — без сохранения); `on_limit` —
-        вопрос пользователю на контрольной точке (True — продолжить)."""
+        вопрос пользователю на контрольной точке (True — продолжить); `on_tool_request` —
+        вопрос «включить инструмент?» (6.14)."""
         self.strategy, self.tools, self.runs = strategy, tools, runs
         self.limits = limits or RunLimits()
         self.on_limit = on_limit
+        self.on_tool_request = on_tool_request
         self._budget: dict[str, float] = {}
         self._started = 0.0
         self._emit = emit
@@ -336,9 +394,7 @@ class AgentRuntime:
             else StorageJournal(self.runs, run_id, private=self.tools.private)
         )
         if facts is not None:
-            readiness = ReadinessCheck().check(
-                facts, SYSTEM_PROMPT, [*self.tools.openai_tools(), FINISH_TOOL]
-            )
+            readiness = ReadinessCheck().check(facts, self._system_prompt(), self._offered())
             self.emit(run_id, "agent.readiness", **readiness.json())
             if not readiness.ok:
                 code = str(readiness.errors[0]["code"])
@@ -360,7 +416,7 @@ class AgentRuntime:
         restore = self._watch_approvals(run_id, cancel)
         usage = {"prompt_tokens": 0, "completion_tokens": 0}
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": self._system_prompt()},
             {"role": "user", "content": goal},
         ]
         if context_data:
@@ -449,7 +505,7 @@ class AgentRuntime:
             if self.runs is not None:
                 self.runs.update(run_id, steps=steps, token_usage=usage)
             self.emit(run_id, "agent.step", step=steps)
-            offered = [*self.tools.openai_tools(), FINISH_TOOL]
+            offered = self._offered()
             state = decision_state(run_id, steps, messages, offered)
             state["strategy"] = type(self.strategy).__name__
             self.emit(run_id, "agent.decision", step=steps, state=state)
@@ -519,6 +575,8 @@ class AgentRuntime:
                     result = ToolResult.failure("agent.tool.invalid_args", tool="finish")
                 elif index >= self.limits.max_calls_per_step:
                     result = ToolResult.failure("agent.run.too_many_calls")
+                elif call.name == REQUEST_TOOL:
+                    result = self._request_tool(run_id, call)
                 else:
                     try:
                         result = self._execute(run_id, steps, call, journal)
@@ -596,6 +654,47 @@ class AgentRuntime:
         if args.get("success") is False:
             raise _Stop("failed", "not_possible", result=summary)
         return summary
+
+    def _system_prompt(self) -> str:
+        return SYSTEM_PROMPT + "\n\n" + tool_catalog(self.tools)
+
+    def _offered(self) -> list[dict[str, Any]]:
+        request = request_tool_spec(self.tools)
+        return [*self.tools.openai_tools(), FINISH_TOOL, *([request] if request else [])]
+
+    def _request_tool(self, run_id: str, call: ToolCall) -> ToolResult:
+        """6.14: спросить пользователя, включить ли выключенный инструмент на эту задачу."""
+        try:
+            args = json.loads(call.arguments) if call.arguments.strip() else {}
+        except json.JSONDecodeError:
+            args = None
+        specs = {s.name: s for s in self.tools.specs}
+        name = args.get("name") if isinstance(args, dict) else None
+        why = args.get("reason", "") if isinstance(args, dict) else ""
+        if not isinstance(name, str) or name not in specs or not isinstance(why, str):
+            return ToolResult.failure("agent.tool.invalid_args", tool=REQUEST_TOOL)
+        if self.tools.status(specs[name]) != "disabled":
+            return ToolResult(
+                True,
+                f"{name} is already on."
+                if self.tools.status(specs[name]) == "enabled"
+                else f"{name} cannot be turned on here: it needs a grant the user gives in the agent screen.",
+            )
+        if self.on_tool_request is None:
+            return ToolResult.failure("agent.tool.request_unavailable", tool=name)
+        request = ToolRequest(run_id, name, specs[name].description, why[:2000])
+        self.emit(run_id, "agent.tool_requested", request=asdict(request))
+        self._status(run_id, "waiting_approval")
+        approved, reason = False, ""
+        try:
+            approved, reason = self.on_tool_request(request)
+        finally:
+            self._status(run_id, "running")
+            self.emit(run_id, "agent.tool_request_decided", tool=name, enabled=bool(approved))
+        if not approved:
+            return ToolResult.failure("agent.tool.request_denied", tool=name, reason=reason)
+        self.tools.enable_for_run(name)
+        return ToolResult(True, f"The user turned on {name} for this task. You can call it now.")
 
     def _execute(self, run_id: str, step: int, call: ToolCall, journal: Any) -> ToolResult:
         try:

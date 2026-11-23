@@ -23,7 +23,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 
 from ramvi_service.agent.workspace import PERMISSIONS, AccessDenied, Permission, Workspace
@@ -86,6 +86,11 @@ HINT_STOP = (
     "or call finish with success=false and explain why.)"
 )
 HINT_DENIED = "(The user refused this action. Follow the reason they gave.)"
+# 6.14: выключенный пользователем инструмент можно попросить включить, но не обойти.
+HINT_REQUEST = (
+    "(This tool is turned off by the user. If the task really needs it, call request_tool "
+    "with its name and the reason; otherwise choose another way.)"
+)
 
 
 @dataclass(frozen=True)
@@ -153,8 +158,10 @@ class ToolResult:
     @classmethod
     def failure(cls, code: str, **params: Any) -> "ToolResult":
         detail = f" {json.dumps(params, ensure_ascii=False, default=str)}" if params else ""
-        if code == "agent.approval.denied":
+        if code in ("agent.approval.denied", "agent.tool.request_denied"):
             hint = HINT_DENIED
+        elif code == "agent.tool.disabled":
+            hint = HINT_REQUEST
         elif code in CORRECTABLE:
             hint = HINT_FIX
         else:
@@ -385,6 +392,17 @@ class ToolRunner:
             return True
         except AccessDenied:
             return False
+
+    def status(self, spec: ToolSpec) -> str:
+        """6.14: enabled | disabled (выключен пользователем) | unavailable (нет права)."""
+        if spec.name in self.access.disabled:
+            return "disabled"
+        return "enabled" if self.is_available(spec) else "unavailable"
+
+    def enable_for_run(self, name: str) -> None:
+        """6.14: пользователь разрешил выключенный инструмент — только на эту задачу; настройки
+        не меняются (снимать ограничения в настройках может только пользователь, не модель)."""
+        self.access = replace(self.access, disabled=self.access.disabled - {name})
 
     def available(self) -> list[ToolSpec]:
         return [spec for spec in self.specs if self.is_available(spec)]

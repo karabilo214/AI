@@ -122,7 +122,7 @@ def test_strategy_receives_detached_history(tmp_path: Path, db: Database) -> Non
     env.runtime.run("Inspect")
     from ramvi_service.agent.runtime import SYSTEM_PROMPT
 
-    assert script.seen[1][0]["content"] == SYSTEM_PROMPT
+    assert script.seen[1][0]["content"].startswith(SYSTEM_PROMPT)
     assert "list_dir" in script.tools[1]
 
 

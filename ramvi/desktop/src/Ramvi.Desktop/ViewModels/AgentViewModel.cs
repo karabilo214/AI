@@ -124,8 +124,9 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     public bool HasPending => _pending is not null;
     public bool IsControlPending => _pending is { } p && Text(p, "kind") == "control";
     public string PendingTitle => _pending is { } p ? (Text(p, "source_module") == "character" ? L["agent.from_character"] + " · " : "") + L["agent.kind." + Text(p, "kind")] + " · " + Text(p, "title") + (Text(p, "reason").Length > 0 ? " · " + L["agent.checkpoint." + Text(p, "reason")] : "") : "";
-    public string PendingDetail => _pending is { } p && Text(p, "kind") == "limit" ? L["agent.metrics"] + ": " + Text(p, "steps") + " · " + Text(p, "elapsed") + " s · " + Text(p, "tokens") + "\n" + Text(p, "detail") : _pending is { } q ? Text(q, "diff") + Text(q, "command") + Text(q, "cwd") + Text(q, "application") + "\n" + Text(q, "plan") + "\n" + Text(q, "value") : "";
-    public string ApproveLabel => _pending is { } p && Text(p, "kind") == "limit" ? L["agent.continue"] : L["agent.approve"];
+    // 6.14: агент просит включить выключенный инструмент — что он делает и зачем нужен агенту.
+    public string PendingDetail => _pending is { } t && Text(t, "kind") == "tool" ? Text(t, "description") + "\n" + L["agent.tool_request_why"] + ": " + Text(t, "why") + "\n" + L["agent.tool_request_note"] : _pending is { } p && Text(p, "kind") == "limit" ? L["agent.metrics"] + ": " + Text(p, "steps") + " · " + Text(p, "elapsed") + " s · " + Text(p, "tokens") + "\n" + Text(p, "detail") : _pending is { } q ? Text(q, "diff") + Text(q, "command") + Text(q, "cwd") + Text(q, "application") + "\n" + Text(q, "plan") + "\n" + Text(q, "value") : "";
+    public string ApproveLabel => _pending is { } p && Text(p, "kind") == "limit" ? L["agent.continue"] : _pending is { } t && Text(t, "kind") == "tool" ? L["agent.enable_tool"] : L["agent.approve"];
     public string Reason { get; set; } = "";
     public string Series { get; set; } = "0";
     public string SecretPatterns { get; set; } = "";
