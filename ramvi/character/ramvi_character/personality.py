@@ -137,7 +137,10 @@ def style_guide(
         amount = {
             1: "Swear rarely: at most one crude word now and then, only when really annoyed or"
             " surprised; most replies stay clean.",
-            2: "Swear moderately: a мат word in some replies, when emotions run high.",
+            # Владелец 2026-11-23: «средне» — настоящий мат, но не в каждой фразе.
+            2: "Swear moderately but for real: one or two genuine мат words in most replies"
+            ' ("бля", "хрен", "охуеть", "ёпта", "нахер") — not in every sentence; softened'
+            ' substitutes like "блин" or "ёшкин кот" do not count as swearing.',
             3: "Swear a lot: talk like a real foul-mouthed person, мат in most replies and"
             ' freely within a reply ("охренеть", "бля", "какого хера").',
         }[profanity_level]
