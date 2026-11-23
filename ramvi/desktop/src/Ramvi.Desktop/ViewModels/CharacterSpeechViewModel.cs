@@ -30,6 +30,7 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
         KeyCommand=new Command(SaveKeyAsync,()=>IsExternal);
         PreviewCommand=new Command(()=>ApplyAsync(true),()=>_available && Provider is not null);
         ResumeCommand=new Command(()=>ApplyAsync(false),()=>_available && Provider is not null && Enabled);
+        ToggleMuteCommand=new Command(ToggleMuteAsync,()=>_available && Provider is not null);
         RefreshCommand=new Command(()=>ReadCatalogAsync(true,true));
         StopCommand=new Command(StopAsync);
     }
@@ -40,6 +41,9 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
     public Command PreviewCommand { get; }
     public Command StopCommand { get; }
     public Command ResumeCommand { get; }
+    /// <summary>9.26: кнопка-динамик у персонажа — выключить или снова включить озвучку.</summary>
+    public Command ToggleMuteCommand { get; }
+    public string MuteText=>Localizer.Current[Enabled ? "character.speech_mute" : "character.speech_unmute"];
     public Command RefreshCommand { get; }
     private VoiceOption? _deliveryMode;
     private VoiceOption? _buffer;
@@ -53,7 +57,7 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
     public VoiceOption? DeliveryMode { get => _deliveryMode ?? DeliveryModes[0]; set => Set(ref _deliveryMode, value); }
     public VoiceOption? Buffer { get => _buffer ?? Buffers[1]; set => Set(ref _buffer, value); }
     public bool Reactions { get => _reactions; set => Set(ref _reactions, value); }
-    public bool Enabled { get=>_enabled;set { if(Set(ref _enabled,value)) { RefreshCommands(); if(!value && !_loading) QueueStop(); } } }
+    public bool Enabled { get=>_enabled;set { if(Set(ref _enabled,value)) { Raise(nameof(MuteText)); RefreshCommands(); if(!value && !_loading) QueueStop(); } } }
     public bool RemoteText { get=>_remoteText;set=>Set(ref _remoteText,value); }
     public bool TextOnly { get=>_textOnly;private set=>Set(ref _textOnly,value); }
     public string Key { get=>_key;set=>Set(ref _key,value); }
@@ -80,7 +84,15 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
             if(!_loading) { if(previousId!=value?.Id) RemoteText=false; QueueStop(); }
         }
     }
-    private void RefreshCommands() { SaveCommand.Refresh();PreviewCommand.Refresh();ResumeCommand.Refresh();KeyCommand.Refresh(); }
+    private void RefreshCommands() { SaveCommand.Refresh();PreviewCommand.Refresh();ResumeCommand.Refresh();KeyCommand.Refresh();ToggleMuteCommand?.Refresh(); }
+    private async Task ToggleMuteAsync()
+    {
+        // Выключение — как «Только текст»: текущий звук останавливается сразу. Включение —
+        // прежние голос и поставщик, без захода в настройки.
+        if (Enabled) { await TextModeAsync().ConfigureAwait(true); return; }
+        Enabled = true;
+        await ApplyAsync(false).ConfigureAwait(true);
+    }
     private void SetError(string key) { _error=key;Raise(nameof(Error)); }
     private void QueueStop()
     {

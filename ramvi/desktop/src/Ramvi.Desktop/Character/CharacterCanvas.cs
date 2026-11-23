@@ -9,6 +9,9 @@ namespace Ramvi.Desktop.Character;
 public interface ICharacterRenderer
 {
     void Draw(DrawingContext context, CharacterPack pack, IReadOnlyList<CharacterLayer> layers, Rect bounds);
+    /// <summary>9.26: с отражением по горизонтали; по умолчанию — без него.</summary>
+    void Draw(DrawingContext context, CharacterPack pack, IReadOnlyList<CharacterLayer> layers, Rect bounds, bool mirrored) =>
+        Draw(context, pack, layers, bounds);
     void Release();
 }
 
@@ -22,7 +25,10 @@ public sealed class CharacterBitmapRenderer : ICharacterRenderer
         foreach (var image in _images.Values) image.Dispose();
         _images.Clear();
     }
-    public void Draw(DrawingContext context, CharacterPack pack, IReadOnlyList<CharacterLayer> layers, Rect bounds)
+    public void Draw(DrawingContext context, CharacterPack pack, IReadOnlyList<CharacterLayer> layers, Rect bounds) =>
+        Draw(context, pack, layers, bounds, false);
+
+    public void Draw(DrawingContext context, CharacterPack pack, IReadOnlyList<CharacterLayer> layers, Rect bounds, bool mirrored)
     {
         var size = Math.Min(bounds.Width, bounds.Height);
         var x = (bounds.Width - size) / 2;
@@ -43,7 +49,17 @@ public sealed class CharacterBitmapRenderer : ICharacterRenderer
             var height = size * layer.Scale * layer.ScaleY;
             var left = x + (size - width) / 2 + layer.X * size / 768;
             var top = y + size - height + layer.Y * size / 768;
-            context.DrawImage(bitmap, new Rect(left, top, width, height));
+            var dest = new Rect(left, top, width, height);
+            if (!mirrored) { context.DrawImage(bitmap, dest); continue; }
+            var axis = 2 * (x + size / 2); // отражение вокруг середины квадрата персонажа: x → axis − x
+            using (context.PushTransform(new Matrix(-1, 0, 0, 1, axis, 0))) context.DrawImage(bitmap, dest);
+            if (pack.MirrorKeep(layer.File) is not { } keep) continue;
+            // Надпись перерисовывается неотражённой на своём отражённом месте.
+            var k = 768.0;
+            var spot = new Rect(left + keep.X / k * width, top + keep.Y / k * height, keep.Width / k * width, keep.Height / k * height);
+            var pixels = bitmap.PixelSize.Width / k;
+            var source = new Rect(keep.X * pixels, keep.Y * pixels, keep.Width * pixels, keep.Height * pixels);
+            context.DrawImage(bitmap, source, new Rect(axis - spot.Right, spot.Y, spot.Width, spot.Height));
         }
     }
 }
@@ -78,6 +94,14 @@ public sealed class CharacterCanvas : Control
         }
     }
     public CharacterPlayer? Player { get; set; }
+
+    /// <summary>9.26: отразить по горизонтали — персонаж смотрит к центру экрана.</summary>
+    public bool Mirrored
+    {
+        get => _mirrored;
+        set { if (_mirrored != value) { _mirrored = value; InvalidateVisual(); } }
+    }
+    private bool _mirrored;
     public void Release()
     {
         _renderer.Release();
@@ -88,7 +112,10 @@ public sealed class CharacterCanvas : Control
     {
         base.Render(context);
         if (Pack is null || Player is null) return;
-        try { _renderer.Draw(context, Pack, Player.Layers(), Bounds); }
+        try
+        {
+            _renderer.Draw(context, Pack, Player.Layers(), Bounds, _mirrored);
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or KeyNotFoundException)
         {
             Release(); ResourceFailed?.Invoke(this, EventArgs.Empty);

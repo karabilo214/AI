@@ -12,7 +12,7 @@ public sealed partial class CharacterDialogueView : UserControl
     {
         InitializeComponent();
         CharacterInput.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
-        SizeChanged += (_, _) => FitControls();
+        SizeChanged += (_, _) => { FitWidth(); FitControls(); };
         CharacterComposer.SizeChanged += (_, _) => FitControls();
         DialogueText.PropertyChanged += (_, e) =>
         {
@@ -25,6 +25,23 @@ public sealed partial class CharacterDialogueView : UserControl
         e.Handled = true;
         if (model.Send.CanExecute(null)) model.Send.Execute(null);
     }
+    /// <summary>Ширина, ниже которой кнопки режима уходят под поле ввода (узкое окно персонажа).</summary>
+    internal const double NarrowWidth = 520;
+
+    /// <summary>
+    /// 9.26: в узком отдельном окне колонка «Только текст»/«Остановить всё» сжимала поле ввода
+    /// до половины ширины — там кнопки встают строкой под полем.
+    /// </summary>
+    private void FitWidth()
+    {
+        var narrow = Bounds.Width > 0 && Bounds.Width < NarrowWidth;
+        Grid.SetRow(CharacterModeButtons, narrow ? 1 : 0);
+        Grid.SetColumn(CharacterModeButtons, narrow ? 0 : 1);
+        Grid.SetColumnSpan(CharacterComposer, narrow ? 2 : 1);
+        CharacterModeButtons.Orientation = narrow ? Avalonia.Layout.Orientation.Horizontal : Avalonia.Layout.Orientation.Vertical;
+        CharacterModeButtons.HorizontalAlignment = narrow ? Avalonia.Layout.HorizontalAlignment.Right : Avalonia.Layout.HorizontalAlignment.Stretch;
+    }
+
     private void FitControls()
     {
         // Preserve the text composer and a readable transcript even with a device

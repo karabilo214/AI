@@ -1,3 +1,4 @@
+using Avalonia;
 using System.Text.Json;
 
 namespace Ramvi.Desktop.Character;
@@ -117,6 +118,19 @@ public sealed class CharacterPack : IDisposable
     public string Body => Root.GetProperty("body").GetString()!;
     public string Eye(string name) => Root.GetProperty("eyes").GetProperty(name).GetString()!;
     public string Mouth(string name) => Root.GetProperty("mouths").GetProperty(name).GetString()!;
+    /// <summary>
+    /// 9.26: область кадра (в точках холста набора), которую нельзя отражать — надпись «R» на
+    /// наушнике. Персонаж смотрит к центру экрана отражением, а надпись остаётся читаемой.
+    /// </summary>
+    public Rect? MirrorKeep(string file)
+    {
+        if (!Root.TryGetProperty("mirror_keep", out var keep) || keep.ValueKind != JsonValueKind.Object
+            || !keep.TryGetProperty(file, out var rect) || rect.ValueKind != JsonValueKind.Array || rect.GetArrayLength() != 4)
+            return null;
+        var v = rect.EnumerateArray().Select(x => x.GetDouble()).ToArray();
+        return v[2] > 0 && v[3] > 0 ? new Rect(v[0], v[1], v[2], v[3]) : null;
+    }
+
     public string FilePath(string relative)
     {
         if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative) || relative.Contains('\\') || relative.Contains(':'))

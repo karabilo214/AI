@@ -1,0 +1,45 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:l="using:Ramvi.Desktop.Localization" xmlns:vm="using:Ramvi.Desktop.ViewModels" xmlns:views="using:Ramvi.Desktop.Views"
+ x:Class="Ramvi.Desktop.Views.CharacterFloatingWindow" x:DataType="vm:MainViewModel"
+ Title="{l:T character.window.title}" Icon="/Assets/ramvi-emblem.png" Topmost="True" MinWidth="200" MinHeight="200">
+ <!-- 9.26: персонаж вне окна RAMVI. Тот же CharacterViewModel, что и в окне RAMVI: смена
+      представления не перезапускает модуль и не сбрасывает ответ. -->
+ <Grid x:Name="Root" RowDefinitions="Auto,*,Auto">
+  <!-- Полоса управления: за неё окно перетаскивается; в оверлее видна при наведении -->
+  <Border x:Name="Toolbar" Grid.Row="0" Classes="card" Padding="4" Margin="6" HorizontalAlignment="Right" Cursor="SizeAll">
+   <StackPanel Orientation="Horizontal" Spacing="4">
+    <Button x:Name="FloatingStopAll" Classes="icon" Command="{Binding Character.DisconnectCommand}" IsVisible="{Binding Character.CanStopAll}" ToolTip.Tip="{l:T character.disconnect}" AutomationProperties.Name="{l:T character.disconnect}"><PathIcon Data="{StaticResource icon-stop}"/></Button>
+    <Button x:Name="FloatingClickThrough" Classes="icon" Command="{Binding CharacterWindow.ToggleClickThroughCommand}" IsVisible="{Binding CharacterWindow.IsOverlay}" ToolTip.Tip="{Binding CharacterWindow.ClickThroughText}" AutomationProperties.Name="{Binding CharacterWindow.ClickThroughText}"><PathIcon Data="{StaticResource icon-pause}"/></Button>
+    <Button x:Name="FloatingEmbed" Classes="icon" Command="{Binding CharacterWindow.ShowCommand}" CommandParameter="embedded" ToolTip.Tip="{l:T character.window.embed}" AutomationProperties.Name="{l:T character.window.embed}"><PathIcon Data="{StaticResource icon-eject}"/></Button>
+    <Button x:Name="FloatingHide" Classes="icon" Command="{Binding CharacterWindow.ToggleHiddenCommand}" ToolTip.Tip="{l:T character.window.hide}" AutomationProperties.Name="{l:T character.window.hide}"><PathIcon Data="{StaticResource icon-close}"/></Button>
+   </StackPanel>
+  </Border>
+  <views:CharacterView x:Name="FloatingCharacter" Grid.Row="1" DataContext="{Binding Sections.CharacterSection}"
+   Response="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Presentation}"
+   ReplyEnd="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.ReplyEnd}"
+   Playback="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Playback}"
+   PackPath="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.PackPath, Mode=TwoWay}"
+   Compact="True"/>
+  <!-- Микрофон всегда рядом с персонажем и всегда виден (в оверлее не приглушается):
+       перечёркнут — выключен, красный — слушает. Сторона — к центру экрана. -->
+  <Button x:Name="FloatingMicrophone" Grid.Row="1" Classes="icon" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12"
+   DataContext="{Binding Character.Voice}" x:DataType="vm:CharacterVoiceViewModel"
+   Command="{Binding ToggleCommand}" ToolTip.Tip="{Binding ButtonText}" AutomationProperties.Name="{Binding ButtonText}">
+   <Grid Width="24" Height="24">
+    <PathIcon x:Name="FloatingMicrophoneIcon" Data="{StaticResource icon-microphone}"/>
+    <Path x:Name="FloatingMicrophoneSlash" IsVisible="{Binding !IsActive}" Data="M 2,2 L 22,22" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2"/>
+   </Grid>
+  </Button>
+  <!-- Динамик — с другой стороны от микрофона: перечёркнут — RAMVI не озвучивает ответы -->
+  <Button x:Name="FloatingSpeaker" Grid.Row="1" Classes="icon" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="12"
+   DataContext="{Binding Character.Speech}" x:DataType="vm:CharacterSpeechViewModel"
+   Command="{Binding ToggleMuteCommand}" ToolTip.Tip="{Binding MuteText}" AutomationProperties.Name="{Binding MuteText}">
+   <Grid Width="24" Height="24">
+    <PathIcon Data="{StaticResource icon-speaker}"/>
+    <Path x:Name="FloatingSpeakerSlash" IsVisible="{Binding !Enabled}" Data="M 2,2 L 22,22" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2"/>
+   </Grid>
+  </Button>
+  <!-- В отдельном окне — тот же диалог, что в окне RAMVI; в оверлее только персонаж -->
+  <views:CharacterDialogueView x:Name="FloatingDialogue" Grid.Row="2" DataContext="{Binding Character}" IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CharacterWindow.IsCompanion}" MaxHeight="420"/>
+ </Grid>
+</Window>

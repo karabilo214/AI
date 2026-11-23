@@ -9,7 +9,7 @@ using Ramvi.Desktop.ViewModels;
 
 namespace Ramvi.Desktop.Views;
 
-public sealed partial class MainWindow : Window
+public sealed partial class MainWindow : Window, IDisposable
 {
     /// <summary>Расстояние до низа, при котором окно считается «внизу» и следует за ответом.</summary>
     private const double FollowSlack = 48;
@@ -20,7 +20,18 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Closed += (_, _) => Model?.Dispose();
+        Closed += (_, _) => { Dispose(); Model?.Dispose(); };
+        Closing += (_, e) =>
+        {
+            // 3.13: закрыть окно RAMVI ≠ выйти. Если пользователь сам включил работу в фоне и
+            // персонаж вне окна, окно только прячется; полный выход — из трея или при выключении ОС.
+            if (e.CloseReason is WindowCloseReason.WindowClosing or WindowCloseReason.Undefined
+                && Model?.CharacterWindow.KeepsRunningWithoutMainWindow == true)
+            {
+                e.Cancel = true;
+                Hide();
+            }
+        };
         MessagesScroll.ScrollChanged += OnMessagesScrolled;
         InputBox.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
@@ -31,6 +42,8 @@ public sealed partial class MainWindow : Window
         {
             if (DataContext is MainViewModel model)
             {
+                _characterWindow?.Dispose();
+                _characterWindow = new CharacterWindowHost(model);
                 model.Messages.CollectionChanged += OnMessagesChanged;
                 model.Settings.PropertyChanged += (_, e) =>
                 {
@@ -53,6 +66,16 @@ public sealed partial class MainWindow : Window
     }
 
     private MainViewModel? Model => DataContext as MainViewModel;
+    private CharacterWindowHost? _characterWindow;
+
+    public void Dispose()
+    {
+        _characterWindow?.Dispose();
+        _characterWindow = null;
+    }
+
+    /// <summary>9.26: окно персонажа вне RAMVI (для проверок).</summary>
+    internal CharacterWindowHost? CharacterWindowHost => _characterWindow;
 
     public async Task CopyAsync(string text)
     {

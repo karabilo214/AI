@@ -92,6 +92,21 @@ public sealed class SectionsViewModel : ObservableObject
         private set => Set(ref _current, value);
     }
 
+    /// <summary>
+    /// 9.26: вид раздела Character независимо от выбранного раздела — его показывают
+    /// отдельное окно и оверлей, пока в главном окне открыт чат.
+    /// </summary>
+    public ModuleSectionViewModel? CharacterSection
+    {
+        get => _character;
+        private set => Set(ref _character, value);
+    }
+    private ModuleSectionViewModel? _character;
+
+    /// <summary>Подключить Character без перехода в его раздел (для окна вне RAMVI).</summary>
+    public Task OpenCharacterAsync() =>
+        Items.FirstOrDefault(i => i.View == "character") is { } item ? OpenAsync(item, select: false) : Task.CompletedTask;
+
     /// <summary>Сколько видов разделов уже создано (для проверки ленивости).</summary>
     public int CreatedViews => _views.Count;
 
@@ -133,7 +148,7 @@ public sealed class SectionsViewModel : ObservableObject
         Raise(nameof(IsPlaceholderSelected));
     }
 
-    private async Task OpenAsync(SectionItem item)
+    private async Task OpenAsync(SectionItem item, bool select = true)
     {
         if (item.View == "chat")
         {
@@ -146,9 +161,10 @@ public sealed class SectionsViewModel : ObservableObject
             view = new ModuleSectionViewModel(item);
             _views[item.Id] = view;
             Raise(nameof(CreatedViews));
+            if (item.View == "character") CharacterSection = view;
         }
 
-        Current = view;
+        if (select) Current = view;
         try
         {
             item.Update(await _api().OpenSectionAsync(item.Id).ConfigureAwait(true));

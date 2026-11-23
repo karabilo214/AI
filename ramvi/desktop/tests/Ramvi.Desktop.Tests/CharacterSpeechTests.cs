@@ -80,6 +80,7 @@ public sealed class CharacterSpeechTests
             var vm=(CharacterViewModel)dialogue.DataContext!;
             await MainViewModelTests.Until(()=>vm.Speech.Providers.Count==2,"speech catalog");
             await model.Settings.OpenAsync("module:character");
+            window.UpdateLayout(); // вкладка внутри прокрутки появляется после раскладки
             var settings=window.GetVisualDescendants().OfType<CharacterSettingsView>().Single();
             var panel=settings.FindControl<StackPanel>("SpeechSettings")!;
             window.UpdateLayout();

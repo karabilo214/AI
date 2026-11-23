@@ -23,9 +23,19 @@ public sealed partial class CharacterView : UserControl, IDisposable
     public string PackPath { get => GetValue(PackPathProperty); set => SetValue(PackPathProperty, value); }
     public static readonly StyledProperty<bool> AvatarEnabledProperty = AvaloniaProperty.Register<CharacterView, bool>(nameof(AvatarEnabled), true);
     public bool AvatarEnabled { get => GetValue(AvatarEnabledProperty); set => SetValue(AvatarEnabledProperty, value); }
+    /// <summary>9.26: без заголовка раздела — для окна персонажа вне RAMVI.</summary>
+    /// <summary>9.26: отразить персонажа (окно справа — смотрит влево, к центру экрана).</summary>
+    public bool Mirrored { get => CharacterSurface.Mirrored; set => CharacterSurface.Mirrored = value; }
+    public static readonly StyledProperty<bool> CompactProperty = AvaloniaProperty.Register<CharacterView, bool>(nameof(Compact));
+    public bool Compact { get => GetValue(CompactProperty); set => SetValue(CompactProperty, value); }
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
+        if (change.Property == CompactProperty)
+        {
+            CharacterTitle.IsVisible = CharacterState.IsVisible = !Compact; // ошибки пака видны всегда
+            CharacterLayout.Margin = Compact ? new Thickness(8) : new Thickness(24);
+        }
         if (change.Property == AvatarEnabledProperty) Refresh();
         if (change.Property == PackPathProperty && _packPath != (PackPath.Length == 0 ? null : PackPath))
         {

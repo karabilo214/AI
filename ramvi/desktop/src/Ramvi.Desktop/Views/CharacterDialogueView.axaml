@@ -31,7 +31,7 @@
    </StackPanel>
   </StackPanel>
   </ScrollViewer>
-  <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+  <Grid x:Name="CharacterInputRow" Grid.Row="2" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
   <Border x:Name="CharacterComposer" Classes="composer" Margin="4,8,4,0">
    <Grid RowDefinitions="Auto,Auto">
     <TextBox x:Name="CharacterInput" Classes="bare" MinHeight="40" MaxHeight="200" Text="{Binding Draft}" PlaceholderText="{l:T chat.input_placeholder}" AcceptsReturn="True" TextWrapping="Wrap"/>

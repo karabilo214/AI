@@ -5,6 +5,8 @@
     <AssemblyName>RAMVI</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <IsTrimmable>true</IsTrimmable>
+    <!-- 3.13: LibraryImport для пропуска кликов окна персонажа (WinAPI / objc) -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets/ramvi.ico</ApplicationIcon>
   </PropertyGroup>
 

@@ -177,6 +177,8 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         await Voice.StopAsync().ConfigureAwait(true);
         await Voice.LoadAsync().ConfigureAwait(true);
     }
+    /// <summary>Состояние модуля уже прочитано: смена представления (9.26) не перечитывает его.</summary>
+    public bool Initialized => _initialized;
     public Task LoadAsync() => LoadCoreAsync(false);
     public Task LoadSettingsAsync() => LoadCoreAsync(true);
     private async Task LoadCoreAsync(bool preserveDraft)

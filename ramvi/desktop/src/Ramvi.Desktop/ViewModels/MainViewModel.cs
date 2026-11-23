@@ -49,9 +49,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Func<string, Task>? chooseDataDir = null,
         Func<Task<IReadOnlyList<DroppedFile>>>? pickFiles = null,
         Action<string>? applyTheme = null,
-        TimeSpan? loadPoll = null)
+        TimeSpan? loadPoll = null,
+        CharacterWindowStore? characterWindow = null)
         : this(() => Task.FromResult(api), copy, openFolder, pickModelFile, pickFolder, restartApp, chooseDataDir,
-            pickFiles, applyTheme, loadPoll)
+            pickFiles, applyTheme, loadPoll, characterWindow)
     {
     }
 
@@ -70,7 +71,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Func<string, Task>? chooseDataDir = null,
         Func<Task<IReadOnlyList<DroppedFile>>>? pickFiles = null,
         Action<string>? applyTheme = null,
-        TimeSpan? loadPoll = null)
+        TimeSpan? loadPoll = null,
+        CharacterWindowStore? characterWindow = null)
     {
         _connect = connect;
         _loadPoll = loadPoll ?? TimeSpan.FromMilliseconds(300);
@@ -80,6 +82,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Character.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterViewModel.Busy)) Raise(nameof(CanSelectModel)); };
         PropertyChanged += (_, e) => { if (e.PropertyName == nameof(IsIdle)) Raise(nameof(CanSelectModel)); };
         Sections = new SectionsViewModel(() => _api, Agent.LoadAsync, Character.LoadAsync);
+        CharacterWindow = new CharacterWindowViewModel(Character, Sections.OpenCharacterAsync, characterWindow);
         ModelsScreen = new ModelsViewModel(() => _api, ReloadModelListAsync);
         _pickFolder = pickFolder;
         _chooseDataDir = chooseDataDir;
@@ -234,6 +237,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public SettingsViewModel Settings { get; }
     public AgentViewModel Agent { get; }
     public CharacterViewModel Character { get; }
+    /// <summary>3.13/9.26: где показан персонаж (окно RAMVI, отдельное окно, поверх экрана).</summary>
+    public CharacterWindowViewModel CharacterWindow { get; }
 
     /// <summary>5.2: кнопка микрофона у поля ввода.</summary>
     public VoiceViewModel Voice { get; }
@@ -388,6 +393,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             await Sections.LoadAsync().ConfigureAwait(true);
             if (Sections.Items.Any(s => s.View == "agent")) Settings.AddTab("agent", "section.agent");
             if (Sections.Items.Any(s => s.View == "character")) Settings.AddTab("character", "section.character");
+            if (Sections.Items.Any(s => s.View == "character")) _ = CharacterWindow.RestoreAsync(); // 9.26
+            else CharacterWindow.Available = false;
             SelectedChat = Chats.FirstOrDefault();
             if (SelectedChat is null)
             {

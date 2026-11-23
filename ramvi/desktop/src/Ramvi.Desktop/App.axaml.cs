@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
@@ -15,6 +16,8 @@ public sealed partial class App : Application, IDisposable
 {
     private ServiceHost? _service;
     private ChatApiClient? _api;
+    private TrayController? _tray;
+    private string? _dataDir;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -34,8 +37,11 @@ public sealed partial class App : Application, IDisposable
             }
             var window = new MainWindow();
             desktop.MainWindow = window;
+            // 3.13: выход — только когда закрыто (а не спрятано) окно RAMVI или выбран «Выйти».
+            desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+            _dataDir = settings.DataDirPath(ServiceOptions.AppDirectory);
             window.Opened += async (_, _) => await ConnectAsync(window).ConfigureAwait(true);
-            desktop.ShutdownRequested += async (_, _) => await StopServiceAsync().ConfigureAwait(true);
+            desktop.ShutdownRequested += async (_, _) => { _tray?.Dispose(); _tray = null; await StopServiceAsync().ConfigureAwait(true); };
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -45,8 +51,11 @@ public sealed partial class App : Application, IDisposable
     {
         var model = new MainViewModel(
             StartServiceAsync, window.CopyAsync, window.OpenFolderAsync, window.PickModelFileAsync,
-            window.PickFolderAsync, RestartAsync, ChooseDataDirAsync, window.PickFilesAsync, ApplyTheme);
+            window.PickFolderAsync, RestartAsync, ChooseDataDirAsync, window.PickFilesAsync, ApplyTheme,
+            characterWindow: _dataDir is null ? null : new CharacterWindowStore(_dataDir));
         window.DataContext = model;
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            _tray = new TrayController(model, window, () => desktop.Shutdown());
         await model.InitializeAsync().ConfigureAwait(true);
         window.FocusInput(); // 8.5: можно сразу печатать, без мыши
     }

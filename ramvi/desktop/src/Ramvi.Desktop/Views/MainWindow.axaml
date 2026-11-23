@@ -145,7 +145,26 @@
     <Border x:Name="CharacterPanel" Grid.Column="1" Grid.Row="1" Classes="card" Margin="8,4,16,16" IsVisible="{Binding Sections.IsCharacterSelected}">
       <Grid ColumnDefinitions="2*,3*">
        <Grid RowDefinitions="*,Auto">
-        <views:CharacterView DataContext="{Binding Sections.Current}" Response="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Presentation}" ReplyEnd="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.ReplyEnd}" Playback="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Playback}" PackPath="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.PackPath, Mode=TwoWay}"/>
+        <!-- 9.26: персонаж вне окна RAMVI — здесь управление им; разговор справа остаётся тем же -->
+        <StackPanel x:Name="CharacterOutside" IsVisible="{Binding CharacterWindow.IsFloating}" Margin="24" Spacing="10">
+         <TextBlock Classes="title" Text="{l:T section.character}"/>
+         <TextBlock Text="{l:T character.window.outside}" TextWrapping="Wrap" Classes="muted"/>
+         <Border IsVisible="{Binding CharacterWindow.ListeningWhileHidden}" Classes="card" Padding="8">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+           <PathIcon Data="{StaticResource icon-microphone}" Foreground="{DynamicResource ramvi-error}"/>
+           <TextBlock Text="{l:T character.window.listening}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+          </StackPanel>
+         </Border>
+         <WrapPanel>
+          <Button x:Name="CharacterEmbed" Content="{l:T character.window.embed}" Command="{Binding CharacterWindow.ShowCommand}" CommandParameter="embedded" Margin="0,0,8,8"/>
+          <Button x:Name="CharacterShowHide" Content="{Binding CharacterWindow.HideText}" Command="{Binding CharacterWindow.ToggleHiddenCommand}" Margin="0,0,8,8"/>
+          <Button x:Name="CharacterClickThrough" Content="{Binding CharacterWindow.ClickThroughText}" Command="{Binding CharacterWindow.ToggleClickThroughCommand}" IsVisible="{Binding CharacterWindow.IsOverlay}" Margin="0,0,8,8"/>
+          <Button x:Name="CharacterOutsideStop" Content="{l:T character.disconnect}" Command="{Binding Character.DisconnectCommand}" IsVisible="{Binding Character.CanStopAll}" Margin="0,0,8,8"/>
+         </WrapPanel>
+        </StackPanel>
+        <Panel IsVisible="{Binding CharacterWindow.IsEmbedded}">
+         <views:CharacterView DataContext="{Binding Sections.Current}" Response="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Presentation}" ReplyEnd="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.ReplyEnd}" Playback="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Playback}" PackPath="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.PackPath, Mode=TwoWay}"/>
+        </Panel>
         <views:CharacterRatingView Grid.Row="1" DataContext="{Binding Character}"/>
        </Grid>
        <views:CharacterDialogueView Grid.Column="1" DataContext="{Binding Character}"/>
@@ -766,7 +785,25 @@
               </StackPanel>
             </ScrollViewer>
             <!-- Вкладка модуля: модули добавляют свои настройки (этапы 6 и 9) -->
-            <Border IsVisible="{Binding Settings.IsCharacterTab}"><views:CharacterSettingsView DataContext="{Binding Character}"/></Border>
+            <Border IsVisible="{Binding Settings.IsCharacterTab}"><ScrollViewer x:Name="CharacterSettingsScroll"><StackPanel>
+              <!-- 9.26: где показывать персонажа — настройка оболочки, не модуля -->
+              <StackPanel x:Name="CharacterPlacement" DataContext="{Binding CharacterWindow}" Spacing="8" Margin="24,8,24,0">
+                <TextBlock Text="{l:T character.window.where}"/>
+                <RadioButton x:Name="PlacementEmbedded" GroupName="CharacterPlacement" Content="{l:T character.window.mode.embedded}" IsChecked="{Binding IsEmbedded, Mode=OneWay}" Command="{Binding ShowCommand}" CommandParameter="embedded"/>
+                <RadioButton x:Name="PlacementCompanion" GroupName="CharacterPlacement" Content="{l:T character.window.mode.companion}" IsChecked="{Binding IsCompanion, Mode=OneWay}" Command="{Binding ShowCommand}" CommandParameter="companion"/>
+                <RadioButton x:Name="PlacementOverlay" GroupName="CharacterPlacement" Content="{l:T character.window.mode.overlay}" IsChecked="{Binding IsOverlay, Mode=OneWay}" Command="{Binding ShowCommand}" CommandParameter="overlay"/>
+                <StackPanel IsEnabled="{Binding IsFloating}" Spacing="6">
+                  <CheckBox x:Name="CharacterBackground" Content="{l:T character.window.background}" IsChecked="{Binding Background}"/>
+                  <TextBlock Text="{l:T character.window.background_hint}" TextWrapping="Wrap" Classes="muted"/>
+                  <TextBlock Text="{l:T character.window.opacity}"/>
+                  <Slider x:Name="CharacterOpacity" Minimum="0.3" Maximum="1" Value="{Binding Opacity}" Width="320" HorizontalAlignment="Left"/>
+                  <TextBlock Text="{l:T character.window.size}"/>
+                  <Slider x:Name="CharacterSize" Minimum="0.5" Maximum="2.5" Value="{Binding Size}" Width="320" HorizontalAlignment="Left"/>
+                  <TextBlock Text="{l:T character.window.size_hint}" TextWrapping="Wrap" Classes="muted"/>
+                </StackPanel>
+              </StackPanel>
+              <views:CharacterSettingsView DataContext="{Binding Character}"/>
+            </StackPanel></ScrollViewer></Border>
             <Border IsVisible="{Binding Settings.IsAgentTab}"><views:AgentSettingsView DataContext="{Binding Agent}"/></Border>
             <StackPanel x:Name="ModuleSettingsTab" Margin="28,8" Spacing="8" IsVisible="{Binding Settings.IsModuleTab}">
               <TextBlock Classes="muted" TextWrapping="Wrap" Text="{l:T settings.module_tab_note}" />
