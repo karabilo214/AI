@@ -1,0 +1,41 @@
+{
+  "model": "gemini-3.8-flash-tts",
+  "cases": [
+    {
+      "name": "ok_neutral",
+      "text": "Ок!",
+      "style": "Use a neutral tone at relative intensity 0.20. Delivery: neutral.",
+      "seconds": 0.84,
+      "voiced_seconds": 0.2,
+      "rms": 3825.8,
+      "peak": 24994
+    },
+    {
+      "name": "ok_excited",
+      "text": "Ок!",
+      "style": "Use a joy tone at relative intensity 0.90. Delivery: excited.",
+      "seconds": 1.08,
+      "voiced_seconds": 0.22,
+      "rms": 5355.2,
+      "peak": 28231
+    },
+    {
+      "name": "try_neutral",
+      "text": "Давай попробуем.",
+      "style": "Use a neutral tone at relative intensity 0.20. Delivery: neutral.",
+      "seconds": 1.68,
+      "voiced_seconds": 0.84,
+      "rms": 6081.3,
+      "peak": 28373
+    },
+    {
+      "name": "try_intriguing",
+      "text": "Давай попробуем.",
+      "style": "Use a interest tone at relative intensity 0.70. Delivery: intriguing.",
+      "seconds": 1.52,
+      "voiced_seconds": 0.86,
+      "rms": 6004.8,
+      "peak": 28786
+    }
+  ]
+}
