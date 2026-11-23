@@ -13,7 +13,9 @@ from ramvi_character.brain import (
     CONTROLLERS,
     SIGNAL_PROMPT,
     Decision,
+    MemoryController,
     OffController,
+    RuleController,
     decision_view,
     parse_signal,
     safe_decision,
@@ -387,7 +389,12 @@ class Dialogue:
         """9.30: короткий запрос «опиши событие» → проверка сигнала → решение контроллера.
         Любой сбой — безопасная обычная реакция; ход продолжается."""
         name = getattr(self.owner, "_brain", "rules")
-        controller = CONTROLLERS.get(name, OffController)()
+        outcomes = getattr(self.owner, "_brain_outcomes", None)
+        controller: Any = (
+            MemoryController(outcomes)
+            if name == "memory" and outcomes is not None
+            else CONTROLLERS.get(name, RuleController if name == "memory" else OffController)()
+        )
         signal = None
         if name != "off":
             shown = [{"role": m["role"], "text": m["text"]} for m in recent[-6:]]
@@ -585,6 +592,19 @@ class Dialogue:
                 )
                 self.job["memory_rejected"] = planner.rejected
                 status = "completed"
+                brain = self.job.get("brain") or {}
+            outcomes = getattr(self.owner, "_brain_outcomes", None)
+            if outcomes is not None and brain.get("signal"):
+                # 9.31: данные для памяти исходов — событие и стратегия этого ответа.
+                try:
+                    outcomes.record(
+                        identifier,
+                        brain["signal"]["event"],
+                        brain["decision"]["strategy"],
+                        brain["decision"]["controller"],
+                    )
+                except Exception:
+                    pass  # память исходов необязательна; ответ уже готов
             consolidator = getattr(self.owner, "_consolidator", None)
             if consolidator is not None and (candidates or feedback):
                 # Only a fully completed response reaches memory, and off the speech path.

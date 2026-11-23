@@ -105,6 +105,7 @@ class Decision:
     initiative: float
     controller: str
     fallback: bool = False
+    adapted_from: str = ""  # 9.31: стратегия правил, которую заменила память исходов
 
     def guidance(self) -> str:
         """План реакции для промпта ответа: данные модуля, не новые права."""
@@ -245,6 +246,131 @@ class OffController:
 
     def decide(self, signal: Signal, personality: dict[str, Any], emotions: list[str]) -> Decision:
         return safe_decision(self.name)
+
+
+# --- 9.31: память исходов (CHAR-BRAIN-02) -------------------------------------------------
+#
+# Данные: для каждого ответа — событие, стратегия, контроллер (brain_decision); обратная связь —
+# достоверные оценки владельца на этот ответ (feedback_signal, 9.18: кнопка или дословные
+# однозначные слова). Цель: не повторять стратегию, которую владелец устойчиво не одобряет, и
+# держаться той, что одобряет. Правило «устойчиво» — то же, что у установленных предпочтений
+# 9.18 (ESTABLISH_*), без новых порогов. Веса LLM и базовая личность не меняются; стратегии
+# безопасности (serious_help, gentle_support) память не трогает. Откат — forget() или
+# контроллер rules (обучение выключено, данные остаются).
+
+# Какие стороны оценки относятся к стратегии: юмор и сарказм — к шутливым, «в целом» — ко всем.
+DIMENSIONS_FOR = {
+    "roast": ("overall", "humor", "sarcasm"),
+    "playful_counter": ("overall", "humor", "sarcasm"),
+    "counter_trap": ("overall", "humor"),
+    "mock_absurd": ("overall", "humor", "sarcasm"),
+}
+# Чем заменить неодобряемую стратегию: та же задача ответа без того, что не понравилось.
+ALTERNATIVE = {
+    "roast": "correct_mistake",
+    "playful_counter": "answer_plainly",
+    "counter_trap": "answer_plainly",
+    "mock_absurd": "answer_plainly",
+    "correct_mistake": "answer_plainly",
+    "clarify": "answer_plainly",
+}
+PROTECTED = frozenset({"serious_help", "gentle_support"})
+
+
+def verdict(signals: list[dict[str, Any]]) -> str:
+    """liked / disliked / unknown по достоверным сигналам — правило установленного
+    предпочтения 9.18 (число сигналов, разных ответов и согласие)."""
+    from ramvi_character.feedback import (
+        ESTABLISH_AGREEMENT,
+        ESTABLISH_RESPONSES,
+        ESTABLISH_SIGNALS,
+    )
+
+    reliable = [s for s in signals if s["reliable"]]
+    plus = sum(s["confidence"] for s in reliable if s["direction"] > 0)
+    minus = sum(s["confidence"] for s in reliable if s["direction"] < 0)
+    total = plus + minus
+    if not total or plus == minus:
+        return "unknown"
+    responses = len({s["response_id"] for s in reliable})
+    if (
+        len(reliable) < ESTABLISH_SIGNALS
+        or responses < ESTABLISH_RESPONSES
+        or max(plus, minus) / total < ESTABLISH_AGREEMENT
+    ):
+        return "unknown"
+    return "liked" if plus > minus else "disliked"
+
+
+class OutcomeStore:
+    """brain_decision + feedback_signal одного пространства памяти (пользователь + персонаж)."""
+
+    def __init__(self, memory: Any) -> None:
+        self.memory = memory
+
+    def record(self, response_id: str, event: str, strategy: str, controller: str) -> None:
+        self.memory._execute(
+            "INSERT OR REPLACE INTO brain_decision (namespace_id, response_id, event, strategy,"
+            " controller, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            [self.memory.namespace, response_id, event, strategy, controller, self.memory.clock()],
+        )
+
+    def signals(self, event: str, strategy: str) -> list[dict[str, Any]]:
+        dimensions = DIMENSIONS_FOR.get(strategy, ("overall",))
+        marks = ",".join("?" for _ in dimensions)
+        rows = self.memory._query(
+            "SELECT f.response_id, f.direction, f.confidence, f.reliable FROM feedback_signal f"
+            " JOIN brain_decision b ON b.namespace_id = f.namespace_id"
+            " AND b.response_id = f.response_id"
+            " WHERE b.namespace_id = ? AND b.event = ? AND b.strategy = ?"
+            f" AND f.dimension IN ({marks})",
+            [self.memory.namespace, event, strategy, *dimensions],
+        )
+        return [{**r, "reliable": bool(r["reliable"])} for r in rows]
+
+    def outcome(self, event: str, strategy: str) -> str:
+        return verdict(self.signals(event, strategy))
+
+    def forget(self) -> int:
+        """Откат обучения: забыть, какие стратегии к каким ответам относились."""
+        forgotten: int = self.memory._execute(
+            "DELETE FROM brain_decision WHERE namespace_id = ?", [self.memory.namespace]
+        )
+        return forgotten
+
+
+class MemoryController:
+    """Правила + память исходов: устойчиво неодобряемая стратегия заменяется (9.31)."""
+
+    name = "memory/1"
+
+    def __init__(self, outcomes: Any) -> None:
+        self.outcomes = outcomes
+
+    def decide(self, signal: Signal, personality: dict[str, Any], emotions: list[str]) -> Decision:
+        base = RuleController().decide(signal, personality, emotions)
+        strategy = base.strategy
+        seen = {strategy}
+        while (
+            strategy not in PROTECTED
+            and strategy in ALTERNATIVE
+            and self.outcomes.outcome(signal.event, strategy) == "disliked"
+        ):
+            strategy = ALTERNATIVE[strategy]
+            if strategy in seen:
+                break
+            seen.add(strategy)
+        if strategy == base.strategy:
+            return Decision(**{**asdict(base), "controller": self.name})
+        calm = strategy in ("answer_plainly", "correct_mistake")
+        return Decision(
+            strategy,
+            "calm" if calm and "calm" in emotions else base.emotion,
+            min(base.intensity, 0.4) if calm else base.intensity,
+            base.initiative,
+            self.name,
+            adapted_from=base.strategy,
+        )
 
 
 CONTROLLERS: dict[str, type] = {"rules": RuleController, "off": OffController}

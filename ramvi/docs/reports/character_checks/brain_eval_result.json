@@ -1,0 +1,123 @@
+{
+  "rate": 0.6,
+  "events": {
+    "mistake": 3,
+    "trap": 2,
+    "question": 3,
+    "playful_provocation": 2,
+    "absurd_request": 1,
+    "danger": 0.2
+  },
+  "seeds": 10,
+  "turns": 120,
+  "rows": [
+    {
+      "owner": "не любит подколы про ошибки",
+      "controller": "rules",
+      "accepted_late_min": 0.617,
+      "accepted_late_mean": 0.712,
+      "accepted_late_max": 0.8,
+      "liked_late_mean": 0.0,
+      "rejected_after_settled_total": 289
+    },
+    {
+      "owner": "не любит подколы про ошибки",
+      "controller": "memory",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": 1.0,
+      "rejected_after_settled_total": 0
+    },
+    {
+      "owner": "не любит подколы про ошибки",
+      "controller": "lazy",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": 0.0,
+      "rejected_after_settled_total": 0
+    },
+    {
+      "owner": "любит подколы",
+      "controller": "rules",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": 1.0,
+      "rejected_after_settled_total": 0
+    },
+    {
+      "owner": "любит подколы",
+      "controller": "memory",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": 1.0,
+      "rejected_after_settled_total": 0
+    },
+    {
+      "owner": "любит подколы",
+      "controller": "lazy",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": 0.352,
+      "rejected_after_settled_total": 0
+    },
+    {
+      "owner": "молчун (оценок нет)",
+      "controller": "rules",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": null,
+      "rejected_after_settled_total": 0
+    },
+    {
+      "owner": "молчун (оценок нет)",
+      "controller": "memory",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": null,
+      "rejected_after_settled_total": 0
+    },
+    {
+      "owner": "молчун (оценок нет)",
+      "controller": "lazy",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": null,
+      "rejected_after_settled_total": 0
+    },
+    {
+      "owner": "подколы — да, про ошибки — нет",
+      "controller": "rules",
+      "accepted_late_min": 0.633,
+      "accepted_late_mean": 0.712,
+      "accepted_late_max": 0.783,
+      "liked_late_mean": 0.539,
+      "rejected_after_settled_total": 292
+    },
+    {
+      "owner": "подколы — да, про ошибки — нет",
+      "controller": "memory",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": 0.565,
+      "rejected_after_settled_total": 0
+    },
+    {
+      "owner": "подколы — да, про ошибки — нет",
+      "controller": "lazy",
+      "accepted_late_min": 1.0,
+      "accepted_late_mean": 1.0,
+      "accepted_late_max": 1.0,
+      "liked_late_mean": 0.0,
+      "rejected_after_settled_total": 0
+    }
+  ]
+}

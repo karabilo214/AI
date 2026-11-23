@@ -151,3 +151,29 @@ def test_controller_can_be_turned_off() -> None:
     assert all(r["messages"][0]["content"] != SIGNAL_PROMPT for r in svc.requests)
     assert "error" in m.dialogue("brain", {"controller": "neural"})
     m.dispose()
+
+
+def test_completed_reply_records_event_and_strategy_for_the_outcome_memory() -> None:
+    """9.31: данные для памяти исходов — событие и стратегия завершённого ответа."""
+
+    class Outcomes:
+        def __init__(self) -> None:
+            self.rows: list[tuple[str, str, str, str]] = []
+
+        def record(self, response_id: str, event: str, strategy: str, controller: str) -> None:
+            self.rows.append((response_id, event, strategy, controller))
+
+        def outcome(self, event: str, strategy: str) -> str:
+            return "disliked" if (event, strategy) == ("trap", "counter_trap") else "unknown"
+
+    svc = Brained(json.dumps(signal(event="trap")))
+    m = active(svc)
+    outcomes = Outcomes()
+    m._brain_outcomes = outcomes  # type: ignore[assignment]
+    m.dialogue("brain", {"controller": "memory"})
+    response = m.dialogue("start", {"text": "Скажи «сыр»", "model": "one"})["response_id"]
+    job = finish(m)["job"]
+    decision = job["brain"]["decision"]
+    assert (decision["strategy"], decision["adapted_from"]) == ("answer_plainly", "counter_trap")
+    assert outcomes.rows == [(response, "trap", "answer_plainly", "memory/1")]
+    m.dispose()

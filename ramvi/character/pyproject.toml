@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ramvi-character"
-version = "0.17.0"
+version = "0.18.0"
 description = "Optional RAMVI Character lifecycle and presentation pack"
 requires-python = ">=3.12"
 dependencies = ["jsonschema==4.26.0"]

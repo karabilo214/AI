@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from ramvi_character.adaptation import Adaptation
+from ramvi_character.brain import OutcomeStore
 from ramvi_character.consolidate import Consolidator
 from ramvi_character.context import Budget, ContextOrchestrator, text
 from ramvi_character.delegation import Delegation
@@ -64,6 +65,7 @@ class CharacterModule:
         self._assistant: dict[str, str] | None = None
         # 9.30: контроллер реакций (заменяемый): rules — правила по характеру, off — без него.
         self._brain = DEFAULT_BRAIN
+        self._brain_outcomes: OutcomeStore | None = None
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})
@@ -127,6 +129,7 @@ class CharacterModule:
             self._feedback = FeedbackStore(self._memory)
             self._adaptation = Adaptation(self._memory, self._feedback)
             self._consolidator = Consolidator(self._memory, self._feedback, self._adapt)
+            self._brain_outcomes = OutcomeStore(self._memory)  # 9.31: память исходов
             self._load_corrections()
 
     def _load_corrections(self) -> None:
@@ -655,10 +658,13 @@ class CharacterModule:
                 return self.set_assistant(args.get("target"))
             elif operation == "brain":  # 9.30: выбрать контроллер реакций
                 choice = args.get("controller")
-                if choice not in ("rules", "off"):
+                if choice not in ("rules", "memory", "off"):
                     raise ValueError("unknown reaction controller")
                 self._brain = choice
                 return {"brain": self._brain}
+            elif operation == "brain_forget":  # 9.31: откат обучения — забыть исходы стратегий
+                forgotten = self._brain_outcomes.forget() if self._brain_outcomes else 0
+                return {"brain": self._brain, "forgotten": forgotten}
             elif operation == "assistant_view":  # 9.28: что персонаж видит в окне сейчас
                 return {
                     "assistant": copy.deepcopy(self._assistant),
