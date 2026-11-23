@@ -84,7 +84,7 @@ public sealed class CharacterAgentTests
         Assert.Equal("/work/project", model.Folder);
         model.Enabled = true;
         await Until(() => fake.Binding is not null);
-        Assert.Equal(("agent", "delegate", """{"module":"character","enabled":true,"workspace":"/work/project","model_id":"qwen"}"""), fake.Calls[0]);
+        Assert.Equal(("agent", "delegate", """{"module":"character","enabled":true,"workspace":"/work/project","model_id":"qwen","use_ui":false}"""), fake.Calls[0]);
         Assert.Equal(("module", "agent_bind", """{"binding_id":"b-1"}"""), fake.Calls[1]);
         Assert.True(model.Enabled);
 

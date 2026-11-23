@@ -155,6 +155,8 @@ class AgentDesktop:
         self._target: dict[str, str] | None = None
         # 9.21: bindings made for other modules (Character) on the owner's explicit request.
         self._delegates: dict[str, tuple[Owner, str]] = {}
+        # 9.28: гранты других модулей (Character) на выбранное окно: модуль → (владелец, приложение).
+        self._module_grants: dict[str, tuple[Owner, str]] = {}
         self._policy = defaults()
         try:
             loaded = json.loads((root / "agent_settings.json").read_text(encoding="utf-8"))
@@ -341,10 +343,13 @@ class AgentDesktop:
         The module receives only an opaque binding for its own scope; folder, permissions,
         tools, confirmations and journal are the Agent's, under the same settings.
         """
-        if set(body) - {"module", "enabled", "workspace", "model_id"} or not isinstance(
+        if set(body) - {"module", "enabled", "workspace", "model_id", "use_ui"} or not isinstance(
             body.get("enabled"), bool
         ):
             raise ValueError("invalid delegation fields")
+        use_ui = body.get("use_ui", False)  # 9.28: агент действует в выбранном окне
+        if not isinstance(use_ui, bool):
+            raise ValueError("use_ui must be boolean")
         module = body.get("module")
         if not isinstance(module, str) or module == "agent":
             raise ValueError("invalid module")
@@ -361,9 +366,51 @@ class AgentDesktop:
         if owner is None or entry.state != "active":
             raise ValueError("module is not running")
         self.host.grants.allow(owner, "agent")  # trusted user explicitly turned it on
-        binding, _ = self._bind(owner, folder, model_id, False, "", 0)
+        binding, _ = self._bind(owner, folder, model_id, use_ui, "", 0)
         self._delegates[module] = (owner, binding)
         return {"binding_id": binding}
+
+    def module_grants(self, body: dict[str, Any]) -> dict[str, Any]:
+        """9.28: пользователь даёт модулю (Character) доступ к выбранному окну: читать интерфейс
+        (выделенный текст и элементы), снимок окна, отправку прочитанного облачной модели.
+        Только на выбранное приложение; смена окна или выключение — немедленный отзыв."""
+        # control — поручения модуля агенту действуют в этом окне: задача агента идёт от имени
+        # модуля, поэтому и право на действия — у модуля, гранты самого агента не меняются.
+        names = ("ui", "screen", "egress", "control")
+        if set(body) != {"module", *names} or any(not isinstance(body[k], bool) for k in names):
+            raise ValueError("invalid module grants")
+        module = body["module"]
+        if not isinstance(module, str) or module == "agent":
+            raise ValueError("invalid module")
+        entry = self.host._entry(module)
+        owner = entry.owner
+        if owner is None or entry.state != "active":
+            raise ValueError("module is not running")
+        self._revoke_module_grants(module)
+        if not (body["ui"] or body["screen"] or body["control"]):
+            return {"target": None}
+        if self._target is None:
+            raise ValueError("select application")
+        application = self._target["application"]
+        for name, permission in (
+            ("ui", "context.ui"),
+            ("screen", "context.screen"),
+            ("egress", "egress.text"),
+            ("control", "agent.control"),
+        ):
+            if body[name]:
+                self.host.grants.allow(owner, permission, application)
+        self._module_grants[module] = (owner, application)
+        return {"target": dict(self._target)}
+
+    def _revoke_module_grants(self, module: str | None = None) -> None:
+        for name in [module] if module is not None else list(self._module_grants):
+            previous = self._module_grants.pop(name, None) if name is not None else None
+            if previous is None:
+                continue
+            owner, application = previous
+            for permission in ("context.ui", "context.screen", "egress.text", "agent.control"):
+                self.host.grants.revoke(owner, permission, application)
 
     def _release_delegate(self, module: str) -> None:
         previous = self._delegates.pop(module, None)
@@ -470,14 +517,22 @@ class AgentDesktop:
                 previous_owner = self.host._entry("agent").owner
                 self.close()
                 if previous is not None and previous_owner is not None:
-                    for permission in ("context.ui", "context.screen", "agent.control"):
+                    for permission in (
+                        "context.ui",
+                        "context.screen",
+                        "agent.control",
+                        "egress.text",
+                    ):
                         self.host.grants.revoke(previous_owner, permission, previous["application"])
+                self._revoke_module_grants()  # 9.28: новое окно — доступ модулей выдаётся заново
                 self._target = {
                     "application": target["application"],
                     "window_id": target["window_id"],
                     "title": target.get("title", target["application"]),
                 }
                 return {"target": self._target}
+            if path == "/agent/target/module" and method == "POST":
+                return self.module_grants(body)
             if path == "/agent/target/grants" and method == "POST":
                 if self._target is None:
                     raise ValueError("select application")
@@ -485,16 +540,23 @@ class AgentDesktop:
                 owner = self.host._entry("agent").owner
                 if owner is None:
                     raise ValueError("Agent unavailable")
-                if set(body) != {"ui", "screen", "control"} or any(
-                    not isinstance(v, bool) for v in body.values()
-                ):
+                # 9.28: egress — можно отправлять прочитанное в окне облачной модели (необязательно).
+                if not {"ui", "screen", "control"} <= set(body) <= {
+                    "ui",
+                    "screen",
+                    "control",
+                    "egress",
+                } or any(not isinstance(v, bool) for v in body.values()):
                     raise ValueError("invalid grants")
                 self.close()
                 for name, permission in (
                     ("ui", "context.ui"),
                     ("screen", "context.screen"),
                     ("control", "agent.control"),
+                    ("egress", "egress.text"),
                 ):
+                    if name not in body:
+                        continue
                     action = self.host.grants.allow if body[name] else self.host.grants.revoke
                     action(owner, permission, self._target["application"])
                 return {"ok": True}

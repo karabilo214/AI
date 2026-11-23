@@ -87,6 +87,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         Memory = new CharacterMemoryViewModel(CallAsync, ReloadTranscriptAsync);
         Agent = new CharacterAgentViewModel(CallAsync, AgentRouteAsync,
             pickFolder ?? (_ => Task.FromResult<string?>(null)), () => Model, ReloadTranscriptAsync);
+        Assistant = new CharacterAssistantViewModel(AgentRouteAsync, CallAsync, Agent);
         DelegateCommand = new Command(DelegateAsync, () => Model is not null && Agent.CanDelegate(Draft));
         Agent.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(CharacterAgentViewModel.Enabled) or nameof(CharacterAgentViewModel.Running)) DelegateCommand.Refresh(); };
         Voice.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterVoiceViewModel.IsActive)) Raise(nameof(CanStopAll)); };
@@ -106,6 +107,8 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     public CharacterMemoryViewModel Memory { get; }
     /// <summary>9.21: поручения агенту.</summary>
     public CharacterAgentViewModel Agent { get; }
+    /// <summary>9.28: помощник в приложениях.</summary>
+    public CharacterAssistantViewModel Assistant { get; }
     public Command DelegateCommand { get; }
     private async Task<JsonElement> AgentRouteAsync(string path, JsonObject body)
     {

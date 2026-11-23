@@ -286,6 +286,7 @@ class ContextOrchestrator:
         recent: list[dict[str, str]] | None = None,
         memories: list[dict[str, Any]] | None = None,
         budget: Budget | None = None,
+        application: dict[str, Any] | None = None,
     ) -> Prepared:
         budget = budget or Budget()
         # Реплика с файлами ограничена бюджетом токенов раздела input (ContextOverflow с числами),
@@ -380,6 +381,14 @@ class ContextOrchestrator:
                 for m in turns.pop(0)
             )
 
+        # 9.28: контекст выбранного окна — данные, не инструкции. Выделенный текст и состояние
+        # обязательны; список элементов окна выбрасывается первым при нехватке места.
+        app = None if application is None else copy.deepcopy(application)
+
+        def application_content() -> str:
+            assert app is not None
+            return encode({"section": "application_context", "trust": "untrusted_data", **app})
+
         def messages() -> list[dict[str, str]]:
             output = [
                 {
@@ -392,13 +401,23 @@ class ContextOrchestrator:
             ]
             if memory:
                 output.append({"role": "user", "content": memory_content()})
-            return output + recent_messages() + [{"role": "user", "content": sections["input"]}]
+            closing = [{"role": "user", "content": application_content()}] if app else []
+            return (
+                output
+                + recent_messages()
+                + closing
+                + [{"role": "user", "content": sections["input"]}]
+            )
 
         total = self.counter.messages(messages())
         # Окно неизвестно (облако) — собрать всё: размер ограничивают хранимые история и память.
         available = (
             total if budget.context is None else budget.context - budget.output - budget.reserve
         )
+        while total > available and app is not None and app.get("elements"):
+            app.pop("elements")
+            dropped.append({"section": "application", "id": "elements", "reason": "context_budget"})
+            total = self.counter.messages(messages())
         while total > available and (memory or turns):
             if memory:
                 dropped.append(
@@ -415,6 +434,8 @@ class ContextOrchestrator:
         counts["memory"] = self.counter.content(memory_content()) if memory else 0
         counts["recent"] = sum(self.counter.content(m["content"]) for m in recent_messages())
         sources = {"task": task, "current": user_input}
+        if app is not None and app.get("selected_text"):
+            sources["application"] = str(app["selected_text"])
         sources.update({"recent:" + m["id"]: m["text"] for turn in turns for m in turn})
         sources.update({"memory:" + m["id"]: m["text"] for m in memory})
         accounting = {

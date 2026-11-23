@@ -48,7 +48,9 @@ class Delegation:
         with self.lock:
             return self.task is not None and self.task["state"] == "running"
 
-    def start(self, goal: str) -> dict[str, Any]:
+    def start(self, goal: str, context: str = "") -> dict[str, Any]:
+        """`context` — данные выбранного окна (9.28); агенту уходят вместе с задачей, а в
+        истории и отчёте остаётся только сама задача владельца."""
         if not isinstance(goal, str) or not goal.strip() or len(goal) > GOAL_LIMIT:
             raise ValueError("invalid agent goal")
         with self.lock:
@@ -57,8 +59,9 @@ class Delegation:
             if self.running():
                 return self._refuse("agent_busy")
             try:
+                sent = goal.strip() + ("\n\n" + context if context else "")
                 created = self.services.call(
-                    "agent.create", {"goal": goal.strip(), "binding_id": self.binding}
+                    "agent.create", {"goal": sent, "binding_id": self.binding}
                 )
             except UNAVAILABLE:
                 # The binding was revoked (settings changed, Agent removed or restarted).

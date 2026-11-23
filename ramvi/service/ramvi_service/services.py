@@ -517,7 +517,27 @@ class ScopedServices:
                 snapshot.text is not None or snapshot.structure is not None,
                 snapshot.image is not None,
             )
-        return {"snapshot": asdict(snapshot)}
+        try:  # 9.28: модуль заранее знает, можно ли отправить прочитанное облачной модели
+            self.grants.require(self.owner, "egress.text", snapshot.application)
+            egress = True
+        except PermissionError:
+            egress = False
+        return {"snapshot": asdict(snapshot), "egress_text": egress}
+
+    @handler("context.release", permission="llm")
+    def _context_release(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """9.28: модуль больше не держит данные окна этого приложения (сырой снимок не хранит).
+        После отзыва гранта новые чтения запрещены, а обычный разговор модуля продолжается;
+        без этого любой запрос к модели блокировался бы до нового сеанса модуля."""
+        application = payload.get("application")
+        if not isinstance(application, str) or not application:
+            raise ValueError("application is required")
+        with self._condition:
+            for key in [k for k in self._context_history if k[0] == application]:
+                del self._context_history[key]
+        if self.context is not None:
+            self.context.release_owner(self.owner)  # и последний снимок у провайдера
+        return {"released": True}
 
     def _agent_gateway(self) -> Any:
         if self.agent is None:

@@ -82,7 +82,7 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
         ClearCommand = new Command(ClearAsync, () => ClearConfirmed);
         WhyCommand = new Command(WhyAsync);
         PickTargetCommand = new Command(PickTargetAsync);
-        SaveGrantsCommand = new Command(() => ActAsync("target/grants", new JsonObject { ["ui"] = GrantUi, ["screen"] = GrantScreen, ["control"] = GrantControl }));
+        SaveGrantsCommand = new Command(() => ActAsync("target/grants", new JsonObject { ["ui"] = GrantUi, ["screen"] = GrantScreen, ["control"] = GrantControl, ["egress"] = GrantEgress }));
     }
     private static Localizer L => Localizer.Current;
     public IReadOnlyCollection<ModelInfo> Models { get; }
@@ -157,6 +157,8 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     public bool GrantUi { get; set; }
     public bool GrantScreen { get; set; }
     public bool GrantControl { get; set; }
+    /// <summary>9.28: прочитанное в окне можно отправлять облачной модели.</summary>
+    public bool GrantEgress { get; set; }
     public string Target { get; private set; } = "";
     public string HistoryPath { get; set; } = "";
     public string ClearBefore { get; set; } = "";
@@ -372,8 +374,8 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
             await Task.Delay(5000, _token).ConfigureAwait(true);
             var response = await CallAsync("target", new JsonObject()).ConfigureAwait(true);
             Target = Text(response.GetProperty("target"), "title");
-            GrantUi = false; GrantScreen = false; GrantControl = false;
-            Raise(nameof(GrantUi)); Raise(nameof(GrantScreen)); Raise(nameof(GrantControl));
+            GrantUi = false; GrantScreen = false; GrantControl = false; GrantEgress = false;
+            Raise(nameof(GrantUi)); Raise(nameof(GrantScreen)); Raise(nameof(GrantControl)); Raise(nameof(GrantEgress));
             Raise(nameof(Target));
             Status = L["agent.target_selected"];
         }

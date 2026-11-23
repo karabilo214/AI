@@ -36,7 +36,8 @@
   <WrapPanel>
    <CheckBox Content="{l:T agent.grant_ui}" IsChecked="{Binding GrantUi}" Margin="0,0,16,0"/>
    <CheckBox Content="{l:T agent.grant_screen}" IsChecked="{Binding GrantScreen}" Margin="0,0,16,0"/>
-   <CheckBox Content="{l:T agent.grant_control}" IsChecked="{Binding GrantControl}"/>
+   <CheckBox Content="{l:T agent.grant_control}" IsChecked="{Binding GrantControl}" Margin="0,0,16,0"/>
+   <CheckBox Content="{l:T agent.grant_egress}" IsChecked="{Binding GrantEgress}"/>
   </WrapPanel>
   <Button Content="{l:T agent.apply_grants}" Command="{Binding SaveGrantsCommand}" HorizontalAlignment="Left"/>
   <CheckBox Content="{l:T agent.use_ui}" IsChecked="{Binding UseUi}"/>

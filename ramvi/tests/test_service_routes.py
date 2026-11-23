@@ -41,6 +41,7 @@ METHODS = {
     "llm.read",
     "llm.cancel",
     "context.capture",
+    "context.release",  # 9.28: модуль отпустил данные окна
     "agent.create",
     "agent.status",
     "agent.events",
@@ -65,6 +66,7 @@ METHODS = {
 # Право, которое ожидается для вызова с PAYLOAD.
 EXPECTED = {method: (method.split(".")[0], "*") for method in METHODS}
 EXPECTED["context.capture"] = ("context.ui", "editor")
+EXPECTED["context.release"] = ("llm", "*")
 PAYLOAD: dict[str, Any] = {"application": "editor", "window_id": "w1"}
 
 

@@ -446,6 +446,11 @@ class Dialogue:
                 state=snapshot["state"],
                 recent=recent,
                 budget=Budget(context=window, output=1536, sections=None),
+                application=self.owner.application_context(
+                    bool(caps["capabilities"].get("external"))
+                )
+                if hasattr(self.owner, "application_context")
+                else None,
             )
             # Evidence must refer only to sources that survived trimming.
             planner = ResponsePlanner(

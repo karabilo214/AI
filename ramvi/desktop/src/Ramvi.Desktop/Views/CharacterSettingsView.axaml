@@ -55,6 +55,26 @@
    <CheckBox x:Name="AgentEnabled" Content="{l:T character.agent_enabled}" IsChecked="{Binding Enabled}"/>
    <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Classes="error"/>
   </StackPanel>
+  <!-- 9.28: помощник в приложениях — окно выбирает и доступ даёт только пользователь -->
+  <StackPanel x:Name="AssistantSettings" DataContext="{Binding Assistant}" x:DataType="vm:CharacterAssistantViewModel" Spacing="8">
+   <TextBlock Text="{l:T character.assistant_title}" Classes="heading"/>
+   <TextBlock Text="{l:T character.assistant_hint}" TextWrapping="Wrap" Classes="muted"/>
+   <StackPanel Orientation="Horizontal" Spacing="8">
+    <Button x:Name="AssistantPick" Content="{l:T character.assistant_pick}" Command="{Binding PickWindowCommand}"/>
+    <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+   </StackPanel>
+   <StackPanel IsVisible="{Binding HasTarget}" Spacing="6">
+    <CheckBox x:Name="AssistantReadUi" Content="{l:T character.assistant_read}" IsChecked="{Binding ReadUi}"/>
+    <CheckBox x:Name="AssistantCloud" Content="{l:T character.assistant_cloud}" IsChecked="{Binding SendToCloud}"/>
+    <CheckBox x:Name="AssistantAgent" Content="{l:T character.assistant_agent}" IsChecked="{Binding AgentActs}"/>
+    <WrapPanel>
+     <Button x:Name="AssistantApply" Content="{l:T character.assistant_apply}" Command="{Binding ApplyCommand}" Margin="0,0,8,8"/>
+     <Button x:Name="AssistantOff" Content="{l:T character.assistant_disable}" Command="{Binding OffCommand}" Margin="0,0,8,8"/>
+    </WrapPanel>
+   </StackPanel>
+   <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Classes="muted"/>
+   <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Classes="error"/>
+  </StackPanel>
   <StackPanel x:Name="MemorySettings" DataContext="{Binding Memory}" x:DataType="vm:CharacterMemoryViewModel" Spacing="8">
    <TextBlock Text="{l:T character.memory_title}" Classes="heading"/>
    <TextBlock Text="{l:T character.memory_hint}" TextWrapping="Wrap" Classes="muted"/>

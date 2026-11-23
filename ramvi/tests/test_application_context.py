@@ -193,6 +193,14 @@ def test_scoped_external_model_cannot_bypass_application_egress(tmp_path: Path) 
         grants.allow(owner, "context.ui", "app")
         with pytest.raises(PermissionError, match="revoked context"):
             scope.call("llm.complete", {"request": {"messages": []}})
+        # 9.28: модуль отпустил данные окна — разговор продолжается, новое чтение — по гранту.
+        grants.revoke(owner, "context.ui", "app")
+        assert scope.call("context.release", {"application": "app"}) == {"released": True}
+        assert scope.call("llm.complete", {"request": {"messages": []}}) == {"reply": "ok"}
+        with pytest.raises(PermissionError):
+            scope.call(
+                "context.capture", {"application": "app", "window_id": "window", "kind": "ui"}
+            )
         assert not list(tmp_path.rglob("*.json"))
     finally:
         scope.stop()

@@ -22,6 +22,7 @@ public sealed class CharacterAgentViewModel : ObservableObject
     private bool _running;
     private bool _waiting;
     private bool _loading;
+    private bool _window; // 9.28: агент действует в выбранном окне
     private string _goal = "";
     private string _state = "";
 
@@ -68,7 +69,7 @@ public sealed class CharacterAgentViewModel : ObservableObject
                 return;
             }
             var body = new JsonObject { ["module"] = "character", ["enabled"] = on };
-            if (on) { body["workspace"] = Folder; body["model_id"] = _model()!.Id; }
+            if (on) { body["workspace"] = Folder; body["model_id"] = _model()!.Id; body["use_ui"] = _window; }
             var binding = (await _agent("delegate", body).ConfigureAwait(true)).GetProperty("binding_id");
             var id = binding.ValueKind == JsonValueKind.String ? binding.GetString() : null;
             Read((await _call("agent_bind", new JsonObject { ["binding_id"] = id }).ConfigureAwait(true)).GetProperty("delegation"));
@@ -79,6 +80,14 @@ public sealed class CharacterAgentViewModel : ObservableObject
             Error = Localizer.Current["character.agent_unavailable"];
             SetQuietly(false);
         }
+    }
+
+    /// <summary>9.28: поручения выполняются в выбранном окне (привязка пересоздаётся).</summary>
+    public async Task SetWindowAsync(bool inWindow)
+    {
+        if (_window == inWindow) return;
+        _window = inWindow;
+        if (Enabled) await SwitchAsync(true).ConfigureAwait(true);
     }
 
     private void SetQuietly(bool value)
