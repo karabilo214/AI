@@ -17,6 +17,7 @@ from ramvi_storage.repositories import Chat, Chats, Message, Models, NotFound
 
 from ramvi_service.contracts.modules import Owner
 from ramvi_service.engines import MODEL_FIELD, EngineError
+from ramvi_service.i18n import UserError
 from ramvi_service.resources import ResourceBusy, SharedLLM
 
 TITLE_CHARS = 60
@@ -310,7 +311,7 @@ class ChatService:
                 finish = "cancelled"
             except EngineError as exc:
                 finish, error = "error", {"code": exc.code, "params": exc.params}
-            except ChatError as exc:
+            except (ChatError, UserError) as exc:
                 finish, error = "error", {"code": exc.code, "params": exc.params}
             except TimeoutError:
                 finish, error = "error", {"code": "chat.busy_timeout", "params": {}}

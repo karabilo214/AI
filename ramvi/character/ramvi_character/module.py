@@ -8,7 +8,7 @@ from ramvi_character.adaptation import Adaptation
 from ramvi_character.consolidate import Consolidator
 from ramvi_character.context import Budget, ContextOrchestrator, text
 from ramvi_character.delegation import Delegation
-from ramvi_character.dialogue import Dialogue
+from ramvi_character.dialogue import MAX_INPUT_BYTES, Dialogue
 from ramvi_character.emotions import EmotionalState
 from ramvi_character.feedback import FeedbackStore
 from ramvi_character.initiative import InitiativeGate
@@ -66,7 +66,7 @@ class CharacterModule:
         ):
             raise ValueError("unsupported character state schema")
         draft, model = saved.get("draft", ""), saved.get("model")
-        if not isinstance(draft, str) or len(draft.encode("utf-8")) > 32_000:
+        if not isinstance(draft, str) or len(draft.encode("utf-8")) > MAX_INPUT_BYTES:
             raise ValueError("invalid character draft")
         if model is not None and (not isinstance(model, str) or len(model) > 255):
             raise ValueError("invalid model selection")
@@ -513,7 +513,7 @@ class CharacterModule:
     def configure(self, draft: str, model: str | None = None) -> dict[str, Any]:
         if self._state != "active":
             raise RuntimeError("character is not active")
-        if not isinstance(draft, str) or len(draft.encode("utf-8")) > 32_000:
+        if not isinstance(draft, str) or len(draft.encode("utf-8")) > MAX_INPUT_BYTES:
             raise ValueError("invalid character draft")
         if model is not None and (not isinstance(model, str) or not model or len(model) > 255):
             raise ValueError("invalid model selection")
@@ -595,9 +595,11 @@ class CharacterModule:
             if result["job"]:
                 result["job"]["events"] = []
                 result["job"]["cursor"] = 0
-            # History and owner draft are separately bounded; keep one RPC below 64 KiB.
+            # Ответ — одна строка обмена с сервисом (потолок 256 МБ, B.15); старые ходы
+            # выбрасываются, только если ответ иначе не поместился бы в неё.
             while (
-                len(json.dumps(result, ensure_ascii=False).encode()) > 60_000 and result["history"]
+                len(json.dumps(result, ensure_ascii=False).encode()) > MAX_INPUT_BYTES - 2**20
+                and result["history"]
             ):
                 result["history"].pop(0)
             return result

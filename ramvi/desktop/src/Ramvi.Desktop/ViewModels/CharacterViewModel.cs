@@ -307,6 +307,9 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     }
     private async Task SendAsync()
     {
+        // Длина текста — общий лимит с чатом (сервис сообщает его вместе с лимитами файлов).
+        var maxText=_fileLimits().MaxTextChars;
+        if(maxText>0 && Draft.Length>maxText) { Error=Localizer.Current.Format("chat.text_too_long",("limit",maxText)); return; }
         var revision=InvalidateResponse();
         Busy=true; Error="";
         var input=Draft; var model=Model!.Id;

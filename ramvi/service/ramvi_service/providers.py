@@ -1,6 +1,7 @@
 """LLM Provider поверх публичного HTTP API; без импорта inference-кода."""
 
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -9,7 +10,23 @@ from collections.abc import Iterator
 from typing import Any
 
 from ramvi_service.contracts.modules import ProviderCapabilities
+from ramvi_service.i18n import UserError
 from ramvi_service.transport import local_opener, loopback_url
+
+# B.15: движок отвергает слишком длинный запрос машинной меткой (ramvi_engine.core.engine);
+# чат показывает «нужно N токенов, есть M» из каталога i18n, а не «ошибка ответа».
+CONTEXT_OVERFLOW = re.compile(r"context overflow: needed=(\d+) available=(\d+)")
+
+
+def engine_failure(message: str) -> Exception:
+    """Ошибка движка из потока: переполнение контекста — с числами, остальное как было."""
+    match = CONTEXT_OVERFLOW.search(message)
+    if match is not None:
+        return UserError(
+            "chat.context_overflow", needed=int(match.group(1)), available=int(match.group(2))
+        )
+    return RuntimeError(message or "Engine error")
+
 
 MAX_STREAM_BYTES = 4 * 2**20
 MAX_STREAM_LINE = 2**20
@@ -22,7 +39,7 @@ def stream_chunks(event: dict[str, Any]) -> Iterator[dict[str, Any]]:
         message = str(error.get("message", "")) if isinstance(error, dict) else str(error)
         if isinstance(error, dict) and error.get("type") == "cancelled":
             raise InterruptedError(message or "request cancelled")
-        raise RuntimeError(message or "Engine error")
+        raise engine_failure(message)
     for choice in event.get("choices") or []:
         delta = choice.get("delta") or {}
         if delta.get("reasoning_content"):

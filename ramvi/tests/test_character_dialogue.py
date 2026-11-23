@@ -457,3 +457,28 @@ def test_file_that_does_not_fit_reports_tokens_instead_of_a_generic_error() -> N
     )
     assert not svc.requests  # до модели не дошло
     m.dispose()
+
+
+def test_long_reply_text_is_limited_by_tokens_and_kept_whole_in_history() -> None:
+    svc = Services()
+    m = active(svc)
+    long_text = "Слово " * 2000  # ~24 КБ: больше прежних 4096 байт, но помещается в бюджет
+    m.dialogue("configure", {"draft": long_text})
+    m.dialogue("start", {"text": long_text, "model": "one"})
+    result = finish(m)
+    assert result["job"]["state"] == "completed"
+    assert result["history"][-1]["user"] == long_text
+    # Ещё больше — не помещается в бюджет реплики: понятная ошибка с числами.
+    m.dialogue("start", {"text": "я" * 40_000, "model": "one"})
+    job = finish(m)["job"]
+    assert (
+        job["error"] == "ContextOverflow"
+        and job["overflow"]["needed"] > job["overflow"]["available"]
+    )
+    checkpoint = m.checkpoint()
+    m.dispose()
+    restored = CharacterModule()
+    restored.initialize({"services": svc, "checkpoint": checkpoint})
+    restored.activate()  # история с большим последним ходом читается обратно
+    assert restored.dialogue()["history"][-1]["user"] == "я" * 40_000
+    restored.dispose()

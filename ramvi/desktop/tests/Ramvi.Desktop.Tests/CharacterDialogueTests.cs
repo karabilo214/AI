@@ -153,5 +153,10 @@ public sealed class CharacterDialogueTests
         overflow = true;
         await vm.Send.RunAsync();
         Assert.Contains("5000", vm.Error); Assert.Contains("3072", vm.Error);
+        // Текст длиннее общего лимита (как в чате) не уходит модулю.
+        started = null;
+        vm.Draft = new string('t', 1001);
+        await vm.Send.RunAsync();
+        Assert.Null(started); Assert.Contains("1000", vm.Error);
     }
 }

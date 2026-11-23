@@ -27,6 +27,11 @@ CHOOSABLE = {"nod", "shake", *GESTURES}
 # Файлы к реплике персонажу (B.15). Число и размер задаёт пользователь в настройках приложения,
 # их проверяет оболочка; модуль проверяет только вид. Файл идёт в текущий ответ целиком, без
 # обрезки; не помещается в запрос — понятная ошибка с числом токенов (job["overflow"]).
+# Реплика владельца: лимит текста — общий с чатом (проверяет оболочка), здесь — только
+# бюджет токенов запроса; байтовый потолок — защита связи, как у команды модулю.
+MAX_INPUT_BYTES = 256 * 2**20
+# История — последние 16 ходов, не больше 32 000 байт; последний ход хранится всегда целиком.
+HISTORY_TURNS, HISTORY_BYTES = 16, 32_000
 FILES_ONLY_INPUT = "The owner attached files without a message. Look at them and react."
 
 
@@ -60,7 +65,7 @@ def history_text(user_input: str, files: list[dict[str, str]]) -> str:
     """В историю — слова владельца и имена файлов; содержимое файлов не хранится."""
     names = "\n".join("[file: " + f["name"] + "]" for f in files)
     combined = (user_input.strip() + "\n" + names).strip() if names else user_input
-    return combined if len(combined.encode("utf-8")) <= 4096 else user_input
+    return combined
 
 
 # Сильная эмоция без выбранного движения: персонаж реагирует телом сам.
@@ -121,19 +126,24 @@ class Dialogue:
                         raise ValueError("invalid history turn")
                     for key, limit in [
                         ("id", 64),
-                        ("user", 4096),
+                        ("user", MAX_INPUT_BYTES),
                         ("assistant", 16384),
                         ("model", 255),
                     ]:
                         text(row[key], limit)
                     if row["status"] not in {"completed", "cancelled", "error"}:
                         raise ValueError("invalid history status")
-                if len(encode(rows).encode()) > 32_000:
+                last = len(encode(rows[-1:]).encode()) if rows else 0
+                if len(encode(rows).encode()) > HISTORY_BYTES + last:
                     raise ValueError("oversized history")
                 self.history = copy.deepcopy(rows)
 
     def _save(self) -> None:
-        while len(self.history) > 16 or len(encode(self.history).encode()) > 32_000:
+        while len(self.history) > HISTORY_TURNS or (
+            len(self.history) > 1
+            and len(encode(self.history).encode())
+            > HISTORY_BYTES + len(encode(self.history[-1:]).encode())
+        ):
             self.history.pop(0)
         if self.services is not None:
             self.services.call(
@@ -203,7 +213,7 @@ class Dialogue:
             self.thread.join(timeout=2)
 
     def start(self, user_input: str, model: str, files: Any = None) -> dict[str, Any]:
-        user_input, model = text(user_input, 4096), text(model, 255)
+        user_input, model = text(user_input, MAX_INPUT_BYTES), text(model, 255)
         attached = check_files(files)
         if not (user_input.strip() or attached) or not model.strip():
             raise ValueError("input and model required")

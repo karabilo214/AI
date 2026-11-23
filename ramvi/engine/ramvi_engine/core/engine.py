@@ -507,7 +507,8 @@ class Engine:
         слово после каждого из них (после чтения запроса > 16 слов — только после последнего)."""
         self._validate_process(tokens, pos0)
         if pos0 + len(tokens) > self.maxt:
-            raise ValueError(f"текст длиннее {self.maxt} слов")
+            # Машинная метка без языка: текст для пользователя — в каталогах i18n (chat.context_overflow).
+            raise ValueError(f"context overflow: needed={pos0 + len(tokens)} available={self.maxt}")
         previous = self.ctx[:pos0]
         try:
             if len(tokens) > 16:
@@ -565,7 +566,7 @@ class Engine:
         rng = np.random.default_rng(seed)
         P = len(prompt)
         if P > self.maxt:
-            raise ValueError(f"запрос длиннее контекста {self.maxt}")
+            raise ValueError(f"context overflow: needed={P} available={self.maxt}")
         # Последний выданный токен ещё не обязан иметь строку KV.
         max_new = min(max_new, self.maxt - P + 1)
         c = min(self.common(prompt), P - 1)

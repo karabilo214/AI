@@ -117,7 +117,8 @@ def test_invalid_directives_and_state_do_not_mutate_character() -> None:
         with pytest.raises(ValueError):
             module.present(emotion, motion)
         assert module.status() == original
-    for draft in ["x" * 32_001, "😀" * 8_001, 3, None]:
+    # Длина черновика — по общему лимиту текста (оболочка) и бюджету токенов, а не байтам (B.15).
+    for draft in [3, None]:
         with pytest.raises(ValueError):
             module.configure(draft)  # type: ignore[arg-type]
         assert module.status() == original

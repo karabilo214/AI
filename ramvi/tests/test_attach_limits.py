@@ -46,3 +46,16 @@ def test_request_ceiling_follows_the_total_limit() -> None:
     assert max_body(Limits()) == 256 * 1024 * 6 + MAX_BODY
     big = Limits(max_total_bytes=10 * 2**20)
     assert max_body(big) is not None and max_body(big) > 10 * 2**20 * 6  # type: ignore[operator]
+
+
+def test_engine_context_overflow_becomes_a_translated_error_with_numbers() -> None:
+    from ramvi_service.i18n import UserError
+    from ramvi_service.providers import stream_chunks
+
+    event = {"error": {"message": "context overflow: needed=9100 available=8192"}}
+    with pytest.raises(UserError) as error:
+        list(stream_chunks(event))
+    assert error.value.code == "chat.context_overflow"
+    assert error.value.params == {"needed": 9100, "available": 8192}
+    with pytest.raises(RuntimeError, match="other"):
+        list(stream_chunks({"error": "other failure"}))

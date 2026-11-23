@@ -112,6 +112,16 @@ def source_before_move(relative_path: str) -> bytes:
 
 def allowed_layout_changes(name: str, source: str) -> str:
     """Применить только согласованные различия размещения, hash и CLI."""
+    if name in {"engine", "gengine"}:
+        # B.15: текст ошибки переполнения контекста — машинная метка с размером запроса
+        # (сервис показывает «нужно N, есть M» из каталога); вычисления не меняются.
+        source = source.replace(
+            'raise ValueError(f"текст длиннее {self.maxt} слов")',
+            'raise ValueError(f"context overflow: needed={pos0 + len(tokens)} available={self.maxt}")',
+        ).replace(
+            'raise ValueError(f"запрос длиннее контекста {self.maxt}")',
+            'raise ValueError(f"context overflow: needed={P} available={self.maxt}")',
+        )
     if name in {"gengine", "moe", "plan"}:
         source = source.replace(
             'GGUF(find_ollama(name) if ":" in name and not name.endswith(".gguf") else name)',

@@ -627,7 +627,7 @@ class GGUFEngine(Engine):
     def _process(self, tokens, pos0, temperature=0.0, top_p=1.0, rng=None, mask=None, last_only=False):
         self._validate_process(tokens, pos0)
         if pos0 + len(tokens) > self.maxt:
-            raise ValueError(f"текст длиннее {self.maxt} слов")
+            raise ValueError(f"context overflow: needed={pos0 + len(tokens)} available={self.maxt}")
         previous = self.ctx[:pos0]
         try:
             if len(tokens) > 16:

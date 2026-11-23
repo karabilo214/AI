@@ -1,0 +1,38 @@
+{
+  "limits_after_settings": {
+    "max_text_chars": 32000,
+    "max_files": 1,
+    "max_file_bytes": 131072,
+    "max_total_bytes": 262144,
+    "max_name_chars": 255
+  },
+  "model": "claude-haiku-5-5",
+  "chat_two_files_with_limit_1": {
+    "status": 400,
+    "error": {
+      "code": "chat.too_many_files",
+      "params": {
+        "limit": 1
+      }
+    }
+  },
+  "character_with_file": {
+    "state": "completed",
+    "error": null,
+    "answer": "Код двери на складе №3: 700021. Открыт с 8 до 17, по субботам до 14.",
+    "names_the_code": true,
+    "seconds": 5.9,
+    "history_user": "Посмотри файл и скажи, какой там код двери.\n[file: sklad.txt]"
+  },
+  "character_overflow": {
+    "state": "error",
+    "error": "ContextOverflow",
+    "overflow": {
+      "section": "input",
+      "needed": 28029,
+      "available": 3072
+    },
+    "file_bytes": 200000,
+    "usage_unchanged": true
+  }
+}

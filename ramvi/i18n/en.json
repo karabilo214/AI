@@ -1,4 +1,5 @@
 {
+  "chat.context_overflow": "The message doesn't fit the model's context: it needs {needed} tokens, {available} are available. Remove some text or files, or choose a model with a larger context.",
   "character.context_overflow": "The message with files doesn't fit the character's request: it needs {needed} tokens, {available} are available.",
   "settings.bad_attach_limit": "File limit {field} must be a whole number from 0 (no limit); sizes up to 2 GB",
   "settings.attach_not_number": "A file limit must be a whole number above zero or “No limit”",
