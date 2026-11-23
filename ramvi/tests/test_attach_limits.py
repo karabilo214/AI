@@ -59,3 +59,18 @@ def test_engine_context_overflow_becomes_a_translated_error_with_numbers() -> No
     assert error.value.params == {"needed": 9100, "available": 8192}
     with pytest.raises(RuntimeError, match="other"):
         list(stream_chunks({"error": "other failure"}))
+
+
+def test_engine_refusal_before_the_stream_is_also_explained() -> None:
+    import io
+    import urllib.error
+
+    from ramvi_service.i18n import UserError
+    from ramvi_service.providers import refused
+
+    body = b'{"error": {"message": "context overflow: needed=40000 available=32768"}}'
+    error = urllib.error.HTTPError("http://x", 400, "Bad Request", {}, io.BytesIO(body))  # type: ignore[arg-type]
+    result = refused(error)
+    assert isinstance(result, UserError) and result.params == {"needed": 40000, "available": 32768}
+    other = urllib.error.HTTPError("http://x", 500, "x", {}, io.BytesIO(b"not json"))  # type: ignore[arg-type]
+    assert refused(other) is other

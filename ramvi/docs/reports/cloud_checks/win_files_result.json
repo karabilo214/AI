@@ -1,0 +1,58 @@
+{
+  "model": "qwen3-8b-q4_k_m",
+  "chat_two_files_with_limit_1": {
+    "status": 400,
+    "error": {
+      "code": "chat.too_many_files",
+      "params": {
+        "limit": 1
+      }
+    }
+  },
+  "engine": {
+    "model_id": "qwen3-8b-q4_k_m",
+    "loading": null,
+    "state": "ready",
+    "last_failure": null,
+    "problem": null,
+    "draft_model_id": "qwen3-0.6b-q4_k_m",
+    "load_s": 20.3
+  },
+  "chat_file_bigger_than_context": {
+    "file_bytes": 828000,
+    "done": {
+      "code": "chat.context_overflow",
+      "params": {
+        "needed": 120029,
+        "available": 2048
+      }
+    }
+  },
+  "character_with_file": {
+    "state": "completed",
+    "error": null,
+    "answer": "Код двери: 700021.",
+    "names_the_code": true,
+    "seconds": 47.8,
+    "engine_after": {
+      "model_id": "qwen3-8b-q4_k_m",
+      "loading": null,
+      "state": "ready",
+      "last_failure": null,
+      "problem": null,
+      "draft_model_id": "qwen3-0.6b-q4_k_m"
+    },
+    "job": {
+      "id": "e2a57764b36f4abb882b2df8b7165bec",
+      "generation": 2,
+      "session_id": "d4e284e6280b4ccb847c3758842c2d50",
+      "state": "completed",
+      "error": null,
+      "fallback": false,
+      "first_segment_ms": 45983.99999999674,
+      "memory_rejected": 1,
+      "cursor": 3,
+      "settled": true
+    }
+  }
+}

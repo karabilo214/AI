@@ -195,10 +195,15 @@ public sealed class CharacterWindowTests
             Assert.False(model.CharacterWindow.KeepsRunningWithoutMainWindow);
             await model.CharacterWindow.ShowCommand.RunAsync("companion");
             Assert.True(model.CharacterWindow.KeepsRunningWithoutMainWindow);
+            window.Position = new PixelPoint(123, 77);
+            var before = window.Position;
             window.Close();
             Settle(window);
             Assert.False(closed); Assert.False(window.IsVisible);
             Assert.NotNull(window.CharacterWindowHost!.Window); // персонаж остаётся
+            window.ShowFromTray(); // «Открыть RAMVI» в трее — на прежнем месте
+            Assert.True(window.IsVisible); Assert.Equal(before, window.Position);
+            window.Close(); Settle(window); Assert.False(window.IsVisible);
             model.CharacterWindow.Background = false;
             window.Show(); window.Close();
             Assert.True(closed);

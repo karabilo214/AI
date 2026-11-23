@@ -1,10 +1,10 @@
 import io,types,unittest
-from ramvi_engine.server.app import App,make_handler
+from ramvi_engine.server.app import MAX_REQUEST_BYTES,App,make_handler
 from ramvi_engine.server.validation import validate_request
 class InputTest(unittest.TestCase):
     def test_invalid_http_bodies_and_lengths(self):
         app=App(None,None,'test');H=make_handler(app)
-        for body,length,expected in [(b'[]','2',400),(b'{}','bad',400),(b'{}','2097153',413),(b'\xff','1',400),(b'{}','3',400)]:
+        for body,length,expected in [(b'[]','2',400),(b'{}','bad',400),(b'{}',str(MAX_REQUEST_BYTES+1),413),(b'\xff','1',400),(b'{}','3',400)]:
             h=object.__new__(H);h.headers={'Content-Length':length};h.rfile=io.BytesIO(body);h.wfile=io.BytesIO();h.path='/v1/chat/completions'
             codes=[];h.send_response=lambda c:codes.append(c);h.send_header=lambda *a:None;h.end_headers=lambda:None
             h.do_POST();self.assertEqual(codes,[expected])

@@ -28,6 +28,18 @@ def engine_failure(message: str) -> Exception:
     return RuntimeError(message or "Engine error")
 
 
+def refused(error: urllib.error.HTTPError) -> Exception:
+    """Отказ движка до начала ответа (4xx/5xx): его сообщение — через engine_failure."""
+    try:
+        body = json.loads(error.read(2**20) or b"{}")
+        message = body.get("error", "") if isinstance(body, dict) else ""
+        if isinstance(message, dict):
+            message = message.get("message", "")
+    except (OSError, ValueError):
+        message = ""
+    return engine_failure(str(message)) if message else error
+
+
 MAX_STREAM_BYTES = 4 * 2**20
 MAX_STREAM_LINE = 2**20
 
@@ -91,7 +103,11 @@ class LocalEngineProvider:
         request = urllib.request.Request(
             self.base_url + route, json.dumps(payload).encode(), headers
         )
-        with self._opener.open(request, timeout=self.timeout) as response:
+        try:
+            response = self._opener.open(request, timeout=self.timeout)
+        except urllib.error.HTTPError as error:
+            raise refused(error) from error
+        with response:
             data = response.read(4 * 2**20 + 1)
             if len(data) > 4 * 2**20:
                 raise ValueError("Engine response exceeds the limit")
@@ -143,12 +159,17 @@ class LocalEngineProvider:
             headers = {"Content-Type": "application/json", "X-Request-ID": request_id}
             if self.api_key:
                 headers["Authorization"] = "Bearer " + self.api_key
-            response = self._opener.open(
-                urllib.request.Request(
-                    self.base_url + "/v1/chat/completions", json.dumps(payload).encode(), headers
-                ),
-                timeout=self.timeout,
-            )
+            try:
+                response = self._opener.open(
+                    urllib.request.Request(
+                        self.base_url + "/v1/chat/completions",
+                        json.dumps(payload).encode(),
+                        headers,
+                    ),
+                    timeout=self.timeout,
+                )
+            except urllib.error.HTTPError as error:
+                raise refused(error) from error
             opened = response
 
             def watch() -> None:

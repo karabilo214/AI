@@ -1,3 +1,4 @@
+using Avalonia;
 using System.Collections.Specialized;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -29,6 +30,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 && Model?.CharacterWindow.KeepsRunningWithoutMainWindow == true)
             {
                 e.Cancel = true;
+                _hiddenAt = Position; // при возврате из трея окно встаёт на прежнее место
                 Hide();
             }
         };
@@ -67,6 +69,16 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private MainViewModel? Model => DataContext as MainViewModel;
     private CharacterWindowHost? _characterWindow;
+    private PixelPoint? _hiddenAt;
+
+    /// <summary>Показать спрятанное окно RAMVI на прежнем месте (трей, «Открыть RAMVI»).</summary>
+    public void ShowFromTray()
+    {
+        Show();
+        if (_hiddenAt is { } at) Position = at;
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
 
     public void Dispose()
     {

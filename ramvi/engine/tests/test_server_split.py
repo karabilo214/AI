@@ -265,7 +265,9 @@ def test_application_and_transport_preserve_behavior() -> None:
             "app.py",
             "H",
             # _auth намеренно изменён в 7.2 (ключи клиентов); проверка — test_protocol.py.
-            ["setup", "log_message", "do_OPTIONS", "do_GET", "do_POST", "_post"],
+            # _post намеренно изменён в B.15: потолок тела запроса — MAX_REQUEST_BYTES вместо
+            # 2 МБ; проверка — test_post_differs_only_by_request_ceiling ниже.
+            ["setup", "log_message", "do_OPTIONS", "do_GET", "do_POST"],
         ),
         (
             "LimitedHTTPServer",
@@ -316,3 +318,18 @@ def test_draft_metadata_allowlist_does_not_hide_other_changes() -> None:
     assert normalized(baseline) != normalized(tree("{'draft': self.effective_draft_loaded(1)}"))
     assert normalized(baseline) != normalized(tree("{'other': self.effective_draft_loaded()}"))
     assert normalized(baseline) != normalized(tree("{'draft': True}"))
+
+
+def test_post_differs_only_by_request_ceiling() -> None:
+    """B.15: в _post изменён только потолок тела запроса (2 МБ → MAX_REQUEST_BYTES)."""
+    from ramvi_engine.server.app import MAX_REQUEST_BYTES
+
+    before = named_function(named_class(old_tree("app.py"), "H"), "_post")
+    after_tree = ast.parse((SERVER / "app.py").read_text(encoding="utf-8"))
+    after = named_function(named_class(after_tree, "H"), "_post")
+    old_text = normalized(before).replace(
+        "BinOp(left=Constant(value=2), op=Mult(), right=BinOp(left=Constant(value=2), op=Pow(), right=Constant(value=20)))",
+        "Name(id='MAX_REQUEST_BYTES', ctx=Load())",
+    )
+    assert old_text == normalized(after)
+    assert MAX_REQUEST_BYTES > 2 * 2**20

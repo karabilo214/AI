@@ -64,6 +64,11 @@ from ramvi_engine.server.validation import (
     validate_request,
 )
 
+# Потолок тела запроса. Файлы пользователя идут в запросе целиком (их лимит — в настройках
+# RAMVI, B.15); не помещается в контекст модели — ошибка с числами `context overflow`.
+# Потолок лишь защищает процесс и много больше контекста любой модели.
+MAX_REQUEST_BYTES = 256 * 2**20
+
 
 class App(GenerationStream):
     """Состояние модели и синхронизация запросов."""
@@ -386,7 +391,7 @@ def make_handler(app: Any) -> Any:
                 ):
                     raise ValueError("некорректный Content-Length или Transfer-Encoding")
                 length = int(length)
-                if length > 2 * 2**20:
+                if length > MAX_REQUEST_BYTES:
                     self.close_connection = True
                     return self._json({"error": {"message": "тело запроса слишком велико"}}, 413)
                 body = self.rfile.read(length)

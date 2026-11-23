@@ -53,6 +53,7 @@ public sealed class TrayController : IDisposable
 
     private void ShowMain()
     {
+        if (_main is MainWindow main) { main.ShowFromTray(); return; }
         _main.Show();
         if (_main.WindowState == WindowState.Minimized) _main.WindowState = WindowState.Normal;
         _main.Activate();
