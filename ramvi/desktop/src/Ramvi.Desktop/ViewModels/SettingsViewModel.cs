@@ -354,6 +354,14 @@ public sealed class SettingsViewModel : ObservableObject
 
     public bool HasModelsDirWarning => _modelsDirWarning is not null;
 
+    /// <summary>B.15: лимиты прикрепляемых файлов (чат, агент, персонаж); у каждого — «без ограничения».</summary>
+    public FileLimitField AttachFiles { get; } = new();
+    public FileLimitField AttachFileKb { get; } = new();
+    public FileLimitField AttachTotalKb { get; } = new();
+
+    /// <summary>B.15: после сохранения лимиты файлов сразу действуют в чате, у агента и у персонажа.</summary>
+    public event Action? FileLimitsChanged;
+
     /// <summary>7.4: с каких адресов можно при включённой сети (CIDR через запятую).</summary>
     public string NetworkAllow
     {
@@ -503,6 +511,9 @@ public sealed class SettingsViewModel : ObservableObject
         ApiPort = info.Settings.ApiPort.ToString(CultureInfo.InvariantCulture);
         NetworkAccess = info.Settings.NetworkAccess;
         NetworkAllow = info.Settings.NetworkAllow;
+        AttachFiles.Load(info.Settings.AttachMaxFiles);
+        AttachFileKb.Load(info.Settings.AttachMaxFileKb);
+        AttachTotalKb.Load(info.Settings.AttachMaxTotalKb);
         ModelsDirWarning = info.ModelsDirWarning is { } warning ? L[warning] : null;
         Theme = Themes.FirstOrDefault(t => t.Code == info.Settings.Theme) ?? Themes[0];
         Raise(nameof(DataDirNote));
@@ -524,6 +535,12 @@ public sealed class SettingsViewModel : ObservableObject
             return;
         }
 
+        if (AttachFiles.Value is not { } files || AttachFileKb.Value is not { } fileKb || AttachTotalKb.Value is not { } totalKb)
+        {
+            Error = L["settings.attach_not_number"];
+            return;
+        }
+
         var update = new SettingsUpdate(
             DataDir: DataDir != saved.DataDir ? DataDir : null,
             ModelsDir: ModelsDir != saved.ModelsDir ? ModelsDir : null,
@@ -531,7 +548,10 @@ public sealed class SettingsViewModel : ObservableObject
             ApiPort: port != saved.ApiPort ? port : null,
             NetworkAccess: NetworkAccess != saved.NetworkAccess ? NetworkAccess : null,
             Theme: Theme is { } theme && theme.Code != saved.Theme ? theme.Code : null,
-            NetworkAllow: NetworkAllow.Trim() != saved.NetworkAllow ? NetworkAllow.Trim() : null);
+            NetworkAllow: NetworkAllow.Trim() != saved.NetworkAllow ? NetworkAllow.Trim() : null,
+            AttachMaxFiles: files != saved.AttachMaxFiles ? files : null,
+            AttachMaxFileKb: fileKb != saved.AttachMaxFileKb ? fileKb : null,
+            AttachMaxTotalKb: totalKb != saved.AttachMaxTotalKb ? totalKb : null);
         var sound = Sound.Changes(saved);
         var api = Sound.ApiChanges(saved);
         update = update with
@@ -596,6 +616,11 @@ public sealed class SettingsViewModel : ObservableObject
                 Error = L.Format(apiError, ("port", info.Settings.ApiPort)); // 7.4: порт занят
             }
 
+            if (update.AttachMaxFiles is not null || update.AttachMaxFileKb is not null || update.AttachMaxTotalKb is not null)
+            {
+                FileLimitsChanged?.Invoke();
+            }
+
             if (update.ApiPort is not null || update.NetworkAccess is not null || update.NetworkAllow is not null)
             {
                 await Connections.LoadAsync().ConfigureAwait(true); // адрес и состояние API
@@ -610,4 +635,33 @@ public sealed class SettingsViewModel : ObservableObject
     private static string Text(Exception error) => error is ApiException api
         ? L.Format(api.Code, api.Parameters.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal))
         : L["ui.connection_lost"];
+}
+
+/// <summary>
+/// B.15: один лимит файлов на экране настроек — число и галочка «без ограничения» (в настройках 0).
+/// </summary>
+public sealed class FileLimitField : ObservableObject
+{
+    private string _text = "";
+    private bool _unlimited;
+
+    public string Text { get => _text; set => Set(ref _text, value); }
+
+    public bool Unlimited
+    {
+        get => _unlimited;
+        set { if (Set(ref _unlimited, value)) Raise(nameof(Limited)); }
+    }
+
+    public bool Limited => !_unlimited;
+
+    public void Load(int value)
+    {
+        Unlimited = value == 0;
+        Text = value == 0 ? "" : value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Значение для настроек: 0 — без ограничения; null — в поле не целое положительное число.</summary>
+    public int? Value => Unlimited ? 0
+        : int.TryParse(Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var v) && v > 0 ? v : null;
 }

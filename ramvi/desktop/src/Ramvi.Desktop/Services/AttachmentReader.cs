@@ -28,12 +28,13 @@ public static class AttachmentReader
         var total = current.Sum(a => a.Bytes);
         foreach (var file in files)
         {
-            if (current.Count + accepted.Count >= limits.MaxFiles)
+            // B.15: 0 в любом лимите — «без ограничения» (настройки → Общие).
+            if (limits.MaxFiles > 0 && current.Count + accepted.Count >= limits.MaxFiles)
             {
                 return Fail(accepted, "chat.too_many_files", ("limit", limits.MaxFiles));
             }
 
-            if (file.Size > limits.MaxFileBytes)
+            if (limits.MaxFileBytes > 0 && file.Size > limits.MaxFileBytes)
             {
                 return Fail(accepted, "chat.file_too_large", ("name", file.Name), ("limit", limits.MaxFileBytes));
             }
@@ -42,7 +43,7 @@ public static class AttachmentReader
             try
             {
                 using var stream = await file.Open().ConfigureAwait(true);
-                bytes = await ReadLimitedAsync(stream, limits.MaxFileBytes).ConfigureAwait(true);
+                bytes = await ReadLimitedAsync(stream, limits.MaxFileBytes > 0 ? limits.MaxFileBytes : int.MaxValue).ConfigureAwait(true);
             }
             catch (IOException)
             {
@@ -53,7 +54,7 @@ public static class AttachmentReader
                 return Fail(accepted, "ui.file_unreadable", ("name", file.Name));
             }
 
-            if (bytes.Length > limits.MaxFileBytes)
+            if (limits.MaxFileBytes > 0 && bytes.Length > limits.MaxFileBytes)
             {
                 return Fail(accepted, "chat.file_too_large", ("name", file.Name), ("limit", limits.MaxFileBytes));
             }
@@ -75,7 +76,7 @@ public static class AttachmentReader
             }
 
             var size = Encoding.UTF8.GetByteCount(text);
-            if (total + size > limits.MaxTotalBytes)
+            if (limits.MaxTotalBytes > 0 && total + size > limits.MaxTotalBytes)
             {
                 return Fail(accepted, "chat.files_too_large", ("limit", limits.MaxTotalBytes));
             }

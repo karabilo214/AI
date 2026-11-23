@@ -87,4 +87,14 @@ public sealed class AttachmentReaderTests
         Assert.Equal("ui.file_unreadable", result.ErrorKey);
         Assert.Equal("locked.txt", result.ErrorParams["name"]);
     }
+
+    [Fact]
+    public async Task Zero_limits_mean_no_limit()
+    {
+        var unlimited = new Limits(1000, 0, 0, 0, 255);
+        var files = Enumerable.Range(0, 7).Select(i => File($"{i}.txt", new string('x', 500))).ToArray();
+        var result = await AttachmentReader.ReadAsync([], files, unlimited);
+        Assert.Null(result.ErrorKey);
+        Assert.Equal(7, result.Accepted.Count); // больше Small: 2 файла, 100 и 150 байт
+    }
 }

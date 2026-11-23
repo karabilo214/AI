@@ -377,7 +377,11 @@ internal sealed class FakeChatApi : IChatApi
             update.VoiceLanguage ?? before.VoiceLanguage, update.VoiceModel ?? before.VoiceModel,
             update.VoiceBackend ?? before.VoiceBackend, update.VoiceApiUrl ?? before.VoiceApiUrl,
             update.VoiceApiModel ?? before.VoiceApiModel, update.VoiceAutoSend ?? before.VoiceAutoSend,
-            update.NetworkAllow ?? before.NetworkAllow);
+            update.NetworkAllow ?? before.NetworkAllow,
+            update.AttachMaxFiles ?? before.AttachMaxFiles, update.AttachMaxFileKb ?? before.AttachMaxFileKb,
+            update.AttachMaxTotalKb ?? before.AttachMaxTotalKb);
+        if (update.AttachMaxFiles is not null || update.AttachMaxFileKb is not null || update.AttachMaxTotalKb is not null)
+            Limits = Limits with { MaxFiles = AppSettings.AttachMaxFiles, MaxFileBytes = AppSettings.AttachMaxFileKb * 1024, MaxTotalBytes = AppSettings.AttachMaxTotalKb * 1024 };
         var restart = new List<string>();
         if (AppSettings.DataDir != before.DataDir)
         {

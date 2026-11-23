@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Ramvi.Desktop.Api;
 using Ramvi.Desktop.Character;
 using Ramvi.Desktop.Localization;
+using Ramvi.Desktop.Services;
 
 namespace Ramvi.Desktop.ViewModels;
 
@@ -71,8 +72,14 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         _serverGeneration=generation;
         if(_responseId is not null && _responseId!=response) { InvalidateResponse(); Busy=false; }
     }
-    public CharacterViewModel(Func<IChatApi> api, ObservableCollection<ModelInfo> models, Func<ModelInfo?>? sharedModel = null, Func<string?, Task<string?>>? pickFolder = null)
+    private readonly Func<Task<IReadOnlyList<DroppedFile>>>? _pickFiles;
+    /// <summary>B.15: лимиты файлов — общие для чата, агента и персонажа (настройки → Общие).</summary>
+    private readonly Func<Limits> _fileLimits;
+
+    public CharacterViewModel(Func<IChatApi> api, ObservableCollection<ModelInfo> models, Func<ModelInfo?>? sharedModel = null, Func<string?, Task<string?>>? pickFolder = null, Func<Task<IReadOnlyList<DroppedFile>>>? pickFiles = null, Func<Limits>? fileLimits = null)
     {
+        _pickFiles = pickFiles;
+        _fileLimits = fileLimits ?? (() => new Limits(32_000, 5, 128 * 1024, 256 * 1024, 255));
         _token = _lifetime.Token;
         _api = api; Models = models; _sharedModel = sharedModel;
         Voice = new CharacterVoiceViewModel((operation, args) => ModuleCallAsync("voice", operation, args), () => Model is not null, FollowVoiceReply);
@@ -85,7 +92,10 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         Voice.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterVoiceViewModel.IsActive)) Raise(nameof(CanStopAll)); };
         Speech.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterSpeechViewModel.Speaking)) Raise(nameof(CanStopAll)); };
         DisconnectCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await StopAsync().ConfigureAwait(true); await Speech.StopAsync().ConfigureAwait(true); });
-        Send = new Command(SendAsync, () => !string.IsNullOrWhiteSpace(Draft) && Model is not null);
+        Send = new Command(SendAsync, () => (!string.IsNullOrWhiteSpace(Draft) || Attachments.Count > 0) && Model is not null);
+        AttachFilesCommand = new Command(async () => { if (_pickFiles is not null) await AddFilesAsync(await _pickFiles().ConfigureAwait(true)).ConfigureAwait(true); }, () => _pickFiles is not null);
+        RemoveAttachmentCommand = new Command(p => { if (p is AttachmentViewModel item) Attachments.Remove(item); return Task.CompletedTask; });
+        Attachments.CollectionChanged += (_, _) => Send.Refresh();
         RateCommand = new Command(p => RateAsync(p as string ?? ""), _ => CanRate);
         Stop = new Command(StopAsync, () => Busy || _responseId is not null);
     }
@@ -107,6 +117,17 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         if (await Agent.DelegateAsync(Draft, _token).ConfigureAwait(true)) Draft = "";
     }
     public Command DisconnectCommand { get; }
+    /// <summary>Прикреплённые к следующей реплике файлы (текст).</summary>
+    public ObservableCollection<AttachmentViewModel> Attachments { get; } = [];
+    public Command AttachFilesCommand { get; }
+    public Command RemoveAttachmentCommand { get; }
+    /// <summary>Выбранные или перетащенные файлы: лимиты проверяются до отправки.</summary>
+    public async Task AddFilesAsync(IReadOnlyList<DroppedFile> files)
+    {
+        var result = await AttachmentReader.ReadAsync([.. Attachments.Select(a => a.Attachment)], files, _fileLimits()).ConfigureAwait(true);
+        foreach (var file in result.Accepted) Attachments.Add(new AttachmentViewModel(file));
+        Error = result.ErrorKey is { } key ? Localizer.Current.Format(key, result.ErrorParams) : "";
+    }
     /// <summary>«Остановить всё» видно, только когда есть что останавливать: ответ, микрофон или голос.</summary>
     public bool CanStopAll => Busy || Voice.IsActive || Speech.Speaking;
     private bool _showAvatar = true;
@@ -289,6 +310,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         var revision=InvalidateResponse();
         Busy=true; Error="";
         var input=Draft; var model=Model!.Id;
+        var files=Attachments.ToList();
         await _commands.WaitAsync(_token).ConfigureAwait(true);
         try
         {
@@ -305,7 +327,9 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
                 if(DateTime.UtcNow>=deadline) throw new InvalidOperationException("Previous response is stopping");
                 await Task.Delay(40,_token).ConfigureAwait(true);
             }
-            var result=await CallAsync("start",new JsonObject { ["text"]=input,["model"]=model }).ConfigureAwait(true);
+            var start=new JsonObject { ["text"]=input,["model"]=model };
+            if(files.Count>0) start["files"]=new JsonArray([.. files.Select(f => (JsonNode?)new JsonObject { ["name"]=f.Attachment.Name,["text"]=f.Attachment.Text })]);
+            var result=await CallAsync("start",start).ConfigureAwait(true);
             if(revision!=_requestRevision) return;
             ReadSession(result);
             var id=result.GetProperty("response_id").GetString()!;
@@ -314,6 +338,7 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
                 ObserveGeneration(generation.GetInt64(),id);
             }
             _responseId=id; _ignoreEvents=false; Draft="";
+            foreach(var sent in files) Attachments.Remove(sent); // отказ сервиса оставляет файлы в поле
             Presentation=new(++_presentationEpoch,id,null,"neutral","idle");
             Transcript+=(Transcript.Length==0?"":"\n\n")+Localizer.Current["character.owner"]+": "+input+"\nRAMVI: ";
             _=PollAsync(id);
@@ -359,7 +384,10 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
                 {
                     // Ответ закончен: лицо вернётся в обычное, когда прозвучат все его части.
                     if (_responseId == id) ReplyEnd = new(_presentationEpoch, id, CharacterPlayer.EndOfReply, "neutral", "idle");
-                    if (state == "error") Error = Localizer.Current["character.reply_error"];
+                    if (state == "error") Error = job.TryGetProperty("overflow", out var overflow) && overflow.ValueKind == JsonValueKind.Object
+                        // B.15: реплика с файлами не влезла в запрос — сказать, сколько нужно и сколько есть.
+                        ? Localizer.Current.Format("character.context_overflow", ("needed", overflow.GetProperty("needed").GetInt32()), ("available", overflow.GetProperty("available").GetInt32()))
+                        : Localizer.Current["character.reply_error"];
                     break;
                 }
                 await Task.Delay(100, _token).ConfigureAwait(true);

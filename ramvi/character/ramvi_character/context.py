@@ -276,7 +276,9 @@ class ContextOrchestrator:
         budget: Budget | None = None,
     ) -> Prepared:
         budget = budget or Budget()
-        task, user_input = text(task, 8192), text(user_input)
+        # Реплика с файлами ограничена бюджетом токенов раздела input (ContextOverflow с числами),
+        # а не байтами: байтовый потолок молча отвергал бы то, что разрешил пользователь (B.15).
+        task, user_input = text(task, 8192), text(user_input, 256 * 2**20)
         if not task.strip() or not user_input.strip():
             raise ValueError("task and current input must be explicit")
         revision = integer(personality["policy_revision"], 0, 1_000_000_000_000)

@@ -48,6 +48,9 @@ def test_defaults_are_inside_app_folder(config: AppConfig) -> None:
         "voice_api_url": "",
         "voice_api_model": "whisper-1",
         "voice_auto_send": True,
+        "attach_max_files": 5,
+        "attach_max_file_kb": 128,
+        "attach_max_total_kb": 256,
     }
     assert got["resolved"]["data_dir"] == str((config.app_dir / "data").resolve())
     assert got["current_data_dir"] == str((config.app_dir / "data").resolve())

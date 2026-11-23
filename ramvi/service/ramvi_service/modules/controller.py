@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
+from ramvi_service.modules.worker import MAX_LINE
+
 
 class WorkerController(Protocol):
     def call(self, method: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]: ...
@@ -44,6 +46,7 @@ class ProcessModuleWorker:
             ],
             env=env,
             timeout=timeout,
+            max_line=MAX_LINE,
         )
 
     def call(self, method: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:

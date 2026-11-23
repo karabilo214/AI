@@ -77,7 +77,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _connect = connect;
         _loadPoll = loadPoll ?? TimeSpan.FromMilliseconds(300);
         Agent = new AgentViewModel(() => _api, pickFolder ?? (_ => Task.FromResult<string?>(null)), Models, pickFiles);
-        Character = new CharacterViewModel(() => _api, Models, () => SelectedModel, pickFolder);
+        Character = new CharacterViewModel(() => _api, Models, () => SelectedModel, pickFolder, pickFiles, () => _limits);
         Agent.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AgentViewModel.IsRunning)) Raise(nameof(CanSelectModel)); };
         Character.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterViewModel.Busy)) Raise(nameof(CanSelectModel)); };
         PropertyChanged += (_, e) => { if (e.PropertyName == nameof(IsIdle)) Raise(nameof(CanSelectModel)); };
@@ -117,6 +117,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 { ShowError(error); }
             },
             cloudChanged: ReloadModelListAsync);
+        Settings.FileLimitsChanged += async () =>
+        {
+            try { _ = await RefreshLimitsAsync().ConfigureAwait(true); }
+            catch (Exception error) when (error is ApiException or HttpRequestException) { ShowError(error); }
+        };
         Onboarding = new OnboardingViewModel(
             () => _api,
             Models,
@@ -283,6 +288,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public Limits Limits => _limits;
 
+    /// <summary>B.15: лимиты файлов из сервиса (настройки) — для чата, агента и персонажа.</summary>
+    private async Task<ServiceStatus> RefreshLimitsAsync()
+    {
+        var status = await _api.StatusAsync().ConfigureAwait(true);
+        _limits = status.Limits;
+        Agent.MessageLimits = status.Limits;
+        Raise(nameof(Limits));
+        return status;
+    }
+
     public bool HasChats => Chats.Count > 0;
 
     public ChatItemViewModel? SelectedChat
@@ -378,10 +393,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             _connected = await _connect().ConfigureAwait(true);
             Raise(nameof(IsConnected));
-            var status = await _api.StatusAsync().ConfigureAwait(true);
-            _limits = status.Limits;
-            Agent.MessageLimits = status.Limits;
-            Raise(nameof(Limits));
+            var status = await RefreshLimitsAsync().ConfigureAwait(true);
             foreach (var model in await _api.ModelsAsync().ConfigureAwait(true))
             {
                 Models.Add(model);
@@ -436,6 +448,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public async Task AddFilesAsync(IReadOnlyList<DroppedFile> files)
     {
         if (Sections.IsAgentSelected) { await Agent.AddFilesAsync(files).ConfigureAwait(true); return; }
+        if (Sections.IsCharacterSelected) { await Character.AddFilesAsync(files).ConfigureAwait(true); return; }
         var result = await AttachmentReader
             .ReadAsync([.. Attachments.Select(a => a.Attachment)], files, _limits)
             .ConfigureAwait(true);

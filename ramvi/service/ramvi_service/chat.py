@@ -32,7 +32,11 @@ class ChatError(RuntimeError):
 
 @dataclass(frozen=True)
 class Limits:
-    """Лимиты сообщения и перетаскиваемых текстовых файлов (UI проверяет те же)."""
+    """Лимиты сообщения и перетаскиваемых текстовых файлов (UI проверяет те же).
+
+    B.15: число и размеры файлов задаёт пользователь в настройках (`attachment_limits`);
+    0 — без ограничения.
+    """
 
     max_text_chars: int = 32_000
     max_files: int = 5
@@ -41,13 +45,22 @@ class Limits:
     max_name_chars: int = 255
 
 
+def attachment_limits(settings: Any) -> Limits:
+    """Лимиты файлов из настроек приложения (`settings.Settings`)."""
+    return Limits(
+        max_files=settings.attach_max_files,
+        max_file_bytes=settings.attach_max_file_kb * 1024,
+        max_total_bytes=settings.attach_max_total_kb * 1024,
+    )
+
+
 def check_attachments(
     files: list[dict[str, Any]], limits: Limits | None = None
 ) -> list[dict[str, Any]]:
     limits = limits or Limits()
     if not isinstance(files, list):
         raise ChatError("chat.attachment_invalid")
-    if len(files) > limits.max_files:
+    if limits.max_files and len(files) > limits.max_files:
         raise ChatError("chat.too_many_files", limit=limits.max_files)
     result, total = [], 0
     for item in files:
@@ -62,10 +75,10 @@ def check_attachments(
         if "\x00" in body:
             raise ChatError("chat.attachment_not_text", name=name)
         size = len(body.encode("utf-8"))
-        if size > limits.max_file_bytes:
+        if limits.max_file_bytes and size > limits.max_file_bytes:
             raise ChatError("chat.file_too_large", name=name, limit=limits.max_file_bytes)
         total += size
-        if total > limits.max_total_bytes:
+        if limits.max_total_bytes and total > limits.max_total_bytes:
             raise ChatError("chat.files_too_large", limit=limits.max_total_bytes)
         result.append({"name": name, "bytes": size, "text": body})
     return result
@@ -108,18 +121,24 @@ class ChatService:
         llm: SharedLLM,
         principal: str = "local_user",
         *,
-        limits: Limits | None = None,
+        limits: Limits | Callable[[], Limits] | None = None,
         default_model: Callable[[], str | None] | None = None,
         request_timeout: float = 600.0,
     ) -> None:
         self.chats_repo, self.models_repo = Chats(db), Models(db)
         self.llm, self.principal = llm, principal
         self._owners: dict[str, Owner] = {}
-        self.limits = limits or Limits()
+        # B.15: функция — лимиты читаются при каждой проверке, смена настроек действует сразу.
+        fixed = limits if isinstance(limits, Limits) else Limits()
+        self._limits: Callable[[], Limits] = limits if callable(limits) else (lambda: fixed)
         self._default_model = default_model
         self.request_timeout = request_timeout
         self._lock = threading.Lock()
         self._active: dict[str, threading.Event] = {}
+
+    @property
+    def limits(self) -> Limits:
+        return self._limits()
 
     # --- список и настройки ------------------------------------------------------
 

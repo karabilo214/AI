@@ -110,4 +110,48 @@ public sealed class CharacterDialogueTests
         Assert.DoesNotContain("Late text", vm.Transcript); Assert.False(vm.Busy);
         vm.Dispose(); // Idempotent, including disposal by MainWindow.
     }
+
+    [AvaloniaFact]
+    public async Task Attached_file_goes_with_the_reply_within_the_shared_limits_and_overflow_is_explained()
+    {
+        JsonElement? started = null;
+        var overflow = false;
+        var api = new FakeChatApi();
+        api.ModuleHandler = (_, command, body) =>
+        {
+            if (command is "voice" or "speech") return Task.FromResult(Json("{\"available\":false}"));
+            var operation = body.GetProperty("operation").GetString()!;
+            if (operation == "start") started = body.GetProperty("arguments").Clone();
+            return Task.FromResult(operation switch
+            {
+                "status" => Json(Status),
+                "start" => Json("""{"response_id":"reply1"}"""),
+                "poll" => Json(overflow
+                    ? """{"job":{"state":"error","cursor":0,"events":[],"error":"ContextOverflow","overflow":{"section":"input","needed":5000,"available":3072}}}"""
+                    : """{"job":{"state":"completed","cursor":1,"events":[{"type":"segment","response_id":"reply1","text":"Fresh reply"}]}}"""),
+                _ => Json("{}")
+            });
+        };
+        var limits = new Limits(1000, 1, 100, 100, 255);
+        IReadOnlyList<Ramvi.Desktop.Services.DroppedFile> picked = [AttachmentReaderTests.File("note.txt", "Число 700021")];
+        using var vm = new CharacterViewModel(() => api, new ObservableCollection<ModelInfo>(api.Models),
+            pickFiles: () => Task.FromResult(picked), fileLimits: () => limits);
+        await vm.LoadAsync();
+        await vm.AttachFilesCommand.RunAsync();
+        Assert.Single(vm.Attachments);
+        Assert.True(vm.Send.CanExecute(null)); // только файл, без текста, — можно отправить
+        await vm.AddFilesAsync([AttachmentReaderTests.File("second.txt", "x")]);
+        Assert.Single(vm.Attachments); Assert.Contains("1", vm.Error); // лимит из настроек: 1 файл
+        await vm.Send.RunAsync();
+        var file = started!.Value.GetProperty("files")[0];
+        Assert.Equal("note.txt", file.GetProperty("name").GetString());
+        Assert.Equal("Число 700021", file.GetProperty("text").GetString());
+        Assert.Empty(vm.Attachments); // ушёл с репликой
+        limits = new Limits(1000, 0, 0, 0, 255); // «без ограничения»
+        await vm.AddFilesAsync([AttachmentReaderTests.File("a.txt", new string('y', 500)), AttachmentReaderTests.File("b.txt", "z")]);
+        Assert.Equal(2, vm.Attachments.Count);
+        overflow = true;
+        await vm.Send.RunAsync();
+        Assert.Contains("5000", vm.Error); Assert.Contains("3072", vm.Error);
+    }
 }

@@ -163,6 +163,10 @@ public sealed class CharacterWindowTests
             Assert.True(composer.Bounds.Width > dialogue.Bounds.Width * 0.8, $"{composer.Bounds.Width} из {dialogue.Bounds.Width}");
             Assert.Equal(1, Grid.GetRow(buttons));
             Assert.True(buttons.Bounds.Top >= composer.Bounds.Bottom);
+            // Микрофон — только кнопка у персонажа; в поле ввода второго нет, надписи о нём тоже.
+            Assert.False(dialogue.FindControl<Button>("CharacterMicrophone")!.IsEffectivelyVisible);
+            Assert.False(dialogue.FindControl<TextBlock>("CharacterVoiceStatus")!.IsEffectivelyVisible);
+            Assert.True(floating.FindControl<Button>("FloatingMicrophone")!.IsEffectivelyVisible);
             // Фон отдельного окна — тот же, что у окна RAMVI (тема), а не системный белый.
             Assert.NotNull(floating.Background);
             Assert.Equal(window.Background?.ToString(), floating.Background!.ToString());

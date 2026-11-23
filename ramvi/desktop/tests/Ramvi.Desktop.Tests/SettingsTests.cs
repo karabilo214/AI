@@ -68,6 +68,26 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task File_limits_are_saved_with_no_limit_as_zero_and_apply_at_once()
+    {
+        var (api, model, _) = await Open();
+        var settings = model.Settings;
+        Assert.Equal("5", settings.AttachFiles.Text); Assert.False(settings.AttachFiles.Unlimited);
+        settings.AttachFiles.Text = "abc";
+        await settings.SaveCommand.RunAsync();
+        Assert.Equal(Ru["settings.attach_not_number"], settings.Error); Assert.Empty(api.SettingsUpdates);
+        settings.AttachFiles.Text = "9";
+        settings.AttachFileKb.Unlimited = true;
+        settings.AttachTotalKb.Text = "4096";
+        await settings.SaveCommand.RunAsync();
+        var update = Assert.Single(api.SettingsUpdates);
+        Assert.Equal(9, update.AttachMaxFiles); Assert.Equal(0, update.AttachMaxFileKb); Assert.Equal(4096, update.AttachMaxTotalKb);
+        // Чат и агент сразу получают новые лимиты (без перезапуска).
+        Assert.Equal(9, model.Limits.MaxFiles); Assert.Equal(0, model.Limits.MaxFileBytes);
+        Assert.Equal(4096 * 1024, model.Agent.MessageLimits.MaxTotalBytes);
+    }
+
+    [Fact]
     public async Task Nothing_changed_sends_nothing()
     {
         var (api, model, _) = await Open();

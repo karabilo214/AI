@@ -546,7 +546,7 @@ class CharacterModule:
                 if not isinstance(model, str):
                     raise ValueError("select a model")
                 self.configure("", model)
-                return self._dialogue.start(args["text"], model)
+                return self._dialogue.start(args["text"], model, args.get("files"))
             if operation == "cancel":
                 self._dialogue.cancel()
             elif operation == "configure":

@@ -279,6 +279,19 @@ def test_real_worker_scoped_llm_and_authenticated_ui_route(tmp_path: Any, monkey
             time.sleep(0.02)
         assert packet["job"]["state"] == "completed", packet
         assert any(e.get("text") == "Привет" for e in packet["job"]["events"])
+        # B.15: файл больше прежнего потолка команды модулю (64 КБ) доходит до модуля целиком.
+        big = {"name": "big.txt", "text": "я" * 150_000}  # 300 КБ в UTF-8
+        args = {"text": "Смотри", "model": "first", "files": [big]}
+        assert "response_id" in client.ok("POST", path, {"operation": "start", "arguments": args})
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            packet = client.ok("POST", path, {"operation": "poll"})
+            if packet["job"]["state"] != "running":
+                break
+            time.sleep(0.02)
+        assert packet["job"]["state"] == "completed", packet
+        status = client.ok("POST", path, {"operation": "status"})
+        assert status["history"][-1]["user"] == "Смотри\n[file: big.txt]"
         assert host.status("character")["character"]["state"] == "active"
         assert client.request("POST", "/sections/character/commands/dispose", {})[0] == 404
         host.suspend("character")
@@ -376,4 +389,71 @@ def test_reply_parts_carry_their_own_voice_style_to_the_voice() -> None:
     ]
     prompt = svc.requests[0]["messages"][0]["content"]
     assert "intriguing" in prompt and "Split the reply into segments" in prompt
+    m.dispose()
+
+
+def test_attached_file_goes_to_this_reply_only_and_history_keeps_its_name() -> None:
+    svc = Services()
+    m = active(svc)
+    secret = "Проверочное число 700021"
+    m.dialogue(
+        "start",
+        {
+            "text": "Что скажешь?",
+            "model": "one",
+            "files": [{"name": "C:\\docs\\note.txt", "text": secret}],
+        },
+    )
+    result = finish(m)
+    assert result["job"]["state"] == "completed"
+    prompt = "\n".join(msg["content"] for msg in svc.requests[-1]["messages"])
+    assert secret in prompt and "note.txt" in prompt and "docs" not in prompt
+    # В истории — слова владельца и имя файла, без содержимого.
+    assert result["history"][0]["user"] == "Что скажешь?\n[file: note.txt]"
+    m.dialogue("start", {"text": "А теперь?", "model": "one"})
+    finish(m)
+    assert secret not in "\n".join(msg["content"] for msg in svc.requests[-1]["messages"])
+    # Только файл, без слов, — тоже реплика; содержимое модель видит.
+    m.dialogue("start", {"text": "", "model": "one", "files": [{"name": "a.txt", "text": "42"}]})
+    assert finish(m)["job"]["state"] == "completed"
+    current = json.loads(svc.requests[-1]["messages"][-1]["content"])
+    assert current["source_id"] == "current" and current["text"].endswith(
+        '<file name="a.txt">\n42\n</file>'
+    )
+    m.dispose()
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        [{"name": "bin.txt", "text": "a\x00b"}],
+        [{"name": "a.txt", "text": "x", "path": "/etc"}],
+        [{"name": "", "text": "x"}],
+        "not a list",
+    ],
+)
+def test_bad_files_are_refused_before_the_model(files: Any) -> None:
+    svc = Services()
+    m = active(svc)
+    with pytest.raises(ValueError):
+        m._dialogue.start("Привет", "one", files)
+    assert not svc.requests
+    m.dispose()
+
+
+def test_file_that_does_not_fit_reports_tokens_instead_of_a_generic_error() -> None:
+    svc = Services()
+    m = active(svc)
+    # Тестовый счётчик: 10 символов — 1 токен; на реплику 3072 токена.
+    m.dialogue(
+        "start",
+        {"text": "Вот", "model": "one", "files": [{"name": "big.txt", "text": "я" * 40_000}]},
+    )
+    job = finish(m)["job"]
+    assert job["state"] == "error" and job["error"] == "ContextOverflow"
+    assert (
+        job["overflow"]["section"] == "input"
+        and job["overflow"]["needed"] > job["overflow"]["available"]
+    )
+    assert not svc.requests  # до модели не дошло
     m.dispose()

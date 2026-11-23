@@ -30,7 +30,7 @@ from ramvi_service.agent.tools import ToolAccess, ToolError
 from ramvi_service.agent.ui import ControlAdapter, UIControl
 from ramvi_service.agent.workspace import Permissions, Restrictions, Workspace
 from ramvi_service.catalog.support import capabilities
-from ramvi_service.chat import ChatError, check_attachments
+from ramvi_service.chat import ChatError, Limits, check_attachments
 from ramvi_service.contracts.modules import Owner
 from ramvi_service.modules.host import ModuleHost
 from ramvi_service.resources import SharedLLM
@@ -124,8 +124,10 @@ class AgentDesktop:
         sections: SectionRegistry,
         llm: SharedLLM,
         facts: Callable[[Any, int], ModelFacts] | None = None,
+        limits: Callable[[], Limits] | None = None,
     ) -> None:
         self._facts = facts
+        self._limits = limits or Limits
         self.root, self.runs, self.host, self.sections, self.llm = root, runs, host, sections, llm
         self.changes = root / "agent_changes"
         self.journal = AgentJournal(runs, self.changes)
@@ -192,7 +194,7 @@ class AgentDesktop:
             or not isinstance(model_id, str)
         ):
             raise ValueError("goal, workspace and model are required")
-        files = check_attachments(body.get("attachments", []))
+        files = check_attachments(body.get("attachments", []), self._limits())
         context_data = ""
         if files:
             context_data = (

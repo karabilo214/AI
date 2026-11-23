@@ -57,6 +57,11 @@ class Settings:
     voice_api_url: str = ""
     voice_api_model: str = "whisper-1"
     voice_auto_send: bool = True  # распознанный текст сразу уходит в чат (замечание владельца)
+    # B.15: прикрепляемые файлы (чат, агент, персонаж) — задаёт пользователь; 0 — без ограничения.
+    # По умолчанию — прежние значения чата.
+    attach_max_files: int = 5
+    attach_max_file_kb: int = 128
+    attach_max_total_kb: int = 256
 
     @property
     def task(self) -> TaskProfile:
@@ -103,6 +108,15 @@ class Settings:
             or len(self.voice_api_model) > 100
         ):
             raise SettingsError("settings.bad_voice_api_model")
+        for name, top in (
+            ("attach_max_files", 2**31 - 1),
+            # байты должны поместиться в int оболочки; больше 2 ГБ — «без ограничения» (0)
+            ("attach_max_file_kb", (2**31 - 1) // 1024),
+            ("attach_max_total_kb", (2**31 - 1) // 1024),
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= top:
+                raise SettingsError("settings.bad_attach_limit", field=name)
         problem = self.task.problem()
         if problem is not None:
             raise SettingsError(problem[0], **problem[1])

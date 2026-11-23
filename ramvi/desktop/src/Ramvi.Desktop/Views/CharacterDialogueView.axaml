@@ -33,16 +33,36 @@
   </ScrollViewer>
   <Grid x:Name="CharacterInputRow" Grid.Row="2" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
   <Border x:Name="CharacterComposer" Classes="composer" Margin="4,8,4,0">
-   <Grid RowDefinitions="Auto,Auto">
-    <TextBox x:Name="CharacterInput" Classes="bare" MinHeight="40" MaxHeight="200" Text="{Binding Draft}" PlaceholderText="{l:T chat.input_placeholder}" AcceptsReturn="True" TextWrapping="Wrap"/>
-    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
-     <StackPanel DataContext="{Binding Voice}" x:DataType="vm:CharacterVoiceViewModel"><Button x:Name="CharacterMicrophone" Classes="icon" ToolTip.Tip="{Binding ButtonText}" AutomationProperties.Name="{Binding ButtonText}" Command="{Binding ToggleCommand}">
+   <Grid RowDefinitions="Auto,Auto,Auto">
+    <ItemsControl x:Name="CharacterAttachments" ItemsSource="{Binding Attachments}">
+     <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="vm:AttachmentViewModel">
+       <Border Classes="chip" Margin="4,4,6,6">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+         <PathIcon Data="{StaticResource icon-attach}" Width="12" Height="12"/>
+         <TextBlock VerticalAlignment="Center" Text="{Binding Label}"/>
+         <Button Classes="icon flat" ToolTip.Tip="{l:T chat.remove_attachment}" AutomationProperties.Name="{l:T chat.remove_attachment}"
+          Command="{Binding $parent[UserControl].((vm:CharacterViewModel)DataContext).RemoveAttachmentCommand}" CommandParameter="{Binding}">
+          <PathIcon Data="{StaticResource icon-close}" Width="10" Height="10"/>
+         </Button>
+        </StackPanel>
+       </Border>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <TextBox x:Name="CharacterInput" Grid.Row="1" Classes="bare" MinHeight="40" MaxHeight="200" Text="{Binding Draft}" PlaceholderText="{l:T chat.input_placeholder}" AcceptsReturn="True" TextWrapping="Wrap"/>
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto">
+     <StackPanel Orientation="Horizontal">
+     <Button x:Name="CharacterAttach" Classes="icon" Command="{Binding AttachFilesCommand}" ToolTip.Tip="{l:T character.attach_hint}" AutomationProperties.Name="{l:T character.attach_hint}"><PathIcon Data="{StaticResource icon-attach}"/></Button>
+     <StackPanel x:Name="CharacterMicrophoneBox" DataContext="{Binding Voice}" x:DataType="vm:CharacterVoiceViewModel"><Button x:Name="CharacterMicrophone" Classes="icon" ToolTip.Tip="{Binding ButtonText}" AutomationProperties.Name="{Binding ButtonText}" Command="{Binding ToggleCommand}">
      <Grid Width="24" Height="24">
       <PathIcon Data="{StaticResource icon-microphone}"/>
       <Path x:Name="MicrophoneSlash" IsVisible="{Binding !IsActive}" Data="M 2,2 L 22,22" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2"/>
      </Grid>
     </Button></StackPanel>
-     <TextBlock Grid.Column="1" Text="{Binding Voice.Status}" VerticalAlignment="Center" Margin="6,0" Classes="caption" TextWrapping="Wrap"/>
+     </StackPanel>
+     <TextBlock x:Name="CharacterVoiceStatus" Grid.Column="1" Text="{Binding Voice.Status}" VerticalAlignment="Center" Margin="6,0" Classes="caption" TextWrapping="Wrap"/>
      <StackPanel Grid.Column="2" Orientation="Horizontal">
       <Button x:Name="CharacterDelegate" Content="{l:T character.agent_delegate}" ToolTip.Tip="{l:T character.agent_delegate_hint}" Command="{Binding DelegateCommand}" IsVisible="{Binding Agent.Enabled}" Margin="0,0,6,0"/>
       <Button x:Name="CharacterSend" Classes="accent" Command="{Binding Send}" IsVisible="{Binding !Busy}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource icon-send}"/><TextBlock Text="{l:T chat.send}" VerticalAlignment="Center"/></StackPanel></Button>

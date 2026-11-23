@@ -46,6 +46,6 @@
    </Grid>
   </Button>
   <!-- В отдельном окне — тот же диалог, что в окне RAMVI; в оверлее только персонаж -->
-  <views:CharacterDialogueView x:Name="FloatingDialogue" Grid.Row="3" DataContext="{Binding Character}" IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CharacterWindow.IsCompanion}" MaxHeight="420"/>
+  <views:CharacterDialogueView x:Name="FloatingDialogue" ShowMicrophone="False" Grid.Row="3" DataContext="{Binding Character}" IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).CharacterWindow.IsCompanion}" MaxHeight="420"/>
  </Grid>
 </Window>

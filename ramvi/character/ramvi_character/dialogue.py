@@ -9,12 +9,60 @@ import uuid
 from collections.abc import Iterator
 from typing import Any
 
-from ramvi_character.context import Budget, ContextOrchestrator, encode, text, tokenizer_counter
+from ramvi_character.context import (
+    Budget,
+    ContextOrchestrator,
+    ContextOverflow,
+    encode,
+    text,
+    tokenizer_counter,
+)
 from ramvi_character.pack import GESTURES, load_pack
 from ramvi_character.recall import Recall
 from ramvi_character.response import ResponsePlanner, plain_segments, strip_service_phrases
 
 CHOOSABLE = {"nod", "shake", *GESTURES}
+
+
+# Файлы к реплике персонажу (B.15). Число и размер задаёт пользователь в настройках приложения,
+# их проверяет оболочка; модуль проверяет только вид. Файл идёт в текущий ответ целиком, без
+# обрезки; не помещается в запрос — понятная ошибка с числом токенов (job["overflow"]).
+FILES_ONLY_INPUT = "The owner attached files without a message. Look at them and react."
+
+
+def check_files(files: Any) -> list[dict[str, str]]:
+    """Только текст и имя без пути; иначе ValueError."""
+    if files is None:
+        return []
+    if not isinstance(files, list):
+        raise ValueError("invalid files")
+    result = []
+    for item in files:
+        if not isinstance(item, dict) or set(item) != {"name", "text"}:
+            raise ValueError("invalid file")
+        name, body = item["name"], item["text"]
+        if not isinstance(name, str) or not isinstance(body, str) or "\x00" in body:
+            raise ValueError("invalid file")
+        name = name.replace("\\", "/").rsplit("/", 1)[-1].strip()
+        if not name or len(name) > 255 or any(c in name for c in '<>"\n'):
+            raise ValueError("invalid file name")
+        result.append({"name": name, "text": body})
+    return result
+
+
+def with_files(user_input: str, files: list[dict[str, str]]) -> str:
+    """Текст для модели: слова владельца и файлы — как в чате, тегами <file>."""
+    blocks = "".join(f'\n\n<file name="{f["name"]}">\n{f["text"]}\n</file>' for f in files)
+    return ((user_input.strip() or (FILES_ONLY_INPUT if files else "")) + blocks).strip()
+
+
+def history_text(user_input: str, files: list[dict[str, str]]) -> str:
+    """В историю — слова владельца и имена файлов; содержимое файлов не хранится."""
+    names = "\n".join("[file: " + f["name"] + "]" for f in files)
+    combined = (user_input.strip() + "\n" + names).strip() if names else user_input
+    return combined if len(combined.encode("utf-8")) <= 4096 else user_input
+
+
 # Сильная эмоция без выбранного движения: персонаж реагирует телом сам.
 AUTO_GESTURES = {
     "joy": "jump",
@@ -154,9 +202,10 @@ class Dialogue:
         if wait and self.thread and self.thread is not threading.current_thread():
             self.thread.join(timeout=2)
 
-    def start(self, user_input: str, model: str) -> dict[str, Any]:
+    def start(self, user_input: str, model: str, files: Any = None) -> dict[str, Any]:
         user_input, model = text(user_input, 4096), text(model, 255)
-        if not user_input.strip() or not model.strip():
+        attached = check_files(files)
+        if not (user_input.strip() or attached) or not model.strip():
             raise ValueError("input and model required")
         if self.services is None:
             raise RuntimeError("LLM services unavailable")
@@ -185,7 +234,7 @@ class Dialogue:
             }
             self.thread = threading.Thread(
                 target=self._run,
-                args=(identifier, user_input, model, snapshot),
+                args=(identifier, user_input, model, snapshot, attached),
                 name="character-response",
                 daemon=True,
             )
@@ -293,7 +342,15 @@ class Dialogue:
                 if self.stream_id == stream_id:
                     self.stream_id = None
 
-    def _run(self, identifier: str, user_input: str, model: str, snapshot: dict[str, Any]) -> None:
+    def _run(
+        self,
+        identifier: str,
+        user_input: str,
+        model: str,
+        snapshot: dict[str, Any],
+        files: list[dict[str, str]] | None = None,
+    ) -> None:
+        files = files or []
         revision = snapshot["personality"]["policy_revision"]
         accepted: list[dict[str, Any]] = []
         candidates = []
@@ -358,7 +415,8 @@ class Dialogue:
             )
             prepared = context.build(
                 task=snapshot["task"] or "Talk with the owner naturally, staying in character.",
-                user_input=user_input,
+                # Файлы — только в этот ответ; память ищется и пишется по словам владельца.
+                user_input=with_files(user_input, files),
                 personality=snapshot["personality"],
                 state=snapshot["state"],
                 recent=recent,
@@ -445,6 +503,13 @@ class Dialogue:
             with self.lock:
                 if self.job and self.job["id"] == identifier:
                     self.job["error"] = type(error).__name__
+                    if isinstance(error, ContextOverflow):
+                        # Оболочка показывает, сколько нужно и сколько есть, а не «ошибка ответа».
+                        self.job["overflow"] = {
+                            "section": error.section,
+                            "needed": error.needed,
+                            "available": error.available,
+                        }
         finally:
             if status == "error":
                 self.owner._speech.cancel()
@@ -457,7 +522,7 @@ class Dialogue:
                 self.history.append(
                     {
                         "id": identifier,
-                        "user": user_input,
+                        "user": history_text(user_input, files),
                         "assistant": "\n".join(s["text"] for s in accepted),
                         "model": model,
                         "status": status,

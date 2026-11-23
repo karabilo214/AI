@@ -142,10 +142,15 @@ class ProcessSupervisor:
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
         timeout: float = 30.0,
+        max_line: int | None = None,
     ) -> None:
         if not command or not 0 < timeout <= 3600:
             raise ValueError("invalid command/timeout")
+        if max_line is not None and max_line < 1024:
+            raise ValueError("invalid max_line")
         self.command, self.cwd, self.env, self.timeout = list(command), cwd, env, timeout
+        # Потолок строки обмена; модулям нужен больше (файлы пользователя, B.15).
+        self.MAX_LINE = max_line or ProcessSupervisor.MAX_LINE
         self._process: subprocess.Popen[str] | None = None
         self._lock, self._rpc = threading.RLock(), threading.Lock()
         self._threads: list[threading.Thread] = []
@@ -169,7 +174,7 @@ class ProcessSupervisor:
         return list(self._logs)
 
     @staticmethod
-    def _windows_lines(pipe: Any, stopped: threading.Event) -> Iterator[str]:
+    def _windows_lines(pipe: Any, stopped: threading.Event, max_line: int = 65536) -> Iterator[str]:
         # Peek before os.read: closing a TextIOWrapper while readline holds its
         # lock can otherwise block stop() indefinitely after a worker crash.
         if sys.platform != "win32":
@@ -204,7 +209,7 @@ class ProcessSupervisor:
                 line, _, rest = pending.partition(b"\n")
                 pending = bytearray(rest)
                 yield (line + b"\n").decode("utf-8", errors="replace")
-            if len(pending) > ProcessSupervisor.MAX_LINE:
+            if len(pending) > max_line:
                 yield pending.decode("utf-8", errors="replace")
                 return
         if pending and not stopped.is_set():
@@ -213,7 +218,7 @@ class ProcessSupervisor:
     def _read(self, pipe: Any, responses: bool, stopped: threading.Event) -> None:
         try:
             lines = (
-                self._windows_lines(pipe, stopped)
+                self._windows_lines(pipe, stopped, self.MAX_LINE)
                 if sys.platform == "win32"
                 else iter(lambda: pipe.readline(self.MAX_LINE + 1), "")
             )

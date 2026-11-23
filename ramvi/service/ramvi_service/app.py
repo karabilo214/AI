@@ -33,7 +33,7 @@ from ramvi_service.api_server import ApiOptions, ApiServer
 from ramvi_service.app_config import AppConfig, check_folder
 from ramvi_service.catalog import Catalog
 from ramvi_service.catalog.support import capabilities
-from ramvi_service.chat import ChatService
+from ramvi_service.chat import ChatService, Limits, attachment_limits
 from ramvi_service.client_keys import KeyStore
 from ramvi_service.cloud import CloudConnections, CloudProvider, is_cloud
 from ramvi_service.context import ContextProvider
@@ -135,8 +135,21 @@ def build(
 
     llm = SharedLLM(authority, SwitchableProvider(engines, cloud_for))
     onboarding = Onboarding(data_dir, Models(db), app_dir=root)
+
+    def file_limits() -> Limits:
+        """B.15: лимиты файлов — из настроек приложения при каждой проверке."""
+        if app_dir is None:
+            return Limits()
+        try:
+            return attachment_limits(app_settings.load(app_dir))
+        except (OSError, ValueError):
+            return Limits()  # испорченный settings.json: экран настроек сам покажет ошибку
+
     chat = ChatService(
-        db, llm, default_model=lambda: engines.model_id or onboarding.default_model()
+        db,
+        llm,
+        limits=file_limits,
+        default_model=lambda: engines.model_id or onboarding.default_model(),
     )
     control = ModelControl(engines, llm, chat.stop_all)
     host = ModuleHost(data_dir, llm=llm, secrets=shared_secrets)
@@ -237,6 +250,7 @@ def build(
         host,
         sections,
         llm,
+        limits=file_limits,
         facts=lambda m, context: facts_from_fit(
             fit.for_file(
                 resolve_model(m, root).path, m.id, task=TaskProfile("agent", context=context)

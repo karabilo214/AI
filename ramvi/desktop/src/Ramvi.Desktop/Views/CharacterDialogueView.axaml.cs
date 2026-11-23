@@ -25,6 +25,16 @@ public sealed partial class CharacterDialogueView : UserControl
         e.Handled = true;
         if (model.Send.CanExecute(null)) model.Send.Execute(null);
     }
+    /// <summary>
+    /// 9.26: в окне персонажа вне RAMVI микрофон — своя кнопка рядом с персонажем, второй
+    /// микрофон и надпись о его состоянии в поле ввода там лишние.
+    /// </summary>
+    public bool ShowMicrophone
+    {
+        get => CharacterMicrophoneBox.IsVisible;
+        set { CharacterMicrophoneBox.IsVisible = value; CharacterVoiceStatus.IsVisible = value; }
+    }
+
     /// <summary>Ширина, ниже которой кнопки режима уходят под поле ввода (узкое окно персонажа).</summary>
     internal const double NarrowWidth = 520;
 

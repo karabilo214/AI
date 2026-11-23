@@ -485,6 +485,21 @@
                   </ComboBox.ItemTemplate>
                 </ComboBox>
 
+                <!-- B.15: лимиты прикрепляемых файлов — задаёт пользователь; действуют в чате, у агента и у персонажа -->
+                <TextBlock Classes="heading" Text="{l:T settings.attach}" />
+                <Grid x:Name="AttachLimits" ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+                  <TextBlock Grid.Row="0" VerticalAlignment="Center" Text="{l:T settings.attach_files}" />
+                  <TextBox x:Name="AttachFilesBox" Grid.Row="0" Grid.Column="1" Width="120" Text="{Binding Settings.AttachFiles.Text}" IsEnabled="{Binding Settings.AttachFiles.Limited}" />
+                  <CheckBox x:Name="AttachFilesUnlimited" Grid.Row="0" Grid.Column="2" Content="{l:T settings.attach_unlimited}" IsChecked="{Binding Settings.AttachFiles.Unlimited}" />
+                  <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="{l:T settings.attach_file_kb}" />
+                  <TextBox x:Name="AttachFileKbBox" Grid.Row="1" Grid.Column="1" Width="120" Text="{Binding Settings.AttachFileKb.Text}" IsEnabled="{Binding Settings.AttachFileKb.Limited}" />
+                  <CheckBox x:Name="AttachFileKbUnlimited" Grid.Row="1" Grid.Column="2" Content="{l:T settings.attach_unlimited}" IsChecked="{Binding Settings.AttachFileKb.Unlimited}" />
+                  <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="{l:T settings.attach_total_kb}" />
+                  <TextBox x:Name="AttachTotalKbBox" Grid.Row="2" Grid.Column="1" Width="120" Text="{Binding Settings.AttachTotalKb.Text}" IsEnabled="{Binding Settings.AttachTotalKb.Limited}" />
+                  <CheckBox x:Name="AttachTotalKbUnlimited" Grid.Row="2" Grid.Column="2" Content="{l:T settings.attach_unlimited}" IsChecked="{Binding Settings.AttachTotalKb.Unlimited}" />
+                </Grid>
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.attach_note}" />
+
               </StackPanel>
             </ScrollViewer>
             <ScrollViewer x:Name="SoundTab" IsVisible="{Binding Settings.IsSoundTab}">

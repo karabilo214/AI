@@ -42,7 +42,17 @@ from ramvi_service.sections import ModuleDataApi, SectionRegistry
 from ramvi_service.updates import UpdateError
 from ramvi_service.voice.service import VoiceService
 
-MAX_BODY = 2 * 2**20
+MAX_BODY = 2 * 2**20  # без файлов; с файлами потолок растёт с лимитом из настроек (B.15)
+
+
+def max_body(limits: Any) -> int | None:
+    """Потолок запроса: файлы в JSON могут вырасти до 6 раз (\\uXXXX); None — без ограничения."""
+    total: int = limits.max_total_bytes
+    if not total:
+        return None
+    return max(MAX_BODY, total * 6 + MAX_BODY)
+
+
 PREFIX = "/ui/v1"
 _ID = r"([0-9a-f]{16})"
 
@@ -623,8 +633,9 @@ def _handler(server: UIServer) -> type[BaseHTTPRequestHandler]:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 raise ChatError("api.bad_request", field="Content-Length") from None
-            if not 0 <= length <= MAX_BODY:
-                raise ChatError("api.too_large", limit=MAX_BODY)
+            limit = MAX_BODY if server.chat is None else max_body(server.chat.limits)
+            if length < 0 or (limit is not None and length > limit):
+                raise ChatError("api.too_large", limit=limit)
             if length == 0:
                 return {}
             try:
