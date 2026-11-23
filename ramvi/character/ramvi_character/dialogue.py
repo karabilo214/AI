@@ -323,7 +323,8 @@ class Dialogue:
         with self.lock:
             self.stream_id = stream_id
         finished = False
-        deadline = time.monotonic() + 180
+        # Срока на ответ нет: медленная модель (f16 частью на процессоре) отвечает минутами.
+        # Остановка — отмена владельцем («Остановить»), сменой ответа или выключением модуля.
         try:
             while not finished:
                 with self.lock:
@@ -334,8 +335,6 @@ class Dialogue:
                         or not self.owner._speech.current(job["id"], job["generation"])
                     ):
                         raise InterruptedError("response cancelled")
-                if time.monotonic() > deadline:
-                    raise TimeoutError("response deadline")
                 packet = self.services.call("llm.read", {"stream_id": stream_id, "timeout": 0.5})
                 for chunk in packet["chunks"]:
                     if chunk.get("type") == "text":
@@ -513,6 +512,8 @@ class Dialogue:
             with self.lock:
                 if self.job and self.job["id"] == identifier:
                     self.job["error"] = type(error).__name__
+                    # Для диагностики (журнал, проверки); пользователю показывается код, не текст.
+                    self.job["error_detail"] = str(error)[:300]
                     if isinstance(error, ContextOverflow):
                         # Оболочка показывает, сколько нужно и сколько есть, а не «ошибка ответа».
                         self.job["overflow"] = {

@@ -79,7 +79,9 @@ class GenerationStream:
 
     QUEUE_SIZE = 8
     QUEUE_TIMEOUT = 10.0
-    ENGINE_TIMEOUT = 60.0
+    # Тишины модели не ограничиваем: чтение длинного запроса на медленной модели (часть слоёв
+    # на процессоре) идёт дольше минуты без единого события. Ответ останавливает отмена —
+    # кнопка «Остановить» или разрыв соединения (B.15, найдено на qwen3-8b-f16).
 
     def run(self: Any, *args: Any, **kwargs: Any) -> Any:
         """Сетевая выдача отделена от вычислений ограниченной очередью."""
@@ -122,7 +124,6 @@ class GenerationStream:
 
         worker = threading.Thread(target=produce, name="llm-response", daemon=True)
         worker.start()
-        last_event = time.monotonic()
         try:
             while True:
                 if finished.is_set() and events.empty():
@@ -136,15 +137,12 @@ class GenerationStream:
                         if failures:
                             raise failures[0]  # noqa: B904 - прежняя цепочка исключений
                         break
-                    if time.monotonic() - last_event >= self.ENGINE_TIMEOUT:
-                        raise TimeoutError("модель не ответила вовремя")  # noqa: B904 - прежняя цепочка исключений
                     continue
                 if item is end:
                     if failures:
                         raise failures[0]  # noqa: B904 - прежняя цепочка исключений
                     break
                 yield item
-                last_event = time.monotonic()
         finally:
             cancel.set()
             worker.join(timeout=5)

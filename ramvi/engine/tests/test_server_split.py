@@ -258,7 +258,9 @@ def test_application_and_transport_preserve_behavior() -> None:
     after = {p.name: ast.parse(p.read_text(encoding="utf-8")) for p in SERVER.glob("*.py")}
     for old_class, filename, new_class, names in [
         ("App", "app.py", "App", ["__init__", "metadata", "build_ids", "chat_ids", "constraint"]),
-        ("App", "streaming.py", "GenerationStream", ["run", "_run"]),
+        # run намеренно изменён в B.15: убран обрыв через 60 с тишины модели; проверка —
+        # test_run_differs_only_by_removed_silence_timeout ниже.
+        ("App", "streaming.py", "GenerationStream", ["_run"]),
         ("H", "streaming.py", "StreamingResponse", TRANSPORT),
         (
             "H",
@@ -333,3 +335,25 @@ def test_post_differs_only_by_request_ceiling() -> None:
     )
     assert old_text == normalized(after)
     assert MAX_REQUEST_BYTES > 2 * 2**20
+
+
+class _WithoutSilenceTimeout(ast.NodeTransformer):
+    """Прежний run без обрыва по тишине: убрать last_event и проверку ENGINE_TIMEOUT."""
+
+    def visit_Assign(self, node: ast.Assign) -> ast.AST | None:
+        targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        return None if targets == ["last_event"] else node
+
+    def visit_If(self, node: ast.If) -> ast.AST | None:
+        if "ENGINE_TIMEOUT" in ast.dump(node.test):
+            return None
+        return self.generic_visit(node)
+
+
+def test_run_differs_only_by_removed_silence_timeout() -> None:
+    """B.15: в GenerationStream.run убран только обрыв через 60 с без событий модели."""
+    before = named_function(named_class(old_tree("app.py"), "App"), "run")
+    before = _WithoutSilenceTimeout().visit(before)
+    after_tree = ast.parse((SERVER / "streaming.py").read_text(encoding="utf-8"))
+    after = named_function(named_class(after_tree, "GenerationStream"), "run")
+    assert normalized(before) == normalized(after)
