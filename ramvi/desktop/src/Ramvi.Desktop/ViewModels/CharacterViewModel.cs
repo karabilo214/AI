@@ -84,7 +84,6 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
         Agent.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(CharacterAgentViewModel.Enabled) or nameof(CharacterAgentViewModel.Running)) DelegateCommand.Refresh(); };
         Voice.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterVoiceViewModel.IsActive)) Raise(nameof(CanStopAll)); };
         Speech.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CharacterSpeechViewModel.Speaking)) Raise(nameof(CanStopAll)); };
-        TextModeCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await Speech.TextModeAsync().ConfigureAwait(true); });
         DisconnectCommand = new Command(async () => { await Voice.StopAsync().ConfigureAwait(true); await StopAsync().ConfigureAwait(true); await Speech.StopAsync().ConfigureAwait(true); });
         Send = new Command(SendAsync, () => !string.IsNullOrWhiteSpace(Draft) && Model is not null);
         RateCommand = new Command(p => RateAsync(p as string ?? ""), _ => CanRate);
@@ -107,7 +106,6 @@ public sealed class CharacterViewModel : ObservableObject, IDisposable
     {
         if (await Agent.DelegateAsync(Draft, _token).ConfigureAwait(true)) Draft = "";
     }
-    public Command TextModeCommand { get; }
     public Command DisconnectCommand { get; }
     /// <summary>«Остановить всё» видно, только когда есть что останавливать: ответ, микрофон или голос.</summary>
     public bool CanStopAll => Busy || Voice.IsActive || Speech.Speaking;

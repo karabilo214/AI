@@ -87,7 +87,7 @@ public sealed class CharacterSpeechViewModel : ObservableObject, IDisposable
     private void RefreshCommands() { SaveCommand.Refresh();PreviewCommand.Refresh();ResumeCommand.Refresh();KeyCommand.Refresh();ToggleMuteCommand?.Refresh(); }
     private async Task ToggleMuteAsync()
     {
-        // Выключение — как «Только текст»: текущий звук останавливается сразу. Включение —
+        // Выключение: текущий звук останавливается сразу, ответы дальше только текстом. Включение —
         // прежние голос и поставщик, без захода в настройки.
         if (Enabled) { await TextModeAsync().ConfigureAwait(true); return; }
         Enabled = true;

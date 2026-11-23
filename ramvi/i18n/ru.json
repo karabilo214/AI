@@ -9,7 +9,6 @@
   "character.reaction_label.compare": "сравнение",
   "character.reaction_label.plan": "план",
   "character.reaction_label.support": "поддержка",
-  "character.text_mode": "Только текст",
   "character.disconnect": "Остановить всё",
   "character.stt_title": "Распознавание речи",
   "character.stt_shared": "Эти настройки микрофона и распознавания общие с Чатом. Сохранение остановит текущую голосовую сессию Character.",

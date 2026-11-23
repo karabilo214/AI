@@ -162,7 +162,7 @@ public sealed class CharacterUiSettingsTests
             Assert.True(calls.Count(x => x == "voice:capabilities") > capabilityReads);
             Assert.False(model.Character.Voice.IsActive);
             model.Settings.CloseCommand.Execute(null);
-            await model.Character.TextModeCommand.RunAsync();
+            await model.Character.Speech.TextModeAsync(); // то же, что выключить динамик
             Assert.False(model.Character.Speech.Enabled);
             Assert.Equal(draft, model.Character.Draft);
             Assert.Contains("speech:stop", calls);

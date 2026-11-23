@@ -9,7 +9,6 @@
   "character.reaction_label.compare": "comparing",
   "character.reaction_label.plan": "planning",
   "character.reaction_label.support": "support",
-  "character.text_mode": "Text only",
   "character.disconnect": "Stop all",
   "character.stt_title": "Speech recognition",
   "character.stt_shared": "Microphone and recognition settings are shared with Chat. Saving stops the current Character voice session.",

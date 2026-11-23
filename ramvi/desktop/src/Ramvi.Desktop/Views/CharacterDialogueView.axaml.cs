@@ -29,7 +29,7 @@ public sealed partial class CharacterDialogueView : UserControl
     internal const double NarrowWidth = 520;
 
     /// <summary>
-    /// 9.26: в узком отдельном окне колонка «Только текст»/«Остановить всё» сжимала поле ввода
+    /// 9.26: в узком отдельном окне кнопка «Остановить всё» сбоку сжимала поле ввода
     /// до половины ширины — там кнопки встают строкой под полем.
     /// </summary>
     private void FitWidth()
