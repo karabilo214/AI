@@ -177,3 +177,10 @@ def test_completed_reply_records_event_and_strategy_for_the_outcome_memory() -> 
     assert (decision["strategy"], decision["adapted_from"]) == ("answer_plainly", "counter_trap")
     assert outcomes.rows == [(response, "trap", "answer_plainly", "memory/1")]
     m.dispose()
+
+
+def test_new_character_learns_from_ratings_by_default() -> None:
+    """Решение владельца 2026-11-23: по умолчанию — правила + память исходов."""
+    from ramvi_character.module import CharacterModule
+
+    assert CharacterModule()._brain == "memory"

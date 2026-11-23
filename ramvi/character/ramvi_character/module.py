@@ -34,8 +34,9 @@ ADAPTATION_OPERATIONS = frozenset(
 )
 
 
-# 9.30: контроллер реакций по умолчанию (rules — правила по характеру; off — без контроллера).
-DEFAULT_BRAIN = "rules"
+# Контроллер реакций по умолчанию: memory — правила + память исходов (решение владельца
+# 2026-11-23 после офлайн-сравнения 9.31); rules — без обучения; off — без контроллера.
+DEFAULT_BRAIN = "memory"
 
 
 class CharacterModule:
