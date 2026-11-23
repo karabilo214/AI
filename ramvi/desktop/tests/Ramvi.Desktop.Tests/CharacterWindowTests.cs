@@ -163,6 +163,15 @@ public sealed class CharacterWindowTests
             Assert.True(composer.Bounds.Width > dialogue.Bounds.Width * 0.8, $"{composer.Bounds.Width} из {dialogue.Bounds.Width}");
             Assert.Equal(1, Grid.GetRow(buttons));
             Assert.True(buttons.Bounds.Top >= composer.Bounds.Bottom);
+            // Фон отдельного окна — тот же, что у окна RAMVI (тема), а не системный белый.
+            Assert.NotNull(floating.Background);
+            Assert.Equal(window.Background?.ToString(), floating.Background!.ToString());
+            await model.CharacterWindow.ShowCommand.RunAsync("overlay");
+            Settle(floating);
+            Assert.Equal(Avalonia.Media.Brushes.Transparent, floating.Background);
+            await model.CharacterWindow.ShowCommand.RunAsync("companion");
+            Settle(floating);
+            Assert.Equal(window.Background?.ToString(), floating.Background?.ToString());
         }
         finally { window.Close(); }
     }

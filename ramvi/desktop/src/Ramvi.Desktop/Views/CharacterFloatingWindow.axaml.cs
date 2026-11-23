@@ -131,7 +131,8 @@ public sealed partial class CharacterFloatingWindow : Window
         // Оверлей не забирает фокус у приложения, с которым работают, и не виден в панели задач.
         WindowDecorations = overlay ? WindowDecorations.None : WindowDecorations.Full;
         TransparencyLevelHint = overlay ? [WindowTransparencyLevel.Transparent] : [];
-        Background = overlay ? Brushes.Transparent : null;
+        // Отдельное окно — фон темы RAMVI из стиля Window; null перекрыл бы стиль и дал системный белый.
+        if (overlay) Background = Brushes.Transparent; else ClearValue(BackgroundProperty);
         ShowInTaskbar = !overlay;
         ShowActivated = !overlay;
         Toolbar.Opacity = overlay ? 0.15 : 1;
