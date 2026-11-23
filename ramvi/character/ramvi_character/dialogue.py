@@ -116,6 +116,12 @@ VOICE_STYLES = [
     "whisper",
     "sad",
     "thoughtful",
+    # 9.11 (владелец: голос должен меняться внутри ответа): вскрик, укор, ворчание, смех, усталость.
+    "startled",
+    "reproachful",
+    "grumbling",
+    "laughing",
+    "weary",
 ]
 
 

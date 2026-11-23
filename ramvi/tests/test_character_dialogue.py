@@ -388,7 +388,8 @@ def test_reply_parts_carry_their_own_voice_style_to_the_voice() -> None:
         ("Давай попробуем…", "intriguing"),
     ]
     prompt = svc.requests[0]["messages"][0]["content"]
-    assert "intriguing" in prompt and "Split the reply into segments" in prompt
+    assert "intriguing" in prompt and "into segments wherever the emotion" in prompt
+    assert "startled" in prompt and "reproachful" in prompt  # вскрик и укор — среди подач
     m.dispose()
 
 
@@ -541,3 +542,14 @@ def test_local_window_is_the_profile_or_the_loaded_context() -> None:
     assert switch.context_for({"ramvi_model_id": "local-a"}) == 16384  # уже загружена больше
     assert switch.context_for({"ramvi_model_id": "local-b"}) == 2048  # загрузится по профилю
     assert switch.context_for({"ramvi_model_id": "cloud:c:m"}) is None  # облако: неизвестно
+
+
+def test_voice_gets_the_delivery_in_words() -> None:
+    """9.11: облачному голосу уходит описание подачи, а не голый ярлык."""
+    from ramvi_character.speech import VOICE_DELIVERY, voice_style
+
+    style = voice_style("anger", 0.9, "startled")
+    assert "startled exclamation" in style and "0.90" in style and "anger" in style
+    from ramvi_character.dialogue import VOICE_STYLES
+
+    assert set(VOICE_STYLES) <= set(VOICE_DELIVERY)  # у каждой подачи есть описание

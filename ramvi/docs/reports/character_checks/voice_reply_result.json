@@ -1,0 +1,65 @@
+[
+  {
+    "owner": "Ты вообще тупой, да? Третий раз объясняю",
+    "seconds": 18.9,
+    "error": null,
+    "parts": [
+      {
+        "text": "Я не тупой, я не телепат, ёпта.",
+        "emotion": "anger",
+        "intensity": 0.55,
+        "voice_style": "irritated",
+        "audio_seconds": 4.08
+      },
+      {
+        "text": "В текущем сообщении нет самого объяснения — только дым от пожара. Кинь конкретно, что надо понять или исправить.",
+        "emotion": "frustration",
+        "intensity": 0.4,
+        "voice_style": "grumbling",
+        "audio_seconds": 8.64
+      }
+    ]
+  },
+  {
+    "owner": "Ну всё, я тебя сейчас удалю нахрен",
+    "seconds": 12.6,
+    "error": null,
+    "parts": [
+      {
+        "text": "Драматично, бля.",
+        "emotion": "anger",
+        "intensity": 0.55,
+        "voice_style": "irritated",
+        "audio_seconds": 2.04
+      },
+      {
+        "text": "Удаляй, если решил; угрозы мне вместо задачи — это как чинить розетку молотком.",
+        "emotion": "frustration",
+        "intensity": 0.45,
+        "voice_style": "grumbling",
+        "audio_seconds": 7.68
+      }
+    ]
+  },
+  {
+    "owner": "Ладно, извини, погорячился",
+    "seconds": 11.7,
+    "error": null,
+    "parts": [
+      {
+        "text": "Принято. Не будем устраивать из этого цирк с горящими кеглями, бля.",
+        "emotion": "calm",
+        "intensity": 0.35,
+        "voice_style": "grumbling",
+        "audio_seconds": 5.64
+      },
+      {
+        "text": "Едем дальше нормально: коротко, по делу, без угроз из пластилина.",
+        "emotion": "confidence",
+        "intensity": 0.32,
+        "voice_style": "calm",
+        "audio_seconds": 0.0
+      }
+    ]
+  }
+]

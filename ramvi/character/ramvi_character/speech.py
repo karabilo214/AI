@@ -18,6 +18,36 @@ SAFE_ERROR = re.compile(
 )
 
 
+# 9.11: подача словами — облачный голос лучше понимает описание, чем ярлык (замер на Gemini:
+# «вскрик» поднимает высоту голоса ~186 → ~281 Гц). Указание в самом тексте не годится:
+# голос читает его вслух.
+VOICE_DELIVERY = {
+    "neutral": "natural, even delivery",
+    "excited": "excited and energetic, faster",
+    "intriguing": "intriguing, slightly lowered voice with a mysterious pause",
+    "calm": "calm and steady",
+    "warm": "warm and kind",
+    "playful": "playful and teasing, with a smile in the voice",
+    "sarcastic": "dry and sarcastic, mocking intonation",
+    "irritated": "irritated, clipped and impatient",
+    "shouting": "loud, almost shouting",
+    "whisper": "whispering, quiet and breathy",
+    "sad": "sad and quiet, slower",
+    "thoughtful": "thoughtful, unhurried, with pauses",
+    "startled": "a sudden loud startled exclamation, almost a shout",
+    "reproachful": "calmer but annoyed and reproachful, with a weary intonation",
+    "grumbling": "grumbling under the breath, low and displeased",
+    "laughing": "laughing while speaking",
+    "weary": "tired and weary, dragging the words",
+}
+
+
+def voice_style(emotion: str, intensity: float, delivery: str) -> str:
+    """Пометка для облачного голоса: настроение, сила и подача словами."""
+    described = VOICE_DELIVERY.get(delivery, delivery)
+    return f"Speak with {emotion} at intensity {intensity:.2f} (0 — barely, 1 — very strongly): {described}."
+
+
 class SpeechOutput:
     def __init__(self, services: Any = None, session_id: str | None = None) -> None:
         self.services = services
@@ -381,7 +411,7 @@ class SpeechOutput:
             "language": "auto",
             "emotion": record["emotion"],
             "intensity": record["intensity"],
-            "style": f"Use a {record['emotion']} tone at relative intensity {record['intensity']:.2f}. Delivery: {record['voice_style']}.",
+            "style": voice_style(record["emotion"], record["intensity"], record["voice_style"]),
         }
         result: dict[str, Any] = self.services.call(
             "speech.start",

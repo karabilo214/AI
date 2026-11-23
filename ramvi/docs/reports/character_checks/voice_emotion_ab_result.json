@@ -1,0 +1,81 @@
+{
+  "rows": [
+    {
+      "phrase": "shout",
+      "variant": "gemini_plain",
+      "seconds": 1.04,
+      "rms": 4668.3,
+      "pitch_hz": 186.1,
+      "pitch_spread_hz": 43.7
+    },
+    {
+      "phrase": "shout",
+      "variant": "gemini_field",
+      "seconds": 0.84,
+      "rms": 4303.9,
+      "pitch_hz": 280.7,
+      "pitch_spread_hz": 57.5
+    },
+    {
+      "phrase": "shout",
+      "variant": "gemini_in_text",
+      "seconds": 4.72,
+      "rms": 6334.5,
+      "pitch_hz": 216.8,
+      "pitch_spread_hz": 57.1
+    },
+    {
+      "phrase": "shout",
+      "variant": "openai_plain",
+      "seconds": 0.9,
+      "rms": 1924.9,
+      "pitch_hz": 87.8,
+      "pitch_spread_hz": 7.0
+    },
+    {
+      "phrase": "shout",
+      "variant": "openai_instructions",
+      "seconds": 0.85,
+      "rms": 2394.0,
+      "pitch_hz": 86.2,
+      "pitch_spread_hz": 9.0
+    },
+    {
+      "phrase": "reproach",
+      "variant": "gemini_plain",
+      "seconds": 2.6,
+      "rms": 7119.6,
+      "pitch_hz": 256.1,
+      "pitch_spread_hz": 63.3
+    },
+    {
+      "phrase": "reproach",
+      "variant": "gemini_field",
+      "seconds": 2.6,
+      "rms": 5416.0,
+      "pitch_hz": 189.4,
+      "pitch_spread_hz": 71.5
+    },
+    {
+      "phrase": "reproach",
+      "variant": "gemini_in_text",
+      "error": "speech.api_http_429"
+    },
+    {
+      "phrase": "reproach",
+      "variant": "openai_plain",
+      "seconds": 4.6,
+      "rms": 2466.2,
+      "pitch_hz": 93.4,
+      "pitch_spread_hz": 7.9
+    },
+    {
+      "phrase": "reproach",
+      "variant": "openai_instructions",
+      "seconds": 4.15,
+      "rms": 1798.3,
+      "pitch_hz": 94.0,
+      "pitch_spread_hz": 36.9
+    }
+  ]
+}
