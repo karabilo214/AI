@@ -43,6 +43,15 @@ def notepad_running() -> bool:
 
 
 BEFORE = notepad_running()  # Блокнот пользователя, открытый до теста, не трогаем
+# Блокнот Windows 11 запоминает вкладки (и несохранённые правки) — убрать только свои.
+FORGET_TABS = (
+    "$d=Join-Path $env:LOCALAPPDATA 'Packages\\Microsoft.WindowsNotepad_8wekyb3d8bbwe\\LocalState\\TabState'; "
+    "if (Test-Path $d) { Get-ChildItem $d -File -Filter '*.bin' | Where-Object { $_.Name -notmatch '\\.\\d\\.bin$' } | "
+    "ForEach-Object { $b=[IO.File]::ReadAllBytes($_.FullName); "
+    "$t=[Text.Encoding]::Unicode.GetString($b)+[Text.Encoding]::UTF8.GetString($b); "
+    "if ($b.Length -gt 1) { $t+=[Text.Encoding]::Unicode.GetString($b,1,$b.Length-1) }; "
+    "if ($t -match 'ramvi-assistant-') { Get-ChildItem $d -File -Filter ($_.BaseName+'*') | Remove-Item -Force } } }"
+)
 
 
 def open_notepad(folder: Path) -> subprocess.Popen[bytes]:
@@ -123,6 +132,8 @@ def main() -> None:
             {"module": "character", "ui": True, "screen": False, "egress": CLOUD, "control": True},
         )
         command = sections.command
+        # История персонажа на тестовом комплекте копится от прогона к прогону — начать с чистой.
+        command("character", "dialogue", {"operation": "history_clear", "arguments": {}})
         command(
             "character", "dialogue", {"operation": "assistant", "arguments": {"target": target}}
         )
@@ -135,6 +146,31 @@ def main() -> None:
             "elements": len(context.get("elements") or []),
         }
         report["1_reads_selection"] = ask(server, "", model, QUESTION)
+
+        # 9.29: другое окно на переднем плане — персонаж читает выбранное, а не активное.
+        # Блокнот Windows 11 открыл бы второй файл вкладкой того же окна — берём окно другой
+        # программы: отдельную консоль с заголовком drugoe.
+        console = subprocess.Popen(
+            ["cmd.exe", "/k", "title drugoe"],
+            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+        )
+        time.sleep(2)
+        powershell("$w=New-Object -ComObject wscript.shell; [void]$w.AppActivate('drugoe')")
+        time.sleep(1)
+        started = time.monotonic()
+        seen = command("character", "dialogue", {"operation": "assistant_view", "arguments": {}})
+        context = seen.get("context") or {}
+        report["5_foreground_is_another_window"] = {
+            "status": context.get("status"),
+            "selected_text": context.get("selected_text"),
+            "focused_text": context.get("focused_text"),
+            "capture_seconds": round(time.monotonic() - started, 2),
+        }
+        console.kill()
+        # Действия агента — только в активном окне: вернуть Блокнот вперёд, как сделал бы
+        # пользователь за 5 секунд после подтверждения.
+        powershell("$w=New-Object -ComObject wscript.shell; [void]$w.AppActivate('zametki')")
+        time.sleep(1)
 
         desktop.route(
             "POST",
@@ -213,6 +249,8 @@ def main() -> None:
         # «Сохранить?»; иначе — только своё окно.
         if not BEFORE:
             powershell("Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue")
+            time.sleep(1)
+            powershell(FORGET_TABS)
         else:
             powershell(
                 "Get-Process notepad -ErrorAction SilentlyContinue | "
@@ -226,11 +264,31 @@ def main() -> None:
         seen = command("character", "dialogue", {"operation": "assistant_view", "arguments": {}})
         report["3_sees_after_close"] = (seen.get("context") or {}).get("status")
         report["3_window_closed"] = ask(server, "", model, QUESTION)
+
+        # 9.29: окно пропало — заново открыть, выбрать и разрешить: помощник снова видит его.
+        notepad = open_notepad(notes)
+        target = desktop.route("POST", "/agent/target", {})["target"]
+        desktop.route(
+            "POST",
+            "/agent/target/module",
+            {"module": "character", "ui": True, "screen": False, "egress": CLOUD, "control": False},
+        )
+        command(
+            "character", "dialogue", {"operation": "assistant", "arguments": {"target": target}}
+        )
+        seen = command("character", "dialogue", {"operation": "assistant_view", "arguments": {}})
+        report["6_reconnected"] = {
+            "title": target.get("title"),
+            "status": (seen.get("context") or {}).get("status"),
+            "selected_text": (seen.get("context") or {}).get("selected_text"),
+        }
     finally:
         if notepad is not None:
             notepad.kill()
             if not BEFORE:
                 powershell("Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue")
+                time.sleep(1)
+                powershell(FORGET_TABS)
         desktop.route("POST", "/agent/settings", original)
         for connection_id in CONNECTIONS:
             server.cloud.delete(connection_id)  # ключ уходит из системного хранилища

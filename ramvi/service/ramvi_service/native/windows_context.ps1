@@ -27,7 +27,10 @@ function CheckTarget($Request) {
     $handle = [IntPtr]([long]$Request.window_id)
     $target = Target $handle
     if ($target.application -cne $Request.application) { throw 'application identity changed' }
-    if ([RamviWindow]::GetForegroundWindow() -ne $handle) { throw 'window is not foreground' }
+    # 9.29: reading the window the user explicitly picked and granted works in the background
+    # (while the user talks to RAMVI, RAMVI is the foreground window). Actions still require the
+    # target to be the foreground window, so nothing happens in a window the user cannot see.
+    if ($Request.operation -eq 'act' -and [RamviWindow]::GetForegroundWindow() -ne $handle) { throw 'window is not foreground' }
     return $handle
 }
 function ElementId($Element) { return (($Element.GetRuntimeId() | ForEach-Object { "$_" }) -join '.') }
@@ -94,6 +97,14 @@ try {
             $items = New-Object System.Collections.ArrayList
             $selected = ''
             $nodes = Nodes $root
+            # In a background window no text field has keyboard focus (containers may still report
+            # it); then the window's first text field (TextPattern) stands in for it - its
+            # selection survives losing focus.
+            $anyFocus = @($nodes | Where-Object {
+                $probe = $null
+                $_.element.Current.HasKeyboardFocus -and $_.element.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$probe)
+            }).Count -gt 0
+            $picked = $false
             $signature = New-Object System.Text.StringBuilder
             foreach ($node in $nodes) {
                 $element = $node.element; $current = $element.Current
@@ -111,9 +122,13 @@ try {
                     $valueText = [string]$valuePattern.Current.Value
                     [void]$signature.Append("$($valueText.Length):$valueText")
                 }
-                if ($current.HasKeyboardFocus) {
-                    $pattern = $null
-                    if ($element.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) {
+                $textPattern = $null
+                $hasText = $element.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$textPattern)
+                $isField = $current.HasKeyboardFocus -or (-not $anyFocus -and -not $picked -and $hasText)
+                if ($isField) {
+                    if (-not $current.HasKeyboardFocus) { $picked = $true }
+                    $pattern = $textPattern
+                    if ($hasText) {
                         $selected = (($pattern.GetSelection() | ForEach-Object { $_.GetText(8192) }) -join "`n")
                         if ($selected.Length -gt 8192) { $selected = $selected.Substring(0,8192) }
                         if ($null -eq $valueText) { $valueText = [string]$pattern.DocumentRange.GetText(-1) }
