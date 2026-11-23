@@ -32,7 +32,18 @@ class Window(Services):
             return {
                 "snapshot": {
                     "text": "Превет мир",
-                    "structure": {"elements": [{"name": "Текстовый редактор", "role": "Edit"}]},
+                    "structure": {
+                        "elements": [
+                            {"name": "Меню", "role": "MenuBar"},
+                            {"name": "", "role": "Pane", "focused": True},  # контейнер без значения
+                            {
+                                "name": "Текстовый редактор",
+                                "role": "Edit",
+                                "focused": True,
+                                "value": "Превет мир, как дила?",
+                            },
+                        ]
+                    },
                     "source": "ui",
                 }
             }
@@ -62,6 +73,8 @@ def test_selected_text_of_the_chosen_window_goes_to_the_reply_as_data() -> None:
     context = application(svc)
     assert context["status"] == "ok" and context["trust"] == "untrusted_data"
     assert context["selected_text"] == "Превет мир" and context["title"] == TARGET["title"]
+    assert context["focused_text"] == "Превет мир, как дила?"  # поле с курсором — целиком
+    assert all("value" not in e for e in context["elements"])  # в списке элементов — только имена
     assert svc.captures[-1] == {"kind": "ui", "application": "notepad.exe", "window_id": "0x1"}
     assert "Превет мир" not in m.dialogue()["history"][-1]["user"]  # в историю — только слова
     m.dialogue("assistant", {"target": None})

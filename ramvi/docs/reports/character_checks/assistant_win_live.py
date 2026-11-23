@@ -34,6 +34,17 @@ def powershell(script: str) -> None:
     subprocess.run(["powershell", "-NoProfile", "-Command", script], check=False, timeout=30)
 
 
+def notepad_running() -> bool:
+    # Вывод tasklist — в кодировке консоли Windows: сравнивать байты.
+    found = subprocess.run(
+        ["tasklist", "/FI", "IMAGENAME eq notepad.exe", "/NH"], capture_output=True
+    )
+    return b"notepad.exe" in found.stdout.lower()
+
+
+BEFORE = notepad_running()  # Блокнот пользователя, открытый до теста, не трогаем
+
+
 def open_notepad(folder: Path) -> subprocess.Popen[bytes]:
     note = folder / "zametki.txt"
     note.write_text(TEXT, encoding="utf-8")
@@ -120,6 +131,7 @@ def main() -> None:
         report["0_what_character_sees"] = {
             "status": context.get("status"),
             "selected_text": context.get("selected_text"),
+            "focused_text": context.get("focused_text"),
             "elements": len(context.get("elements") or []),
         }
         report["1_reads_selection"] = ask(server, "", model, QUESTION)
@@ -185,6 +197,8 @@ def main() -> None:
                 break
             time.sleep(0.5)
         task = view.get("task") or {}
+        after = command("character", "dialogue", {"operation": "assistant_view", "arguments": {}})
+        report["4_window_text_after_agent"] = (after.get("context") or {}).get("focused_text")
         report["4_agent_in_window"] = {
             "state": task.get("state"),
             "result": task.get("result"),
@@ -195,10 +209,16 @@ def main() -> None:
 
         # Окно закрыто — цель устарела. Блокнот Windows 11 — один процесс с вкладками: закрыть
         # именно это окно (по заголовку), а не процесс-запускатель.
-        powershell(
-            "Get-Process notepad -ErrorAction SilentlyContinue | "
-            "Where-Object { $_.MainWindowTitle -like 'zametki*' } | ForEach-Object { $_.CloseMainWindow() | Out-Null }"
-        )
+        # Правка агента не сохраняется: если до теста Блокнота не было, закрыть его без вопроса
+        # «Сохранить?»; иначе — только своё окно.
+        if not BEFORE:
+            powershell("Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue")
+        else:
+            powershell(
+                "Get-Process notepad -ErrorAction SilentlyContinue | "
+                "Where-Object { $_.MainWindowTitle -like 'zametki*' } | "
+                "ForEach-Object { $_.CloseMainWindow() | Out-Null }"
+            )
         time.sleep(2)
         notepad.kill()
         notepad = None
@@ -209,6 +229,8 @@ def main() -> None:
     finally:
         if notepad is not None:
             notepad.kill()
+            if not BEFORE:
+                powershell("Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue")
         desktop.route("POST", "/agent/settings", original)
         for connection_id in CONNECTIONS:
             server.cloud.delete(connection_id)  # ключ уходит из системного хранилища

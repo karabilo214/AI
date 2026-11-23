@@ -99,14 +99,16 @@ try {
                 $element = $node.element; $current = $element.Current
                 $name = [string]$current.Name
                 if ($name.Length -gt 512) { $name = $name.Substring(0,512) }
-                [void]$items.Add(@{ id=$node.id; name=$name; role=$current.ControlType.ProgrammaticName; enabled=$current.IsEnabled; class_name=$current.ClassName; patterns=@($element.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName }) })
+                $item = @{ id=$node.id; name=$name; role=$current.ControlType.ProgrammaticName; enabled=$current.IsEnabled; class_name=$current.ClassName; patterns=@($element.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName }) }
                 foreach ($part in @($node.id, $current.ControlType.ProgrammaticName, $name, "$($current.IsEnabled)")) {
                     [void]$signature.Append("$($part.Length):$part")
                 }
+                # Whole field value goes into the state fingerprint (the old 8192-char cap made the
+                # snapshot fail on any long document). Snapshot size is bounded by the Context Provider.
+                $valueText = $null
                 $valuePattern = $null
                 if ($element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$valuePattern)) {
                     $valueText = [string]$valuePattern.Current.Value
-                    if ($valueText.Length -gt 8192) { throw 'UI value exceeds budget' }
                     [void]$signature.Append("$($valueText.Length):$valueText")
                 }
                 if ($current.HasKeyboardFocus) {
@@ -114,8 +116,14 @@ try {
                     if ($element.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) {
                         $selected = (($pattern.GetSelection() | ForEach-Object { $_.GetText(8192) }) -join "`n")
                         if ($selected.Length -gt 8192) { $selected = $selected.Substring(0,8192) }
+                        if ($null -eq $valueText) { $valueText = [string]$pattern.DocumentRange.GetText(-1) }
                     }
+                    # 9.28 (owner's decision): the focused field's content is part of the snapshot so
+                    # "here" can be fixed precisely. Password fields never.
+                    $item.focused = $true
+                    if (-not $current.IsPassword -and $null -ne $valueText) { $item.value = $valueText }
                 }
+                [void]$items.Add($item)
             }
             $sha = [System.Security.Cryptography.SHA256]::Create()
             try { $fingerprint = [Convert]::ToBase64String($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($signature.ToString()))) }

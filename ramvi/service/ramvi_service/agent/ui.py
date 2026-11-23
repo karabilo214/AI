@@ -209,7 +209,8 @@ class UIControl:
                         "snapshot_id": {"type": "string", "minLength": 1, "maxLength": 128},
                         "element_id": {"type": "string", "minLength": 1, "maxLength": 512},
                         "action": {"type": "string", "enum": ["invoke", "set_value"]},
-                        "value": {"type": "string", "maxLength": 8192},
+                        # Полное новое содержимое поля: не больше снимка окна (ContextProvider, 1 МБ).
+                        "value": {"type": "string", "maxLength": 2**20},
                         "plan": {"type": "string", "minLength": 1, "maxLength": 2000},
                     },
                     "required": ["snapshot_id", "element_id", "action", "plan"],
