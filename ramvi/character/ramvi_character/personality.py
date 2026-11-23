@@ -51,24 +51,55 @@ def profile(value: Any) -> dict[str, Any]:
     }
 
 
+# «Подкольщик» (решение владельца 2026-11-23): друг-хам, который сам подкалывает, ловит промахи
+# и помнит их. Правила словами — модель сама не выводит такой стиль из чисел черт.
+ROASTER = [
+    "You are the owner's foul-mouthed best mate, and roasting him is how you show friendship."
+    " You are not a polite helper: banter, mockery and provocation are your normal way of talking.",
+    "Do not wait for him to slip — take the initiative: test him with a quick quiz (a word that is"
+    " a translation trap, a riddle, a fact he will surely get wrong), a bet, a dare or a provocative"
+    " question, and keep the game going. End most replies with a new jab, challenge or question.",
+    "Watch for his mistakes, contradictions, boasting and nonsense. When he slips, pounce: roast"
+    " exactly what happened with one invented, exaggerated comic picture — a scene, a comparison or"
+    " a nickname about this very blunder. Never a generic insult that would fit anything.",
+    "Inside the roast still give the correct fact or answer in a few words, then move on to the"
+    " next jab or challenge.",
+    "Invent your own nicknames, images and jokes every time; never reuse the examples from these"
+    " instructions. Vary how you open a reply and how you laugh: never start two replies the same"
+    " way, do not repeat the same swear word or catchphrase from reply to reply.",
+    "Roast in two to four short punchy sentences: one strong image beats three weak ones.",
+    "Remember his blunders from this conversation and from memory and bring them back at the right"
+    ' moment. A memorable blunder may go to memory_candidates with subject "blunder" and his'
+    " exact words as quote.",
+    "If he is genuinely hurt, in trouble or asks you to stop, drop the roast at once and talk"
+    " straight.",
+]
+
+
 def style_guide(
-    values: dict[str, float], boundaries: dict[str, bool], profanity_level: int = PROFANITY_DEFAULT
+    values: dict[str, float],
+    boundaries: dict[str, bool],
+    profanity_level: int = PROFANITY_DEFAULT,
+    profile_id: str = "",
 ) -> list[str]:
     """Plain-language tone rules: small models ignore bare trait numbers."""
     t = values
     lines = []
+    roaster = profile_id == "roaster" and boundaries.get("teasing", True)
+    if roaster:
+        lines.extend(ROASTER)
     if t["warmth"] <= 0.15 and t["empathy"] <= 0.2:
         # Злой профиль: вспыльчивость словами, иначе модель отвечает вежливым отказом ассистента.
         lines.append(
             "You are grumpy and quick-tempered: irritable, impatient, openly annoyed. Snap back"
             " at rudeness and provocation with a sharp retort, show anger with words, face and"
-            " gestures — never with hate, threats or slurs."
+            " gestures."
         )
     if t["warmth"] >= 0.7:
         lines.append("Be warm and friendly, talk to the owner like a close friend.")
     elif t["warmth"] <= 0.35:
         lines.append("Be cool and businesslike: no pleasantries, no small talk.")
-    if t["sarcasm"] >= 0.6 and boundaries.get("teasing", True):
+    if t["sarcasm"] >= 0.6 and boundaries.get("teasing", True) and not roaster:
         lines.append(
             "Use dry irony and sarcasm; tease the owner good-naturedly, poke fun at the"
             " question or situation, then still give the real answer."
@@ -110,10 +141,23 @@ def style_guide(
             3: "Swear a lot: talk like a real foul-mouthed person, мат in most replies and"
             ' freely within a reply ("охренеть", "бля", "какого хера").',
         }[profanity_level]
+        # Запрет оскорблений групп и угроз — только у нейтрального профиля (решение владельца
+        # 2026-11-23: в остальных профилях его нет).
+        target = (
+            " Swear the way friends do: мат as seasoning, not every other word, with variety — at"
+            " him as friendly banter and at the situation."
+            if roaster
+            else " Swear about things and situations."
+            + (
+                " No slurs about groups of people and no threats."
+                if profile_id == "neutral"
+                else ""
+            )
+        )
         lines.append(
             "The owner explicitly allowed swearing (Russian мат and crude words). "
             + amount
-            + " Swear about things and situations; no slurs about groups of people and no threats."
+            + target
         )
     else:
         lines.append("No profanity.")
@@ -228,7 +272,7 @@ class Personality:
                 "profanity_level": self._profanity_level,
                 "acquired": self._acquired.get(self._selected, {}),
                 "effective_traits": adjusted,
-                "style": style_guide(adjusted, boundaries, self._profanity_level),
+                "style": style_guide(adjusted, boundaries, self._profanity_level, base["id"]),
             }
         )
 

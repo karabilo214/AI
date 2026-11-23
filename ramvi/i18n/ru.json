@@ -968,6 +968,7 @@
   "character.profile.strict": "Строгий",
   "character.profile.curious": "Любопытный",
   "character.profile.angry": "Злой",
+  "character.profile.roaster": "Подкольщик",
   "character.profanity": "Разрешить нецензурную лексику",
   "character.profanity_hint": "Персонаж будет ругаться матом. Выключено — говорит без мата.",
   "character.profanity_amount": "Сколько мата",
