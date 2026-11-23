@@ -126,10 +126,14 @@ def byte_counter() -> Counter:
 
 @dataclass(frozen=True)
 class Budget:
-    context: int = 8192
+    """Бюджет запроса. B.16: context=None — окно модели неизвестно (облако), общего потолка нет;
+    sections=None — без лимитов по разделам: при нехватке общего места сначала выбрасывается
+    память, потом старые ходы (ТЗ 10.6)."""
+
+    context: int | None = 8192
     output: int = 512
     reserve: int = 256
-    sections: dict[str, int] = field(
+    sections: dict[str, int] | None = field(
         default_factory=lambda: {
             "system": 6144,
             "personality": 1536,
@@ -143,11 +147,17 @@ class Budget:
     )
 
     def __post_init__(self) -> None:
-        integer(self.context, 256, 1_000_000)
-        integer(self.output, 1, self.context)
-        integer(self.reserve, 0, self.context)
-        if self.output + self.reserve >= self.context:
-            raise ValueError("no input budget remains")
+        if self.context is not None:
+            integer(self.context, 256, 100_000_000)
+            integer(self.output, 1, self.context)
+            integer(self.reserve, 0, self.context)
+            if self.output + self.reserve >= self.context:
+                raise ValueError("no input budget remains")
+        else:
+            integer(self.output, 1, 100_000_000)
+            integer(self.reserve, 0, 100_000_000)
+        if self.sections is None:
+            return
         names = {
             "system",
             "personality",
@@ -204,7 +214,9 @@ def history_turns(recent: Any) -> list[list[dict[str, str]]]:
             raise ValueError("invalid or duplicate message id")
         if role not in {"user", "assistant"}:
             raise ValueError("history cannot introduce privileged roles")
-        content = text(item["text"], 16_000)
+        # Длина прежней реплики — по бюджету токенов (старые ходы выбрасываются), а не байтам:
+        # иначе одна длинная реплика ломала бы все следующие ходы (B.15/B.16).
+        content = text(item["text"], 256 * 2**20)
         ids.add(identifier)
         if role == "user":
             turns.append([])
@@ -319,9 +331,10 @@ class ContextOrchestrator:
             "input": encode({"source_id": "current", "text": user_input}),
         }
         counts = {key: self.counter.content(value) for key, value in sections.items()}
+        limits = budget.sections
         for key, needed in counts.items():
-            if needed > budget.sections[key]:
-                raise ContextOverflow(key, needed, budget.sections[key])
+            if limits is not None and needed > limits[key]:
+                raise ContextOverflow(key, needed, limits[key])
         turns = history_turns(recent or [])
         candidates = memories
         if candidates is None and self._retrieve is not None:
@@ -348,14 +361,19 @@ class ContextOrchestrator:
                 for m in turn
             ]
 
-        while memory and self.counter.content(memory_content()) > budget.sections["memory"]:
+        while (
+            limits is not None
+            and memory
+            and self.counter.content(memory_content()) > limits["memory"]
+        ):
             dropped.append(
                 {"section": "memory", "id": memory.pop()["id"], "reason": "section_budget"}
             )
         while (
-            turns
+            limits is not None
+            and turns
             and sum(self.counter.content(m["content"]) for m in recent_messages())
-            > budget.sections["recent"]
+            > limits["recent"]
         ):
             dropped.extend(
                 {"section": "recent", "id": m["id"], "reason": "section_budget"}
@@ -376,8 +394,11 @@ class ContextOrchestrator:
                 output.append({"role": "user", "content": memory_content()})
             return output + recent_messages() + [{"role": "user", "content": sections["input"]}]
 
-        available = budget.context - budget.output - budget.reserve
         total = self.counter.messages(messages())
+        # Окно неизвестно (облако) — собрать всё: размер ограничивают хранимые история и память.
+        available = (
+            total if budget.context is None else budget.context - budget.output - budget.reserve
+        )
         while total > available and (memory or turns):
             if memory:
                 dropped.append(

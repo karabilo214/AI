@@ -381,6 +381,15 @@ class SwitchableProvider:
         self._active: Any = None
         self._lock = threading.Lock()
 
+    def context_for(self, request: dict[str, Any]) -> int | None:
+        """B.16: окно модели запроса в токенах. Локальная — контекст, с которым движок её
+        грузит (профиль задачи) или уже загрузил, если больше; облачная — неизвестно (None)."""
+        model_id = request.get(MODEL_FIELD)
+        if isinstance(model_id, str) and self.cloud(model_id) is not None:
+            return None
+        loaded = self.manager._loaded_context if self.manager.model_id == model_id else 0
+        return max(self.manager.context(), loaded)
+
     def capabilities_for(self, request: dict[str, Any]) -> ProviderCapabilities:
         """Возможности той модели, куда уйдёт запрос: облачная — внешняя (egress-права)."""
         model_id = request.get(MODEL_FIELD)

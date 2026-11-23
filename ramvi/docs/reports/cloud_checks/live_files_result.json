@@ -19,20 +19,16 @@
   "character_with_file": {
     "state": "completed",
     "error": null,
-    "answer": "Код двери на складе №3: 700021. Открыт с 8 до 17, по субботам до 14.",
+    "answer": "В файле sklad.txt код двери склада №3 — 700021. Склад открыт с 8 до 17, по субботам до 14.",
     "names_the_code": true,
-    "seconds": 5.9,
+    "seconds": 4.3,
     "history_user": "Посмотри файл и скажи, какой там код двери.\n[file: sklad.txt]"
   },
   "character_overflow": {
-    "state": "error",
-    "error": "ContextOverflow",
-    "overflow": {
-      "section": "input",
-      "needed": 28029,
-      "available": 3072
-    },
+    "state": "completed",
+    "error": null,
+    "overflow": null,
     "file_bytes": 200000,
-    "usage_unchanged": true
+    "usage_unchanged": false
   }
 }

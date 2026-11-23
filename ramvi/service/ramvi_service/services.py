@@ -324,9 +324,12 @@ class ScopedServices:
 
         model = payload.get("model")  # 7.7: возможности выбранной модели (облачная — внешняя)
         request = {"ramvi_model_id": model} if isinstance(model, str) else {}
+        window = getattr(self.llm.provider, "context_for", None) if self.llm else None
         return {
             "available": self.llm is not None,
             "capabilities": asdict(_capabilities(self.llm.provider, request)) if self.llm else {},
+            # B.16: окно выбранной модели в токенах; None — неизвестно (облако).
+            "context": window(request) if callable(window) and request else None,
         }
 
     @handler("llm.complete", permission="llm", active=True)

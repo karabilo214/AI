@@ -148,6 +148,7 @@ def test_context_budget_drops_least_relevant_memory_first(db: ModuleDatabase) ->
         ),
     )
     budget = Budget()
+    assert budget.sections is not None
     budget.sections["memory"] = 700
     prepared = orchestrator.build(
         task="Поддержать разговор",

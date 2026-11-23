@@ -444,15 +444,15 @@ def test_bad_files_are_refused_before_the_model(files: Any) -> None:
 def test_file_that_does_not_fit_reports_tokens_instead_of_a_generic_error() -> None:
     svc = Services()
     m = active(svc)
-    # Тестовый счётчик: 10 символов — 1 токен; на реплику 3072 токена.
+    # Тестовый счётчик: 10 символов — 1 токен; окно локальной модели 8192 (B.16: без лимитов разделов).
     m.dialogue(
         "start",
-        {"text": "Вот", "model": "one", "files": [{"name": "big.txt", "text": "я" * 40_000}]},
+        {"text": "Вот", "model": "one", "files": [{"name": "big.txt", "text": "я" * 90_000}]},
     )
     job = finish(m)["job"]
     assert job["state"] == "error" and job["error"] == "ContextOverflow"
     assert (
-        job["overflow"]["section"] == "input"
+        job["overflow"]["section"] == "required"
         and job["overflow"]["needed"] > job["overflow"]["available"]
     )
     assert not svc.requests  # до модели не дошло
@@ -469,7 +469,7 @@ def test_long_reply_text_is_limited_by_tokens_and_kept_whole_in_history() -> Non
     assert result["job"]["state"] == "completed"
     assert result["history"][-1]["user"] == long_text
     # Ещё больше — не помещается в бюджет реплики: понятная ошибка с числами.
-    m.dialogue("start", {"text": "я" * 40_000, "model": "one"})
+    m.dialogue("start", {"text": "я" * 90_000, "model": "one"})
     job = finish(m)["job"]
     assert (
         job["error"] == "ContextOverflow"
@@ -480,5 +480,64 @@ def test_long_reply_text_is_limited_by_tokens_and_kept_whole_in_history() -> Non
     restored = CharacterModule()
     restored.initialize({"services": svc, "checkpoint": checkpoint})
     restored.activate()  # история с большим последним ходом читается обратно
-    assert restored.dialogue()["history"][-1]["user"] == "я" * 40_000
+    assert restored.dialogue()["history"][-1]["user"] == "я" * 90_000
     restored.dispose()
+
+
+class WindowServices(Services):
+    """Сервис, который сообщает окно модели (B.16): внешняя (облако) или локальная."""
+
+    def __init__(self, *, external: bool, context: int | None) -> None:
+        super().__init__()
+        self.external, self.context = external, context
+
+    def call(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if method == "llm.capabilities":
+            assert payload == {"model": "one"}  # окно — именно выбранной модели
+            return {
+                "available": True,
+                "capabilities": {"streaming": True, "external": self.external},
+                "context": self.context,
+            }
+        return super().call(method, payload)
+
+
+@pytest.mark.parametrize(
+    ("external", "context", "fits", "minimum"),
+    [
+        (True, None, True, None),  # облако: окно неизвестно — общего потолка нет
+        (False, 32768, True, 32768),  # профиль задачи с длинным контекстом
+        (False, None, False, 8192),  # нет сведений — прежний минимум персонажа
+    ],
+)
+def test_request_size_follows_the_model_window(
+    external: bool, context: int | None, fits: bool, minimum: int | None
+) -> None:
+    svc = WindowServices(external=external, context=context)
+    m = active(svc)
+    # ~12 000 токенов тестового счётчика: больше 8192, меньше 32768.
+    m.dialogue("start", {"text": "я" * 120_000, "model": "one"})
+    job = finish(m)["job"]
+    assert (job["state"] == "completed") is fits, job.get("error_detail")
+    if fits:
+        assert svc.requests[-1].get("ramvi_min_context") == minimum
+    else:
+        assert job["overflow"]["available"] == 8192 - 1536 - 256
+    m.dispose()
+
+
+def test_local_window_is_the_profile_or_the_loaded_context() -> None:
+    from ramvi_service.engines import SwitchableProvider
+
+    class Manager:
+        model_id = "local-a"
+        _loaded_context = 16384
+
+        def context(self) -> int:
+            return 2048
+
+    remote = object()
+    switch = SwitchableProvider(Manager(), lambda m: remote if m == "cloud:c:m" else None)  # type: ignore[arg-type]
+    assert switch.context_for({"ramvi_model_id": "local-a"}) == 16384  # уже загружена больше
+    assert switch.context_for({"ramvi_model_id": "local-b"}) == 2048  # загрузится по профилю
+    assert switch.context_for({"ramvi_model_id": "cloud:c:m"}) is None  # облако: неизвестно

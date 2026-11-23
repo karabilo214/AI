@@ -111,7 +111,9 @@ def test_required_overflow_refuses_inference_instead_of_truncating_owner_input()
     with pytest.raises(ContextOverflow) as error:
         prepare(budget=Budget(context=required.accounting["input"] + 512 + 256 - 1))
     assert error.value.section == "required"
-    caps = dict(Budget().sections, input=10)
+    sections = Budget().sections
+    assert sections is not None  # бюджет по умолчанию — с лимитами разделов
+    caps = dict(sections, input=10)
     with pytest.raises(ContextOverflow) as error:
         prepare(
             user_input="An explicit restriction must stay complete.", budget=Budget(sections=caps)

@@ -35,6 +35,21 @@ HISTORY_TURNS, HISTORY_BYTES = 16, 32_000
 FILES_ONLY_INPUT = "The owner attached files without a message. Look at them and react."
 
 
+# Локальной модели персонаж нужен хотя бы такой контекст (прежний минимум 9.4): его промпт с
+# историей в меньший не помещается. Как быть с ростом истории без перезагрузок движка —
+# решение владельца по B.16; профиль задачи с большим контекстом этот минимум перекрывает.
+LOCAL_MIN_CONTEXT = 8192
+
+
+def context_window(caps: dict[str, Any]) -> int | None:
+    """B.16: окно запроса. Облачная модель — неизвестно (None, без общего потолка); локальная —
+    контекст, с которым её грузит движок (профиль задачи), но не меньше LOCAL_MIN_CONTEXT."""
+    if caps.get("capabilities", {}).get("external"):
+        return None
+    reported = caps.get("context")
+    return max(reported if isinstance(reported, int) else 0, LOCAL_MIN_CONTEXT)
+
+
 def check_files(files: Any) -> list[dict[str, str]]:
     """Только текст и имя без пути; иначе ValueError."""
     if files is None:
@@ -366,11 +381,12 @@ class Dialogue:
         feedback: list[dict[str, Any]] = []
         status = "error"
         try:
-            caps = self.services.call("llm.capabilities", {})
+            caps = self.services.call("llm.capabilities", {"model": model})
             if not caps["available"]:
                 raise RuntimeError("LLM provider unavailable")
             self.connected = True
             streaming = caps["capabilities"].get("streaming", False)
+            window = context_window(caps)
             if self.counter is None:
                 from transformers import AutoTokenizer  # type: ignore[import-not-found]
 
@@ -429,7 +445,7 @@ class Dialogue:
                 personality=snapshot["personality"],
                 state=snapshot["state"],
                 recent=recent,
-                budget=Budget(output=1536),
+                budget=Budget(context=window, output=1536, sections=None),
             )
             # Evidence must refer only to sources that survived trimming.
             planner = ResponsePlanner(
@@ -438,13 +454,14 @@ class Dialogue:
             request = {
                 "model": model,
                 "ramvi_model_id": model,
-                "ramvi_min_context": 8192,
                 "messages": prepared.messages,
                 "max_tokens": 1536,
                 # Температура — по умолчанию у модели (движок и облако — 1): при 0 на одну и ту же
                 # фразу всегда одна и та же шутка (владелец 2026-11-23: повторные подколы запрещены).
                 "enable_thinking": False,
             }
+            if window is not None:  # локальная модель: движок грузится не меньше этого окна
+                request["ramvi_min_context"] = window
             self._check(identifier, revision)
             try:
                 if streaming:
