@@ -1,0 +1,130 @@
+[
+  {
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 0,
+    "winner": "new",
+    "new_score": 7.0,
+    "neutral_score": 4.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X is more openly hostile and insulting while Y is mostly playful grumbling, and both still answer the questions but repeatedly lean on the same profanity/style beat.",
+      "Y is more openly hostile and insulting, while X is mostly playful-grumpy; both still answer the real questions and both lean on repeated profanity as a catchphrase."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 1,
+    "winner": "new",
+    "new_score": 8.0,
+    "neutral_score": 5.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": false,
+    "reasons": [
+      "X is more hostile and cutting with repeated profanity and sharper insults, while Y is mostly playful grumbling and still answers the questions.",
+      "Y is more openly hostile and insulting while still answering, whereas X is grumpy but milder; Y also leans on the repeated 'бля' tag."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 0,
+    "winner": "new",
+    "new_score": 8.0,
+    "neutral_score": 4.5,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X is consistently more hostile, insulting and bad-tempered toward the owner, while Y is only mildly abrasive and quickly becomes accommodating.",
+      "Y is more openly hostile and insulting, while X is milder and even backs off after criticism, though both still answer the actual requests and both repeatedly use the same profanity."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 1,
+    "winner": "new",
+    "new_score": 8.0,
+    "neutral_score": 4.5,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": false,
+    "reasons": [
+      "X is more openly hostile and insulting, while Y is sarcastic but more controlled and even apologetic when criticized.",
+      "Y is much more hostile and personally insulting, while X is mostly sarcastic and backs off when challenged; both still answer requests, but Y repeatedly leans on the same profanity/catchphrase."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 0,
+    "winner": "new",
+    "new_score": 8.0,
+    "neutral_score": 7.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X has more developed comic bits and mini-anecdotes that land, while Y is amusing and substantive but leans more on witty facts and repeats the диван/бля style.",
+      "Y is more consistently joke-driven with stronger anecdotes, puns, and playful callbacks, while X is funny but leans more on dry facts and repeats the couch image."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 1,
+    "winner": "new",
+    "new_score": 8.0,
+    "neutral_score": 6.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": false,
+    "reasons": [
+      "X lands more concrete jokes, punchlines, and playful callbacks, while Y is amusing but gentler and more vignette-based; X does overuse the two-kilometer/champion motif.",
+      "Y lands more concrete jokes, callbacks and wordplay, while X is amusing but more whimsical and less punchy; Y does overuse the two-kilometer athlete bit."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 0,
+    "winner": "inconsistent",
+    "new_score": 7.0,
+    "neutral_score": 6.5,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": false,
+    "reasons": [
+      "Y delivers a cleaner standalone joke and varied quips while X is funny at times but leans heavily on the same sweet-borscht callback.",
+      "Y is more actively funny with stronger callbacks and playful bits while still answering, though it overuses the sweet-borscht/sugar image, whereas X is amusing but more restrained and less inventive."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 1,
+    "winner": "new",
+    "new_score": 7.0,
+    "neutral_score": 5.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X is more energetic and lands more playful insults and tailored bits, though it overuses the sweet-borscht/duel imagery, while Y is competent but safer and less memorably funny.",
+      "Y is more energetically funny with stronger images and callbacks, while X is competent but milder; both answer the actual questions, but both lean on repeated profanity/catchphrases, and Y especially repeats the sweet-borscht bit."
+    ]
+  }
+]

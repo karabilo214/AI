@@ -396,10 +396,13 @@ class Dialogue:
         Любой сбой — безопасная обычная реакция; ход продолжается."""
         name = getattr(self.owner, "_brain", "rules")
         outcomes = getattr(self.owner, "_brain_outcomes", None)
+        strategies = tuple(getattr(self.owner, "_brain_recent", ()))
         controller: Any = (
-            MemoryController(outcomes)
+            MemoryController(outcomes, strategies)
             if name == "memory" and outcomes is not None
-            else CONTROLLERS.get(name, RuleController if name == "memory" else OffController)()
+            else RuleController(strategies)
+            if name in ("rules", "memory")
+            else CONTROLLERS.get(name, OffController)()
         )
         signal = None
         if name != "off":
@@ -438,6 +441,9 @@ class Dialogue:
         with self.lock:
             if self.job is not None and self.job["id"] == identifier:
                 self.job["brain"] = decision_view(signal, decision)
+            # 9.32: последние стратегии — чтобы шутки чередовались, а злость копилась.
+            if signal is not None and isinstance(getattr(self.owner, "_brain_recent", None), list):
+                self.owner._brain_recent[:] = [*self.owner._brain_recent, decision.strategy][-4:]
         return decision
 
     def _run(

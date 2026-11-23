@@ -67,6 +67,7 @@ class CharacterModule:
         # 9.30: контроллер реакций (заменяемый): rules — правила по характеру, off — без него.
         self._brain = DEFAULT_BRAIN
         self._brain_outcomes: OutcomeStore | None = None
+        self._brain_recent: list[str] = []  # 9.32: стратегии последних ходов
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})

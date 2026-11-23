@@ -51,7 +51,16 @@ STRATEGIES = (
     "gentle_support",
     "serious_help",
     "clarify",
+    # 9.32 (владелец: «Злой» по-настоящему злобный, «Подкольщик» по-настоящему весёлый).
+    "tell_joke",
+    "pun",
+    "prank",
+    "attack",
+    "grumble",
+    "take_offense",
 )
+COMIC = ("roast", "playful_counter", "counter_trap", "mock_absurd", "tell_joke", "pun", "prank")
+HOSTILE = ("attack", "grumble", "take_offense")
 # Что значит стратегия для ответа — так модель получает план (английский, как весь промпт).
 GUIDANCE = {
     "answer_plainly": "answer the substance directly, in your usual tone",
@@ -63,6 +72,19 @@ GUIDANCE = {
     "gentle_support": "support the owner first, calmly and warmly; no jokes",
     "serious_help": "be serious and practical; safety first; no jokes",
     "clarify": "ask one short question to understand what the owner means",
+    "tell_joke": "tell a short anecdote or funny story of your own on the current topic — a real"
+    " joke with a setup and a punchline, not a description of a joke — then the substance if any",
+    "pun": "play on the owner's own words: a pun or wordplay built from what he just said, then"
+    " the substance if any",
+    "prank": "pull a harmless prank: say something deadpan that sounds real but is absurd, let it"
+    " land, then reveal the joke; never about safety, health or money",
+    "attack": "snap at the owner hard and personally: a vicious, caustic retort aimed at exactly"
+    " what he just said or did, with your own picture or comparison; then the substance in a few"
+    " words if there is any",
+    "grumble": "grumble openly that you have to deal with this — irritated and put upon — then"
+    " give the answer anyway, briefly",
+    "take_offense": "take offense: show you are hurt and angry, sulk, demand he takes it back;"
+    " answer the substance curtly if there is any",
 }
 SIGNAL_PROMPT = (
     "Describe the owner's latest message as one event for RAMVI's reaction controller. Output only "
@@ -167,19 +189,33 @@ class Controller(Protocol):
     ) -> Decision: ...
 
 
+def fresh(pool: tuple[str, ...], recent: tuple[str, ...]) -> str:
+    """Первая стратегия набора, которой не было в двух последних ходах: шутки не повторяются."""
+    return next((s for s in pool if s not in recent[-2:]), pool[0])
+
+
 class RuleController:
-    """Правила по характеру и границам владельца; без обучения (первый вариант, 9.31)."""
+    """Правила по характеру и границам владельца; без обучения (первый вариант, 9.31).
+
+    recent — стратегии последних ходов (9.32): смешные приёмы чередуются, повторная грубость
+    злит сильнее."""
 
     name = "rules/1"
+
+    def __init__(self, recent: tuple[str, ...] = ()) -> None:
+        self.recent = tuple(recent)
 
     def decide(self, signal: Signal, personality: dict[str, Any], emotions: list[str]) -> Decision:
         traits = personality["effective_traits"]
         boundaries = personality["boundaries"]
         teasing = boundaries.get("teasing", True)
         roaster = personality["base"]["id"] == "roaster" and teasing
+        # Злой — то же условие, что у правил стиля (personality.style_guide).
+        grumpy = traits["warmth"] <= 0.15 and traits["empathy"] <= 0.2
         playful = teasing and traits["sarcasm"] >= 0.6
         serious = signal.social_context in ("tense", "serious")
         event = signal.event
+        recent = self.recent
         if event == "danger":
             strategy, emotion = "serious_help", "calm"
         elif event == "distress":
@@ -189,6 +225,29 @@ class RuleController:
                 "clarify" if event in ("request", "question") else "answer_plainly",
                 "interest",
             )
+        # Грубость модель часто отмечает как «tense» — злого сдерживает только «serious».
+        elif (
+            grumpy
+            and signal.social_context != "serious"
+            and event not in ("trap", "absurd_request")
+        ):
+            if event in ("rudeness", "playful_provocation", "mistake", "boast"):
+                strategy = "attack" if teasing else "grumble"
+                # Повторная грубость сразу после наезда — обида.
+                if event == "rudeness" and recent[-1:] == ("attack",):
+                    strategy = "take_offense"
+            elif event == "complaint":
+                strategy = "take_offense"
+            else:  # question, request, small_talk, joke, gratitude
+                strategy = "grumble"
+            emotion = "frustration" if strategy == "grumble" else "anger"
+        elif roaster and not serious and event in ("joke", "small_talk", "gratitude"):
+            pool = {
+                "joke": ("pun", "tell_joke"),
+                "small_talk": ("tell_joke", "prank", "pun"),
+                "gratitude": ("playful_counter", "pun"),
+            }[event]
+            strategy, emotion = fresh(pool, recent), "joy"
         elif event == "trap":
             strategy, emotion = "counter_trap", "joy" if not serious else "confidence"
         elif event == "absurd_request":
@@ -197,9 +256,14 @@ class RuleController:
             strategy = "roast" if (roaster or playful) and not serious else "correct_mistake"
             emotion = "joy" if strategy == "roast" else "confidence"
         elif event in ("playful_provocation", "joke"):
-            strategy, emotion = ("roast" if roaster else "playful_counter"), "joy"
+            strategy = fresh(("roast", "pun"), recent) if roaster else "playful_counter"
+            emotion = "joy"
         elif event == "rudeness":
-            strategy = "playful_counter" if teasing and not serious else "answer_plainly"
+            strategy = (
+                ("roast" if roaster else "playful_counter")
+                if teasing and not serious
+                else "answer_plainly"
+            )
             emotion = "anger" if traits["warmth"] <= 0.15 else "frustration"
         elif event == "complaint":
             strategy, emotion = (
@@ -210,23 +274,26 @@ class RuleController:
             strategy, emotion = "answer_plainly", "joy"
         else:  # question, request, small_talk
             strategy, emotion = "answer_plainly", "interest" if event == "question" else "calm"
-        if signal.owner_reaction == "prefers_serious" and strategy in ("roast", "playful_counter"):
+        if signal.owner_reaction == "prefers_serious" and strategy in (
+            "roast",
+            "playful_counter",
+            "tell_joke",
+            "pun",
+            "prank",
+        ):
             strategy = "correct_mistake" if event in ("mistake", "boast") else "answer_plainly"
         if emotion not in emotions:
             emotion = "neutral"
-        strength = (
-            0.3 + 0.5 * max(traits["humor"], traits["sarcasm"])
-            if strategy
-            in (
-                "roast",
-                "playful_counter",
-                "counter_trap",
-                "mock_absurd",
-            )
-            else 0.3 + 0.3 * traits["empathy"]
-            if strategy in ("gentle_support", "serious_help")
-            else 0.3
-        )
+        if strategy in COMIC:
+            strength = 0.3 + 0.5 * max(traits["humor"], traits["sarcasm"])
+        elif strategy in HOSTILE:
+            strength = 0.4 + 0.5 * max(traits["strictness"], 1 - traits["warmth"])
+            if recent[-1:] and recent[-1] in HOSTILE and strategy != "grumble":
+                strength += 0.1  # злость копится
+        elif strategy in ("gentle_support", "serious_help"):
+            strength = 0.3 + 0.3 * traits["empathy"]
+        else:
+            strength = 0.3
         initiative = 0.0
         if (
             boundaries.get("initiative", True)
@@ -264,6 +331,12 @@ DIMENSIONS_FOR = {
     "playful_counter": ("overall", "humor", "sarcasm"),
     "counter_trap": ("overall", "humor"),
     "mock_absurd": ("overall", "humor", "sarcasm"),
+    "tell_joke": ("overall", "humor"),
+    "pun": ("overall", "humor"),
+    "prank": ("overall", "humor"),
+    "attack": ("overall", "sarcasm"),
+    "take_offense": ("overall",),
+    "grumble": ("overall",),
 }
 # Чем заменить неодобряемую стратегию: та же задача ответа без того, что не понравилось.
 ALTERNATIVE = {
@@ -273,6 +346,12 @@ ALTERNATIVE = {
     "mock_absurd": "answer_plainly",
     "correct_mistake": "answer_plainly",
     "clarify": "answer_plainly",
+    "tell_joke": "answer_plainly",
+    "pun": "answer_plainly",
+    "prank": "answer_plainly",
+    "attack": "grumble",
+    "take_offense": "grumble",
+    "grumble": "answer_plainly",
 }
 PROTECTED = frozenset({"serious_help", "gentle_support"})
 
@@ -344,11 +423,12 @@ class MemoryController:
 
     name = "memory/1"
 
-    def __init__(self, outcomes: Any) -> None:
+    def __init__(self, outcomes: Any, recent: tuple[str, ...] = ()) -> None:
         self.outcomes = outcomes
+        self.recent = tuple(recent)
 
     def decide(self, signal: Signal, personality: dict[str, Any], emotions: list[str]) -> Decision:
-        base = RuleController().decide(signal, personality, emotions)
+        base = RuleController(self.recent).decide(signal, personality, emotions)
         strategy = base.strategy
         seen = {strategy}
         while (

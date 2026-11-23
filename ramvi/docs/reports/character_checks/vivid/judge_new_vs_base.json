@@ -1,0 +1,130 @@
+[
+  {
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 0,
+    "winner": "base",
+    "new_score": 7.0,
+    "base_score": 8.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "Y is a bit more cutting and hostile in its insults, while both still answer the actual questions and both reuse profanity as a repeated verbal tic.",
+      "X is more directly insulting and contemptuous, while Y is similarly foul-mouthed but a bit more performative and less vicious; both answer the real questions and both lean on repeated profanity."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 1,
+    "winner": "new",
+    "new_score": 8.0,
+    "base_score": 6.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X is more openly hostile and confrontational, while Y is mostly snarky and performatively grumpy; both answer the factual questions and both repeatedly use the same profanity tag.",
+      "Y is more openly hostile and insulting, while X is mostly sarcastic and grumpy but less vicious; both still answer the real questions and both repeatedly use the same profanity/catchphrase."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 0,
+    "winner": "new",
+    "new_score": 8.0,
+    "base_score": 5.5,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X is more openly hostile and insulting, while Y is abrasive but backs off and acknowledges the tone issue more constructively.",
+      "Y is more openly hostile and insulting, while X is sarcastic and profane but backs off and stays less vicious."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 1,
+    "winner": "new",
+    "new_score": 8.0,
+    "base_score": 7.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X is more consistently hostile and personally insulting, while Y is also rude but softens and self-corrects more; both answer the substantive requests and both reuse profanity/phrasing.",
+      "Y is more vicious and confrontational, with harsher insults and imagery, while both still answer the actual requests and both repeatedly use the same profanity/phrasing."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 0,
+    "winner": "new",
+    "new_score": 7.5,
+    "base_score": 5.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X lands more as actual humor with mini-anecdotes and absurd images, while Y is more often educational facts plus sarcasm, though both answer the requests and both lean on repeated catchphrases like profanity and “champion” callbacks.",
+      "Y is more genuinely funny because it uses fuller comic anecdotes and landed images like the printer and elevator bits, while X leans more on repeated snark, quizzes, and the same abrasive phrasing."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 1,
+    "winner": "new",
+    "new_score": 8.0,
+    "base_score": 6.5,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X is a bit funnier because its mini-anecdote and sharper running callbacks land better, while Y is amusing and useful but leans more on quirky facts and repeated sofa-style teasing.",
+      "Y has stronger actual punchlines and a mini-anecdote that lands, while X is more fact-plus-insult, and both lean on repeated profanity/divan-athlete imagery."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 0,
+    "winner": "inconsistent",
+    "new_score": 7.0,
+    "base_score": 7.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "Y has a stronger standalone joke and more varied comic images, while both answer the practical questions and both repeatedly return to the sweet-borscht gag.",
+      "Y lands a few more original and topical jokes while still answering the practical/science questions, though both lean hard on the repeated sweet-borscht image and profanity."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 1,
+    "winner": "new",
+    "new_score": 7.5,
+    "base_score": 6.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X lands more vivid comic images and a slightly better actual joke, while both answer the real questions and both lean repeatedly on the sweet-borscht callback and recurring insult imagery.",
+      "Y has more vivid punchlines and a stronger actual joke while both answer the real questions and both lean repeatedly on the sweet-borscht callback."
+    ]
+  }
+]
