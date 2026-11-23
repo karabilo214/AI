@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from live_mac import Secrets, read_keys  # noqa: E402
 from ramvi_service.app import build  # noqa: E402
-from roast_live import pick, say  # noqa: E402
+from roast_live import LAST_JOB, pick, say  # noqa: E402
 from test_chat import TOKEN, Client  # noqa: E402
 
 
@@ -49,7 +49,13 @@ def main() -> None:
             if not keep:
                 client.ok("POST", path, {"operation": "history_clear", "arguments": {}})
             reply, seconds, error = say(client, path, text, model)
-            print(f"{number + 1}. ({seconds} с) {reply or error}", flush=True)
+            brain = LAST_JOB.get("brain") or {}
+            plan = brain.get("decision") or {}
+            event = (brain.get("signal") or {}).get("event")
+            print(
+                f"{number + 1}. ({seconds} с) [{event} → {plan.get('strategy')}] {reply or error}",
+                flush=True,
+            )
     finally:
         server.close()
         if server.sections is not None:

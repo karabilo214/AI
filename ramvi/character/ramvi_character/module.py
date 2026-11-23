@@ -33,6 +33,10 @@ ADAPTATION_OPERATIONS = frozenset(
 )
 
 
+# 9.30: контроллер реакций по умолчанию (rules — правила по характеру; off — без контроллера).
+DEFAULT_BRAIN = "rules"
+
+
 class CharacterModule:
     def __init__(self) -> None:
         self._personality = Personality()
@@ -58,6 +62,8 @@ class CharacterModule:
         self._delegation = Delegation(None, self._delegated)
         # 9.28: окно, с которым помогает персонаж (выбрал пользователь в доверенном UI).
         self._assistant: dict[str, str] | None = None
+        # 9.30: контроллер реакций (заменяемый): rules — правила по характеру, off — без него.
+        self._brain = DEFAULT_BRAIN
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})
@@ -647,6 +653,12 @@ class CharacterModule:
                 self.set_boundary(args["name"], args["allowed"])
             elif operation == "assistant":  # 9.28: доверенный UI задаёт окно помощника
                 return self.set_assistant(args.get("target"))
+            elif operation == "brain":  # 9.30: выбрать контроллер реакций
+                choice = args.get("controller")
+                if choice not in ("rules", "off"):
+                    raise ValueError("unknown reaction controller")
+                self._brain = choice
+                return {"brain": self._brain}
             elif operation == "assistant_view":  # 9.28: что персонаж видит в окне сейчас
                 return {
                     "assistant": copy.deepcopy(self._assistant),

@@ -60,6 +60,9 @@ def connect(client: Client, keys: dict[str, str], kind: str, hint: str) -> str:
     return f"cloud:{connection['id']}:{model}"
 
 
+LAST_JOB: dict[str, Any] = {}
+
+
 def say(client: Client, path: str, text: str, model: str) -> tuple[str, float, Any]:
     started = time.monotonic()
     client.ok("POST", path, {"operation": "start", "arguments": {"text": text, "model": model}})
@@ -69,6 +72,8 @@ def say(client: Client, path: str, text: str, model: str) -> tuple[str, float, A
             break
         time.sleep(0.3)
     reply = " ".join(e["text"] for e in job["events"] if e.get("type") == "segment")
+    LAST_JOB.clear()
+    LAST_JOB.update(job)  # для печати решения контроллера (9.30)
     return reply, round(time.monotonic() - started, 1), job.get("error_detail")
 
 

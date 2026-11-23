@@ -287,6 +287,7 @@ class ContextOrchestrator:
         memories: list[dict[str, Any]] | None = None,
         budget: Budget | None = None,
         application: dict[str, Any] | None = None,
+        guidance: str | None = None,
     ) -> Prepared:
         budget = budget or Budget()
         # Реплика с файлами ограничена бюджетом токенов раздела input (ContextOverflow с числами),
@@ -394,7 +395,9 @@ class ContextOrchestrator:
                 {
                     "role": "system",
                     "content": "\n\n".join(
-                        sections[k] for k in ("system", "personality", "state", "boundaries")
+                        [sections[k] for k in ("system", "personality", "state", "boundaries")]
+                        # 9.30: план реакции контроллера — данные модуля, после правил и границ.
+                        + ([guidance] if guidance else [])
                     ),
                 },
                 {"role": "user", "content": sections["task"]},

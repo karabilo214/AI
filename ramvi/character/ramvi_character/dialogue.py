@@ -9,6 +9,15 @@ import uuid
 from collections.abc import Iterator
 from typing import Any
 
+from ramvi_character.brain import (
+    CONTROLLERS,
+    SIGNAL_PROMPT,
+    Decision,
+    OffController,
+    decision_view,
+    parse_signal,
+    safe_decision,
+)
 from ramvi_character.context import (
     Budget,
     ContextOrchestrator,
@@ -366,6 +375,58 @@ class Dialogue:
                 if self.stream_id == stream_id:
                     self.stream_id = None
 
+    def _react(
+        self,
+        identifier: str,
+        revision: int,
+        model: str,
+        window: int | None,
+        user_input: str,
+        recent: list[dict[str, str]],
+    ) -> Decision:
+        """9.30: короткий запрос «опиши событие» → проверка сигнала → решение контроллера.
+        Любой сбой — безопасная обычная реакция; ход продолжается."""
+        name = getattr(self.owner, "_brain", "rules")
+        controller = CONTROLLERS.get(name, OffController)()
+        signal = None
+        if name != "off":
+            shown = [{"role": m["role"], "text": m["text"]} for m in recent[-6:]]
+            request: dict[str, Any] = {
+                "model": model,
+                "ramvi_model_id": model,
+                "messages": [
+                    {"role": "system", "content": SIGNAL_PROMPT},
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            {"recent": shown, "latest": user_input}, ensure_ascii=False
+                        ),
+                    },
+                ],
+                # Сигнал — несколько полей; запас — на модели, которые сначала рассуждают.
+                "max_tokens": 1536,
+                "enable_thinking": False,
+            }
+            if window is not None:
+                request["ramvi_min_context"] = window
+            self._check(identifier, revision)
+            try:
+                signal = parse_signal("".join(self._request(request, False)))
+            except InterruptedError:
+                raise
+            except Exception:
+                signal = None
+        personality = self.owner._personality.view()
+        decision = (
+            safe_decision(controller.name)
+            if signal is None
+            else controller.decide(signal, personality, self.owner._emotions.identifiers())
+        )
+        with self.lock:
+            if self.job is not None and self.job["id"] == identifier:
+                self.job["brain"] = decision_view(signal, decision)
+        return decision
+
     def _run(
         self,
         identifier: str,
@@ -438,20 +499,30 @@ class Dialogue:
                 memory_source=memory_source,
                 system_prompt=planner.prompt(streaming),
             )
-            prepared = context.build(
-                task=snapshot["task"] or "Talk with the owner naturally, staying in character.",
+            parts: dict[str, Any] = {
+                "task": snapshot["task"] or "Talk with the owner naturally, staying in character.",
                 # Файлы — только в этот ответ; память ищется и пишется по словам владельца.
-                user_input=with_files(user_input, files),
-                personality=snapshot["personality"],
-                state=snapshot["state"],
-                recent=recent,
-                budget=Budget(context=window, output=1536, sections=None),
-                application=self.owner.application_context(
+                "user_input": with_files(user_input, files),
+                "personality": snapshot["personality"],
+                "state": snapshot["state"],
+                "recent": recent,
+                "budget": Budget(context=window, output=1536, sections=None),
+                "application": self.owner.application_context(
                     bool(caps["capabilities"].get("external"))
                 )
                 if hasattr(self.owner, "application_context")
                 else None,
-            )
+            }
+            # Сначала без плана: переполнение — ошибка до любого обращения к модели.
+            prepared = context.build(**parts)
+            # 9.30: шаг 1 — модель описывает событие, контроллер выбирает реакцию; шаг 2 —
+            # ответ по плану. План не влез (край окна) — ответ без него.
+            decision = self._react(identifier, revision, model, window, user_input, recent)
+            if not decision.fallback:
+                try:
+                    prepared = context.build(**parts, guidance=decision.guidance())
+                except ContextOverflow:
+                    pass
             # Evidence must refer only to sources that survived trimming.
             planner = ResponsePlanner(
                 emotions=emotions, animations=gestures, sources=list(prepared.sources), **face

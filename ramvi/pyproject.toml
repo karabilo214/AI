@@ -138,6 +138,7 @@ minversion = "9.2"
 testpaths = ["tests", "engine/tests"]
 pythonpath = ["engine", "service", "storage", "character", "tools", ".."]
 addopts = "-ra --strict-config --strict-markers"
+markers = ["brain: тест контроллера реакций персонажа (9.30) — контроллер не выключается"]
 
 # Диспетчер существует только в репозитории; его выбранные исходники проверяются
 # как tools.*, а импортируемый путь ramvi.engine.tools.* не проверяется повторно.
