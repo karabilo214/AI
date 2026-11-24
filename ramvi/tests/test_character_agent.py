@@ -122,6 +122,10 @@ def test_character_cancels_its_own_task_and_settings_change_revokes_binding(
         assert ended["state"] == "cancelled" and "a - b" in setup.file.read_text(encoding="utf-8")
         assert AgentRuns(setup.db).get(task_id).status == "cancelled"
         assert setup.route("GET", "state")["pending"] is None
+        # Строка истории пишется сразу после смены состояния задачи — ждём её, а не гоним.
+        deadline = time.monotonic() + 6
+        while not character(setup, "status")["history"] and time.monotonic() < deadline:
+            time.sleep(0.02)
         assert character(setup, "status")["history"][-1]["status"] == "cancelled"
 
         enable(setup)

@@ -148,7 +148,8 @@ def test_retry_gives_up_after_three_attempts_and_honours_retry_after(
     cloud.failures, cloud.retry_after = [503], "0.3"
     started = time.monotonic()
     provider(connections).complete(HI, threading.Event())
-    assert time.monotonic() - started >= 0.3  # пауза — сколько попросил сервис
+    # Пауза — сколько попросил сервис (0,3 с); таймер Windows шагает по ~16 мс.
+    assert time.monotonic() - started >= 0.25
 
 
 @pytest.mark.parametrize("code", [400, 401, 500, 502, 504])
