@@ -64,7 +64,9 @@ def test_prompt_text_marks_guesses_and_only_takes_rows_for_this_event() -> None:
     text = behavior_text(rows, "mistake")
     assert "probably when he makes a mistake and you roast him, it irritated him" in text
     assert "only a guess" in text and "tell a joke" not in text
-    assert "tell a joke" in behavior_text(rows, None) and "roast" not in behavior_text(rows, None)
+    # Один запрос на ход (событие ещё неизвестно) — все строки, догадка остаётся догадкой (9.35).
+    unknown = behavior_text(rows, None)
+    assert "tell a joke" in unknown and "probably when he makes a mistake" in unknown
     assert behavior_text(rows, "question") == ""
 
 

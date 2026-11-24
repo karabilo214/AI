@@ -649,8 +649,9 @@ def behavior_rows(
 
 
 def behavior_text(rows: list[dict[str, Any]], event: str | None = None) -> str:
-    """Строки для промпта: относящиеся к событию (или все уверенные, если события нет)."""
-    chosen = [r for r in rows if (r["event"] == event if event else r["status"] == "sure")]
+    """Строки для промпта: относящиеся к событию; событие неизвестно (один запрос на ход, 9.35) —
+    все строки: каждая сама называет своё событие, а догадка помечена как догадка."""
+    chosen = [r for r in rows if event is None or r["event"] == event]
     if not chosen:
         return ""
     lines = []

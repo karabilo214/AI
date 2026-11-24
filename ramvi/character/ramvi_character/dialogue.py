@@ -581,7 +581,7 @@ class Dialogue:
             )
             if single:
                 try:
-                    # Событие ещё неизвестно: настроение и уверенные строки таблицы.
+                    # Событие ещё неизвестно: настроение и все строки таблицы (каждая со своим событием).
                     notes = self._notes(None)
                     prepared = context.build(
                         **parts, guidance=INLINE_SIGNAL + ("\n" + notes if notes else "")

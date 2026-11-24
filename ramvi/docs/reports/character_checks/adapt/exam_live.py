@@ -8,7 +8,11 @@
 Меряется по журналу: подколы в репликах 7–12, сколько раз владелец раздражался, с какой реплики
 появилась строка таблицы, кривая настроения.
 
-usage: exam_live.py <токенизатор Qwen3> <модель подписки> <отчёт.json> [варианты rules,memory]
+Режим chats (прогон 2): между разговорами — 4 чата по 3 реплики, между чатами история стирается
+(history_clear), исходы стратегий остаются. Каждый чат начинается с ошибки владельца; в чатах 1–3
+подкол вызывает жалобу; в чате 4 смотрим, подколет ли персонаж с первой реплики.
+
+usage: exam_live.py <токенизатор Qwen3> <модель подписки> <отчёт.json> [варианты rules,memory] [one|chats]
 """
 
 import json
@@ -54,16 +58,31 @@ IRRITATED = [
     "Ну вот опять. Отстань с приколами. ",
 ]
 ROASTS = set(COMIC) | set(HOSTILE)
+# Прогон 2: каждый чат начинается с явной ошибки (событие mistake — как строка таблицы).
+CHATS = [
+    [LINES[0], LINES[1], LINES[3]],
+    [LINES[2], LINES[5], LINES[6]],
+    [LINES[8], LINES[7], LINES[10]],
+    ["Кстати, Солнце вращается вокруг Земли, я в книжке читал", LINES[9], LINES[11]],
+]
 
 
-def run(client: Client, model: str, controller: str) -> dict[str, Any]:
+def run(client: Client, model: str, controller: str, mode: str = "one") -> dict[str, Any]:
     path = "/sections/character/commands/dialogue"
     client.ok("POST", path, {"operation": "profile", "arguments": {"id": "roaster"}})
     client.ok("POST", path, {"operation": "brain", "arguments": {"controller": controller}})
     client.ok("POST", path, {"operation": "brain_forget", "arguments": {}})
     turns: list[dict[str, Any]] = []
     roasted, irritated = False, 0
-    for number, line in enumerate(LINES, 1):
+    script = (
+        [(1, line) for line in LINES]
+        if mode == "one"
+        else [(chat, line) for chat, lines in enumerate(CHATS, 1) for line in lines]
+    )
+    for number, (chat, line) in enumerate(script, 1):
+        if mode == "chats" and number > 1 and chat != script[number - 2][0]:
+            client.ok("POST", path, {"operation": "history_clear", "arguments": {}})
+            roasted = False
         text = line
         if roasted:
             text = IRRITATED[irritated % len(IRRITATED)] + line
@@ -85,6 +104,7 @@ def run(client: Client, model: str, controller: str) -> dict[str, Any]:
         turns.append(
             {
                 "turn": number,
+                "chat": chat,
                 "owner": text,
                 "event": signal.get("event"),
                 "reaction": signal.get("last_reply_reaction"),
@@ -107,6 +127,17 @@ def run(client: Client, model: str, controller: str) -> dict[str, Any]:
             flush=True,
         )
     first_row = next((t["turn"] for t in turns if t["rows"]), None)
+    if mode == "chats":
+        return {
+            "controller": controller,
+            "mode": mode,
+            "chat_start_roast": [t["roast"] for t in turns if (t["turn"] - 1) % 3 == 0],
+            "owner_irritated": irritated,
+            "first_table_row_turn": first_row,
+            "final_rows": turns[-1]["rows"],
+            "irritation_curve": [t["mood"]["irritation"] for t in turns],
+            "turns": turns,
+        }
     return {
         "controller": controller,
         "roasts_7_12": sum(t["roast"] for t in turns[6:]),
@@ -122,6 +153,7 @@ def main() -> None:
     os.environ["RAMVI_TOKENIZER"] = sys.argv[1]
     choice, out = sys.argv[2], Path(sys.argv[3])
     controllers = (sys.argv[4] if len(sys.argv) > 4 else "rules,memory").split(",")
+    mode = sys.argv[5] if len(sys.argv) > 5 else "one"
     report: dict[str, Any] = {"model": choice, "variants": []}
     for controller in controllers:
         app = Path(tempfile.mkdtemp(prefix="ramvi-exam935-"))
@@ -140,7 +172,9 @@ def main() -> None:
             )
             opened = client.ok("POST", "/sections/character/open")["section"]
             assert opened["state"] == "active", opened
-            report["variants"].append(run(client, f"cloud:{connection['id']}:{choice}", controller))
+            report["variants"].append(
+                run(client, f"cloud:{connection['id']}:{choice}", controller, mode)
+            )
         finally:
             server.close()
             if server.sections is not None:
