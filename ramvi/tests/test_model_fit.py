@@ -229,7 +229,9 @@ def test_installed_file_is_assessed_from_its_header(tmp_path: Path) -> None:
     path = tiny_qwen3(tmp_path / "m.gguf")
     model_fit = fit()
     assert model_fit.for_file(path, "m")["status"] == compat.RECOMMENDED
-    assert model_fit.for_file(tmp_path / "missing.gguf", "x")["status"] == "compat.unknown"
+    missing = model_fit.for_file(tmp_path / "missing.gguf", "x")  # B.5: свой статус
+    assert missing["status"] == "compat.missing"
+    assert missing["reasons"][0]["params"]["path"] == str(tmp_path / "missing.gguf")
     (tmp_path / "junk.gguf").write_bytes(b"junk")
     assert model_fit.for_file(tmp_path / "junk.gguf", "j")["status"] == "compat.unknown"
 

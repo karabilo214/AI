@@ -268,6 +268,29 @@ def test_import_registers_file_in_place(onboarding: Onboarding, tmp_path: Path) 
     assert onboarding.import_model(str(source))["id"] == model["id"]  # повтор — та же запись
 
 
+def test_relink_moved_model_keeps_record_and_refuses_bad_files(
+    onboarding: Onboarding, tmp_path: Path
+) -> None:
+    """B.5: файл перенесли — указать новый путь; запись та же, чужой или плохой файл не берётся."""
+    for folder in ("old", "new"):
+        (tmp_path / folder).mkdir()
+    model_id = onboarding.import_model(str(write_gguf(tmp_path / "old" / "m.gguf")))["id"]
+    other = onboarding.import_model(str(write_gguf(tmp_path / "other.gguf")))["id"]
+    (tmp_path / "old" / "m.gguf").rename(tmp_path / "new" / "m.gguf")
+
+    moved = onboarding.relink_model(model_id, str(tmp_path / "new" / "m.gguf"))
+
+    assert moved["id"] == model_id and moved["capabilities"]["imported"] is True
+    assert onboarding.models.get(model_id).path == str((tmp_path / "new" / "m.gguf").resolve())
+    code, params = code_of(lambda: onboarding.relink_model(model_id, str(tmp_path / "other.gguf")))
+    assert code == "models.relink_taken" and params["model_id"] == other
+    text = tmp_path / "notes.gguf"
+    text.write_text("hello", encoding="utf-8")
+    assert code_of(lambda: onboarding.relink_model(model_id, str(text)))[0] == "import.not_gguf"
+    assert code_of(lambda: onboarding.relink_model("nope", str(text)))[0] == "chat.model_not_found"
+    assert len(onboarding.models.all()) == 2
+
+
 def test_same_name_from_other_folder_gets_new_id(onboarding: Onboarding, tmp_path: Path) -> None:
     for folder in ("a", "b"):
         (tmp_path / folder).mkdir()

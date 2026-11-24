@@ -132,3 +132,23 @@ def test_locked_file_keeps_the_model_and_busy_model_is_refused(
     status, body = client.request("POST", "/models/model-own/delete", {"delete_file": True})
     assert status == 400 and body["error"]["code"] == "models.busy"
     assert "model-own" in ids(client)
+
+
+def test_moved_model_shows_missing_and_relink_restores_it(app: Any, tmp_path: Path) -> None:
+    """B.5: файл перенесли — статус «файл модели не найден», «Указать файл» возвращает модель."""
+    _, _, client, files = app
+
+    def status(model_id: str) -> str:
+        models = client.ok("GET", "/models")["models"]
+        return str(next(m for m in models if m["id"] == model_id)["compat"]["status"])
+
+    moved = tmp_path / "new-disk" / "model-user.gguf"
+    moved.parent.mkdir()
+    files["user"].rename(moved)
+    assert status("model-user") == "compat.missing"
+
+    answer = client.ok("POST", "/models/model-user/relink", {"path": str(moved)})
+    assert answer["model"]["id"] == "model-user"
+    assert status("model-user") != "compat.missing"
+    status_code, body = client.request("POST", "/models/model-user/relink", {})
+    assert status_code == 400 and body["error"]["code"] == "api.bad_request"

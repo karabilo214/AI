@@ -154,6 +154,9 @@ public interface IChatApi
     /// <summary>4.11: забыть модель; файл удаляется, только если его скачал RAMVI и это выбрано.</summary>
     Task<DeleteModelResult> DeleteModelAsync(string modelId, bool deleteFile, CancellationToken cancel = default);
 
+    /// <summary>B.5: файл модели не найден — указать, где он теперь (запись и чаты те же).</summary>
+    Task<ModelInfo> RelinkModelAsync(string modelId, string path, CancellationToken cancel = default);
+
     /// <summary>5.2: состояние голосового ввода и модели распознавания.</summary>
     Task<VoiceStatus> VoiceStatusAsync(CancellationToken cancel = default);
 
@@ -393,6 +396,10 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     public Task<DeleteModelResult> DeleteModelAsync(string modelId, bool deleteFile, CancellationToken cancel = default) =>
         PostAsync($"models/{Id(modelId)}/delete", new DeleteModelRequest(deleteFile),
             ApiJson.Default.DeleteModelRequest, ApiJson.Default.DeleteModelResult, cancel);
+
+    public async Task<ModelInfo> RelinkModelAsync(string modelId, string path, CancellationToken cancel = default) =>
+        (await PostAsync($"models/{Id(modelId)}/relink", new ImportRequest(path), ApiJson.Default.ImportRequest,
+            ApiJson.Default.ImportResponse, cancel).ConfigureAwait(false)).Model;
 
     public Task<VoiceStatus> VoiceStatusAsync(CancellationToken cancel = default) =>
         GetAsync("voice", ApiJson.Default.VoiceStatus, cancel);

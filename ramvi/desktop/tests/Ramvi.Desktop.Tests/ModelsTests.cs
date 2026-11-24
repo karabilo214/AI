@@ -78,6 +78,38 @@ public sealed class ModelsTests
     }
 
     [Fact]
+    public async Task Missing_file_offers_locate_and_remove_without_deleting_files()
+    {
+        // B.5: модель перенесли на другой ПК — «Файл модели не найден», «Указать файл», «Убрать».
+        var api = Api();
+        api.Models[0] = api.Models[0] with { Compat = Compat("compat.missing", "qwen3-8b-q4_k_m") };
+        var changed = new List<string>();
+        var screen = new ModelsViewModel(() => api, () =>
+        {
+            changed.Add("models");
+            return Task.CompletedTask;
+        }, TimeSpan.FromMilliseconds(10), () => Task.FromResult<string?>("/new/disk/qwen3-8b.gguf"));
+        await screen.LoadAsync();
+
+        var card = Card(screen, "qwen3-8b-q4_k_m");
+        Assert.True(card.IsMissing && card.IsUnfit && card.RelinkCommand.CanExecute(null));
+        Assert.Equal("Файл модели не найден", card.CompatText);
+        Assert.Equal("Убрать", card.DeleteLabel);
+        Assert.False(Card(screen, "my-local").IsMissing);
+        Assert.False(Card(screen, "my-local").RelinkCommand.CanExecute(null));
+
+        await screen.RelinkAsync(card);
+        Assert.Contains("relink qwen3-8b-q4_k_m /new/disk/qwen3-8b.gguf", api.ModelCalls);
+        Assert.Equal(["models"], changed);
+
+        card = Card(screen, "qwen3-8b-q4_k_m");
+        card.DeleteCommand.Execute(null); // первое нажатие спрашивает
+        card.DeleteCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Contains("delete qwen3-8b-q4_k_m file=False", api.ModelCalls); // файла нет — удалять нечего
+    }
+
+    [Fact]
     public async Task Measured_resources_from_control_run_are_shown()
     {
         var api = Api();

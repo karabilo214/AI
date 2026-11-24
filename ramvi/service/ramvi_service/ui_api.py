@@ -200,6 +200,11 @@ class UIServer:
             if not isinstance(delete_file, bool):
                 raise ChatError("api.bad_request", field="delete_file")
             return self.library.delete(verb.group(1), delete_file)
+        relink = re.fullmatch(r"/models/([A-Za-z0-9][A-Za-z0-9._-]{0,127})/relink", path)
+        if relink is not None and method == "POST" and self.onboarding is not None:
+            # B.5: файл модели не найден — пользователь указал, где он теперь.
+            model = self.onboarding.relink_model(relink.group(1), _required_str(body, "path"))
+            return {"model": model, "models": self.chat.models()}
         if path in ("/system", "/onboarding", "/models/import", "/models/scan"):
             return self._onboarding_route(method, path, body)
         match = re.fullmatch(f"/chats/{_ID}(/[a-z]+)?", path)

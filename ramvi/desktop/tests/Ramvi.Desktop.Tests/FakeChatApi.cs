@@ -520,6 +520,12 @@ internal sealed class FakeChatApi : IChatApi
         return Task.FromResult(new DeleteModelResult(true, deleteFile));
     }
 
+    public Task<ModelInfo> RelinkModelAsync(string modelId, string path, CancellationToken cancel = default)
+    {
+        ModelCalls.Add($"relink {modelId} {path}");
+        return Task.FromResult(Models.First(m => m.Id == modelId));
+    }
+
     // --- 5.2: голосовой ввод ------------------------------------------------------------------
 
     public List<string> VoiceCalls { get; } = [];

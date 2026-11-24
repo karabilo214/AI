@@ -48,6 +48,7 @@ from ramvi_service.task_profile import TaskProfile
 MAXT = 2048  # контекст чата по умолчанию (ModelConfig.maxt)
 MIB = 1024 * 1024
 UNKNOWN = "compat.unknown"
+MISSING = "compat.missing"  # B.5: файла модели нет по сохранённому пути
 
 
 def size_billions(meta: GGUFMeta) -> float | None:
@@ -381,6 +382,11 @@ class ModelFit:
         file = Path(path)
         try:
             stat = file.stat()
+        except FileNotFoundError:  # B.5: перенос на другой ПК, отключённый диск
+            return {
+                "status": MISSING,
+                "reasons": [msg("compat.reason.missing", path=str(file)).json()],
+            }
         except OSError:
             return {"status": UNKNOWN, "reasons": [msg("compat.reason.no_header").json()]}
         key = (str(file), stat.st_size, stat.st_mtime_ns)

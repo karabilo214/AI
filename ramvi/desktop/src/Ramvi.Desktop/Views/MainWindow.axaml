@@ -686,6 +686,8 @@
                                       IsVisible="{Binding IsInstalled}">
                                 <PathIcon Data="{StaticResource icon-star}" />
                               </Button>
+                              <Button Classes="accent" Command="{Binding RelinkCommand}" IsVisible="{Binding IsMissing}"
+                                      ToolTip.Tip="{l:T models.relink_title}" Content="{l:T models.relink}" />
                               <Button ToolTip.Tip="{Binding DeleteHint}" Command="{Binding DeleteCommand}"
                                       IsVisible="{Binding IsInstalled}" Content="{Binding DeleteLabel}" />
                             </StackPanel>

@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -411,8 +412,8 @@ class Onboarding:
         except NotFound:
             raise ChatError("chat.model_not_found", model_id=model_id) from None
 
-    def import_model(self, path_text: str) -> dict[str, Any]:
-        """Подключить локальный GGUF без копирования; повтор того же файла — та же запись."""
+    def _checked_gguf(self, path_text: str) -> tuple[Path, dict[str, Any], int]:
+        """Абсолютный путь к читаемому GGUF поддерживаемой архитектуры: (путь, заголовок, размер)."""
         path = Path(path_text).expanduser()
         if not path.is_absolute():
             raise ChatError("import.not_absolute", path=path_text)
@@ -424,9 +425,6 @@ class Onboarding:
             raise ChatError("import.no_access", path=path_text, detail=str(error)) from None
         if not path.is_file():
             raise ChatError("import.not_a_file", path=str(path))
-        for existing in self.models.all():
-            if resolve_model(existing, self.app_dir).path == str(path):
-                return model_json(existing)
         try:
             header = read_gguf_header(path)
             size = path.stat().st_size
@@ -443,6 +441,25 @@ class Onboarding:
                 architecture=header["architecture"],
                 supported=", ".join(SUPPORTED_ARCHITECTURES),
             )
+        return path, header, size
+
+    def _linked(self, path: Path) -> Model | None:
+        for existing in self.models.all():
+            if resolve_model(existing, self.app_dir).path == str(path):
+                return existing
+        return None
+
+    def import_model(self, path_text: str) -> dict[str, Any]:
+        """Подключить локальный GGUF без копирования; повтор того же файла — та же запись."""
+        path = Path(path_text).expanduser()
+        if path.is_absolute() and path.is_file():
+            existing = self._linked(path.resolve())
+            if existing is not None:
+                return model_json(existing)
+        path, header, size = self._checked_gguf(path_text)
+        existing = self._linked(path)
+        if existing is not None:
+            return model_json(existing)
         base = _slug(path.stem)
         if re.fullmatch(r"sha256-[0-9a-f]{16,}", path.stem) and header["name"]:
             # Файл Ollama называется хешем: имя и квантование берутся из заголовка.
@@ -461,6 +478,28 @@ class Onboarding:
                 quant=header["quant"],
                 bytes=size,
                 capabilities={"format": "gguf", "imported": True, "copied": False},
+            )
+        )
+        return model_json(model)
+
+    def relink_model(self, model_id: str, path_text: str) -> dict[str, Any]:
+        """B.5: файл модели не найден (перенос на другой ПК, отключённый диск) — указать файл.
+        Запись та же (чаты и выбор модели остаются); файл считается файлом пользователя —
+        RAMVI его не удаляет. Файл, уже подключённый другой моделью, не берётся."""
+        self._require(model_id)
+        path, header, size = self._checked_gguf(path_text)
+        existing = self._linked(path)
+        if existing is not None and existing.id != model_id:
+            raise ChatError("models.relink_taken", path=str(path), model_id=existing.id)
+        model = self.models.get(model_id)
+        model = self.models.upsert(
+            replace(
+                model,
+                architecture=header["architecture"],
+                path=self._stored_path(path),
+                quant=header["quant"],
+                bytes=size,
+                capabilities={**model.capabilities, "imported": True, "copied": False},
             )
         )
         return model_json(model)

@@ -29,6 +29,7 @@ public sealed class ModelCardViewModel : ObservableObject
         CancelCommand = new Command(() => _owner.DownloadActionAsync(this, "cancel"), () => IsDownloading || IsPaused);
         MakeDefaultCommand = new Command(() => _owner.MakeDefaultAsync(this), () => IsInstalled && !IsDefault);
         DeleteCommand = new Command(DeleteAsync, () => IsInstalled);
+        RelinkCommand = new Command(() => _owner.RelinkAsync(this), () => IsMissing);
     }
 
     private static Localizer L => Localizer.Current;
@@ -108,6 +109,9 @@ public sealed class ModelCardViewModel : ObservableObject
 
     public bool IsUnfit => Compat is { Status: not ("compat.recommended" or "compat.slow" or "compat.unknown") };
 
+    /// <summary>B.5: файла модели нет по сохранённому пути — «Указать файл» или «Убрать».</summary>
+    public bool IsMissing => IsInstalled && Compat?.Status == "compat.missing";
+
     public bool SuitsTask => Compat?.Task?.Suits ?? true;
 
     /// <summary>«Гибрид GPU+RAM · оценка ~8–12 токенов/с».</summary>
@@ -164,11 +168,16 @@ public sealed class ModelCardViewModel : ObservableObject
         }
     }
 
-    public string DeleteLabel => IsConfirmingDelete
-        ? L[OwnsFile ? "models.delete_confirm_file" : "models.delete_confirm"]
-        : L["models.delete"];
+    /// <summary>Удалять файл: только свой (скачан RAMVI) и только если он есть.</summary>
+    public bool DeletesFile => OwnsFile && !IsMissing;
 
-    public string DeleteHint => L[OwnsFile ? "models.delete_hint_file" : "models.delete_hint"];
+    public string DeleteLabel => IsConfirmingDelete
+        ? L[DeletesFile ? "models.delete_confirm_file" : "models.delete_confirm"]
+        : L[IsMissing ? "models.remove_entry" : "models.delete"];
+
+    public string DeleteHint => L[DeletesFile ? "models.delete_hint_file" : "models.delete_hint"];
+
+    public Command RelinkCommand { get; }
 
     public Command DownloadCommand { get; }
 
@@ -199,7 +208,7 @@ public sealed class ModelCardViewModel : ObservableObject
 
     public void RefreshCommands()
     {
-        foreach (var command in new[] { DownloadCommand, PauseCommand, ResumeCommand, CancelCommand, MakeDefaultCommand, DeleteCommand })
+        foreach (var command in new[] { DownloadCommand, PauseCommand, ResumeCommand, CancelCommand, MakeDefaultCommand, DeleteCommand, RelinkCommand })
         {
             command.Refresh();
         }
@@ -222,6 +231,7 @@ public sealed class ModelsViewModel : ObservableObject
 
     private readonly Func<IChatApi> _api;
     private readonly Func<Task> _modelsChanged;
+    private readonly Func<Task<string?>> _pickFile;
     private readonly TimeSpan _poll;
     private readonly List<ModelCardViewModel> _all = [];
     private string _search = "";
@@ -234,10 +244,13 @@ public sealed class ModelsViewModel : ObservableObject
 
     /// <param name="modelsChanged">Список установленных моделей изменился (скачали, удалили, по умолчанию).</param>
     /// <param name="poll">Как часто обновлять прогресс загрузок.</param>
-    public ModelsViewModel(Func<IChatApi> api, Func<Task> modelsChanged, TimeSpan? poll = null)
+    /// <param name="pickFile">B.5: выбор файла GGUF для модели, чей файл не найден; null — отмена.</param>
+    public ModelsViewModel(
+        Func<IChatApi> api, Func<Task> modelsChanged, TimeSpan? poll = null, Func<Task<string?>>? pickFile = null)
     {
         _api = api;
         _modelsChanged = modelsChanged;
+        _pickFile = pickFile ?? (() => Task.FromResult<string?>(null));
         _poll = poll ?? TimeSpan.FromSeconds(1);
         RefreshCommand = new Command(RefreshCatalogAsync, () => !IsBusy);
         FilterCommand = new Command(p =>
@@ -545,7 +558,27 @@ public sealed class ModelsViewModel : ObservableObject
 
         try
         {
-            await _api().DeleteModelAsync(card.ModelId, card.OwnsFile).ConfigureAwait(true);
+            await _api().DeleteModelAsync(card.ModelId, card.DeletesFile).ConfigureAwait(true);
+            await LoadAsync().ConfigureAwait(true);
+            await _modelsChanged().ConfigureAwait(true);
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException)
+        {
+            Error = Describe(error);
+        }
+    }
+
+    /// <summary>B.5: указать, где теперь файл модели; запись, чаты и выбор модели остаются.</summary>
+    internal async Task RelinkAsync(ModelCardViewModel card)
+    {
+        if (card.ModelId is null || await _pickFile().ConfigureAwait(true) is not { } path)
+        {
+            return;
+        }
+
+        try
+        {
+            await _api().RelinkModelAsync(card.ModelId, path).ConfigureAwait(true);
             await LoadAsync().ConfigureAwait(true);
             await _modelsChanged().ConfigureAwait(true);
         }

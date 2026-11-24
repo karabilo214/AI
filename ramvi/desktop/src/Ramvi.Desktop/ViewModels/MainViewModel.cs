@@ -83,7 +83,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PropertyChanged += (_, e) => { if (e.PropertyName == nameof(IsIdle)) Raise(nameof(CanSelectModel)); };
         Sections = new SectionsViewModel(() => _api, Agent.LoadAsync, Character.LoadAsync);
         CharacterWindow = new CharacterWindowViewModel(Character, Sections.OpenCharacterAsync, characterWindow);
-        ModelsScreen = new ModelsViewModel(() => _api, ReloadModelListAsync);
+        ModelsScreen = new ModelsViewModel(() => _api, ReloadModelListAsync, pickFile: pickModelFile);
         _pickFolder = pickFolder;
         _chooseDataDir = chooseDataDir;
         Settings = new SettingsViewModel(
