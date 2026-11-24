@@ -97,7 +97,15 @@ def run(client: Client, model: str, controller: str) -> dict[str, Any]:
                 "seconds": round(time.monotonic() - started, 1),
             }
         )
-        print(controller, number, strategy, turns[-1]["reaction"], turns[-1]["mood"], reply[:90], flush=True)
+        print(
+            controller,
+            number,
+            strategy,
+            turns[-1]["reaction"],
+            turns[-1]["mood"],
+            reply[:90],
+            flush=True,
+        )
     first_row = next((t["turn"] for t in turns if t["rows"]), None)
     return {
         "controller": controller,
