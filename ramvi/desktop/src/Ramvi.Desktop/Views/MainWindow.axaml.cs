@@ -18,6 +18,40 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>Следовать за новым текстом; false — пользователь прокрутил вверх и читает.</summary>
     private bool _follow = true;
 
+    /// <summary>
+    /// B.3: размер окна, чтобы окно с рамкой целиком влезло в рабочую область экрана (без панели
+    /// задач). Не влезает — уменьшается до рабочей области, но не меньше минимального.
+    /// </summary>
+    public static Size FitInto(Size client, Size frame, Size working, Size minimum)
+    {
+        var extraW = Math.Max(0, frame.Width - client.Width);
+        var extraH = Math.Max(0, frame.Height - client.Height);
+        return new Size(
+            Math.Max(minimum.Width, Math.Min(client.Width, working.Width - extraW)),
+            Math.Max(minimum.Height, Math.Min(client.Height, working.Height - extraH)));
+    }
+
+    private void FitToScreen()
+    {
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        if (screen is null) return;
+        var scale = screen.Scaling;
+        var area = screen.WorkingArea;
+        var working = new Size(area.Width / scale, area.Height / scale);
+        var client = new Size(Width, Height);
+        var frame = FrameSize ?? client;
+        var fitted = FitInto(client, frame, working, new Size(MinWidth, MinHeight));
+        if (fitted == client && Position.X >= area.X && Position.Y >= area.Y
+            && Position.Y + frame.Height * scale <= area.Bottom) return;
+        Width = fitted.Width;
+        Height = fitted.Height;
+        var outer = new Size(
+            fitted.Width + frame.Width - client.Width, fitted.Height + frame.Height - client.Height);
+        Position = new PixelPoint(
+            area.X + Math.Max(0, (int)((area.Width - outer.Width * scale) / 2)),
+            area.Y + Math.Max(0, (int)((area.Height - outer.Height * scale) / 2)));
+    }
+
     public MainWindow()
     {
         InitializeComponent();
@@ -34,6 +68,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 Hide();
             }
         };
+        Opened += (_, _) => FitToScreen();
         MessagesScroll.ScrollChanged += OnMessagesScrolled;
         InputBox.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);

@@ -27,6 +27,18 @@ public static class TestApp
 /// <summary>Окно без экрана: разметка грузится, привязки работают, Enter отправляет.</summary>
 public sealed class MainWindowTests
 {
+    [Fact]
+    public void Window_fits_the_working_area_of_a_small_screen()
+    {
+        // B.3: ноутбук 1920×1200 при масштабе 150% — рабочая область 1280×760 (панель задач 40).
+        var frame = new Size(1180 + 2, 760 + 2);
+        var fitted = MainWindow.FitInto(new Size(1180, 760), frame, new Size(1280, 760), new Size(760, 500));
+        Assert.Equal(new Size(1180, 758), fitted);
+        // Помещается — не меняется; меньше минимального — не уменьшается.
+        Assert.Equal(new Size(1180, 760), MainWindow.FitInto(new Size(1180, 760), frame, new Size(1920, 1140), new Size(760, 500)));
+        Assert.Equal(new Size(760, 500), MainWindow.FitInto(new Size(1180, 760), frame, new Size(640, 400), new Size(760, 500)));
+    }
+
     [AvaloniaFact]
     public async Task Window_shows_chats_messages_and_sends_on_enter()
     {
