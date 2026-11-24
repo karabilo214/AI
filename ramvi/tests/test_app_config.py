@@ -51,6 +51,8 @@ def test_defaults_are_inside_app_folder(config: AppConfig) -> None:
         "attach_max_files": 5,
         "attach_max_file_kb": 128,
         "attach_max_total_kb": 256,
+        "kv_cache_ram_mb": 2048,
+        "kv_cache_disk_mb": 8192,
     }
     assert got["resolved"]["data_dir"] == str((config.app_dir / "data").resolve())
     assert got["current_data_dir"] == str((config.app_dir / "data").resolve())
@@ -186,3 +188,19 @@ def test_every_settings_code_has_texts(tmp_path: Path) -> None:
         catalog = json.loads((root / "i18n" / f"{language}.json").read_text(encoding="utf-8"))
         for key in ("settings.invalid", "settings.folder_no_access"):
             assert key in catalog, (language, key)
+
+
+def test_kv_cache_sizes_are_checked_and_reach_the_engine(config: AppConfig) -> None:
+    """B.7: размеры кэша неактивных чатов — в настройках (0 — не хранить), передаются движку."""
+    from ramvi_service.app import engine_environment
+    from ramvi_service.chat import ChatError
+
+    assert engine_environment(config.app_dir) == {
+        "RAMVI_KV_RAM_MB": "2048",
+        "RAMVI_KV_DISK_MB": "8192",
+    }
+    config.update({"kv_cache_ram_mb": 512, "kv_cache_disk_mb": 0})
+    assert engine_environment(config.app_dir) == {"RAMVI_KV_RAM_MB": "512", "RAMVI_KV_DISK_MB": "0"}
+    for bad in (-1, True, "1"):
+        with pytest.raises(ChatError):
+            config.update({"kv_cache_ram_mb": bad})

@@ -347,12 +347,15 @@ def allowed_layout_changes(name: str, source: str) -> str:
             "        ParentWatch.from_env()\n"
             "    torch.set_grad_enabled(False)",
         )
-    return cli_help_b1(
+    return kv_store_b7(
         name,
-        driver_jit_87(
+        cli_help_b1(
             name,
-            release_pages_86(
-                name, tc_cfg_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
+            driver_jit_87(
+                name,
+                release_pages_86(
+                    name, tc_cfg_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
+                ),
             ),
         ),
     )
@@ -550,6 +553,26 @@ def driver_jit_87(name: str, source: str) -> str:
     old, new = DRIVER_JIT_87
     assert source.count(old) == 1, (name, old)
     return source.replace(old, new)
+
+
+# B.7 ENG-KV-SESS-01: перед запросом кэш другого чата сохраняется, свой возвращается
+# (generation/kv_store.py); вычисления прохода не меняются.
+KV_STORE_B7 = (
+    (
+        "        c = min(self.common(prompt), P - 1)\n",
+        "        kv_switch(self, prompt)  # B.7: кэш другого чата — сохранить; свой — вернуть\n"
+        "        c = min(self.common(prompt), P - 1)\n",
+    ),
+)
+
+
+def kv_store_b7(name: str, source: str) -> str:
+    if name != "engine":
+        return source
+    for old, new in KV_STORE_B7:
+        assert source.count(old) == 1, (name, old)
+        source = source.replace(old, new)
+    return source
 
 
 # B.1 CLI-HELP-01: справка и ошибки разбора параметров — ключи каталогов переводов.

@@ -501,6 +501,18 @@
                 </Grid>
                 <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.attach_note}" />
 
+                <!-- B.7: кэш неактивных чатов локальной модели — быстрый возврат в длинный чат -->
+                <TextBlock Classes="heading" Text="{l:T settings.kv}" />
+                <Grid x:Name="KvCacheLimits" ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+                  <TextBlock Grid.Row="0" VerticalAlignment="Center" Text="{l:T settings.kv_ram}" />
+                  <TextBox x:Name="KvRamBox" Grid.Row="0" Grid.Column="1" Width="120" Text="{Binding Settings.KvRam.Text}" IsEnabled="{Binding Settings.KvRam.Limited}" />
+                  <CheckBox x:Name="KvRamOff" Grid.Row="0" Grid.Column="2" Content="{l:T settings.kv_off}" IsChecked="{Binding Settings.KvRam.Unlimited}" />
+                  <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="{l:T settings.kv_disk}" />
+                  <TextBox x:Name="KvDiskBox" Grid.Row="1" Grid.Column="1" Width="120" Text="{Binding Settings.KvDisk.Text}" IsEnabled="{Binding Settings.KvDisk.Limited}" />
+                  <CheckBox x:Name="KvDiskOff" Grid.Row="1" Grid.Column="2" Content="{l:T settings.kv_off}" IsChecked="{Binding Settings.KvDisk.Unlimited}" />
+                </Grid>
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T settings.kv_note}" />
+
               </StackPanel>
             </ScrollViewer>
             <ScrollViewer x:Name="SoundTab" IsVisible="{Binding Settings.IsSoundTab}">

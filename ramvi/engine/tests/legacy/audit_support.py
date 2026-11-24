@@ -14,7 +14,8 @@ def source_path(filename):
     return Path(spec.origin)
 
 def definition(file, name, namespace):
-    for key, value in dict(env=env, cache_dir=cache_dir, data_dir=data_dir, work_dir=work_dir, results_dir=results_dir, ensure_dir=ensure_dir, tuning_cache_for_read=tuning_cache_for_read).items():
+    # B.7: кэш чатов (generation/kv_store) проверяется своими тестами; здесь — прежнее поведение.
+    for key, value in dict(env=env, cache_dir=cache_dir, data_dir=data_dir, work_dir=work_dir, results_dir=results_dir, ensure_dir=ensure_dir, tuning_cache_for_read=tuning_cache_for_read, kv_switch=lambda engine, prompt: None).items():
         namespace.setdefault(key, value)
     path = source_path(file) if Path(file).stem in MODULES else ROOT / file
     tree = ast.parse(path.read_text(encoding="utf-8"))

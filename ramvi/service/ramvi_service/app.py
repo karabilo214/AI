@@ -119,6 +119,7 @@ def build(
         policy=restart_policy,
         model_root=root,
         context=lambda: task().effective_context,
+        environment=lambda: engine_environment(root or data_dir),
     )
     catalog = Catalog(data_dir) if catalog is None else catalog
     authority = Authority()
@@ -290,6 +291,18 @@ def build(
     server.on_close.append(host.speech.close)
     server.on_close.append(server.voice.close)  # первым: запись и процесс распознавания
     return server, engines
+
+
+def engine_environment(root: Path) -> dict[str, str]:
+    """B.7: размеры кэша неактивных чатов для процесса движка (испорченный файл — по умолчанию)."""
+    try:
+        settings = app_settings.load(root)
+    except (OSError, ValueError):
+        settings = app_settings.Settings()
+    return {
+        "RAMVI_KV_RAM_MB": str(settings.kv_cache_ram_mb),
+        "RAMVI_KV_DISK_MB": str(settings.kv_cache_disk_mb),
+    }
 
 
 def check_data_dir(data_dir: Path) -> None:

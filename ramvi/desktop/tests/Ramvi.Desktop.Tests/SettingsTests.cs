@@ -88,6 +88,24 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task Chat_cache_sizes_are_saved_and_off_is_zero()
+    {
+        // B.7: кэш неактивных чатов — RAM и диск в МБ, «Не хранить» = 0.
+        var (api, model, _) = await Open();
+        var settings = model.Settings;
+        Assert.Equal("2048", settings.KvRam.Text); Assert.Equal("8192", settings.KvDisk.Text);
+        settings.KvRam.Text = "-5";
+        await settings.SaveCommand.RunAsync();
+        Assert.Equal(Ru["settings.kv_not_number"], settings.Error); Assert.Empty(api.SettingsUpdates);
+        settings.KvRam.Text = "1024";
+        settings.KvDisk.Unlimited = true;
+        await settings.SaveCommand.RunAsync();
+        var update = Assert.Single(api.SettingsUpdates);
+        Assert.Equal(1024, update.KvCacheRamMb); Assert.Equal(0, update.KvCacheDiskMb);
+        Assert.Null(update.AttachMaxFiles);
+    }
+
+    [Fact]
     public async Task Nothing_changed_sends_nothing()
     {
         var (api, model, _) = await Open();

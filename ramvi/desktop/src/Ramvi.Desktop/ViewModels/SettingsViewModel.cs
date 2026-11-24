@@ -368,6 +368,11 @@ public sealed class SettingsViewModel : ObservableObject
     public FileLimitField AttachFileKb { get; } = new();
     public FileLimitField AttachTotalKb { get; } = new();
 
+    /// <summary>B.7: кэш неактивных чатов локальной модели, МБ; отметка «не хранить» — 0.</summary>
+    public FileLimitField KvRam { get; } = new();
+
+    public FileLimitField KvDisk { get; } = new();
+
     /// <summary>B.15: после сохранения лимиты файлов сразу действуют в чате, у агента и у персонажа.</summary>
     public event Action? FileLimitsChanged;
 
@@ -523,6 +528,8 @@ public sealed class SettingsViewModel : ObservableObject
         AttachFiles.Load(info.Settings.AttachMaxFiles);
         AttachFileKb.Load(info.Settings.AttachMaxFileKb);
         AttachTotalKb.Load(info.Settings.AttachMaxTotalKb);
+        KvRam.Load(info.Settings.KvCacheRamMb);
+        KvDisk.Load(info.Settings.KvCacheDiskMb);
         ModelsDirWarning = info.ModelsDirWarning is { } warning ? L[warning] : null;
         Theme = Themes.FirstOrDefault(t => t.Code == info.Settings.Theme) ?? Themes[0];
         Raise(nameof(DataDirNote));
@@ -550,6 +557,12 @@ public sealed class SettingsViewModel : ObservableObject
             return;
         }
 
+        if (KvRam.Value is not { } kvRam || KvDisk.Value is not { } kvDisk)
+        {
+            Error = L["settings.kv_not_number"];
+            return;
+        }
+
         var update = new SettingsUpdate(
             DataDir: DataDir != saved.DataDir ? DataDir : null,
             ModelsDir: ModelsDir != saved.ModelsDir ? ModelsDir : null,
@@ -560,7 +573,9 @@ public sealed class SettingsViewModel : ObservableObject
             NetworkAllow: NetworkAllow.Trim() != saved.NetworkAllow ? NetworkAllow.Trim() : null,
             AttachMaxFiles: files != saved.AttachMaxFiles ? files : null,
             AttachMaxFileKb: fileKb != saved.AttachMaxFileKb ? fileKb : null,
-            AttachMaxTotalKb: totalKb != saved.AttachMaxTotalKb ? totalKb : null);
+            AttachMaxTotalKb: totalKb != saved.AttachMaxTotalKb ? totalKb : null,
+            KvCacheRamMb: kvRam != saved.KvCacheRamMb ? kvRam : null,
+            KvCacheDiskMb: kvDisk != saved.KvCacheDiskMb ? kvDisk : null);
         var sound = Sound.Changes(saved);
         var api = Sound.ApiChanges(saved);
         update = update with

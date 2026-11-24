@@ -62,6 +62,11 @@ class Settings:
     attach_max_files: int = 5
     attach_max_file_kb: int = 128
     attach_max_total_kb: int = 256
+    # B.7: кэш k, v неактивных чатов локальной модели; 0 — не хранить. По умолчанию RAM 2048 МБ
+    # (чат 14B на 5 тыс. слов ≈ 0,9 ГБ, остаётся память под слои на процессоре у ноутбука на
+    # 16 ГБ) и диск 8192 МБ (папка cache/kv данных движка).
+    kv_cache_ram_mb: int = 2048
+    kv_cache_disk_mb: int = 8192
 
     @property
     def task(self) -> TaskProfile:
@@ -117,6 +122,10 @@ class Settings:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= top:
                 raise SettingsError("settings.bad_attach_limit", field=name)
+        for name in ("kv_cache_ram_mb", "kv_cache_disk_mb"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**31 - 1:
+                raise SettingsError("settings.bad_kv_cache", field=name)
         problem = self.task.problem()
         if problem is not None:
             raise SettingsError(problem[0], **problem[1])

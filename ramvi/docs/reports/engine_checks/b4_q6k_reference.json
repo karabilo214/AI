@@ -1,0 +1,1184 @@
+{
+  "schema_version": 1,
+  "complete": true,
+  "passed": true,
+  "weights": {
+    "format": "gguf",
+    "architecture": "qwen3",
+    "weights_sha256": "cb042ccd76795a8830d6be6bd4165245847cc68e41797b13bd61aed4c2cfbce6",
+    "weights_bytes": 6725899040,
+    "metadata": {
+      "general.name": "Qwen3 8B Instruct",
+      "general.architecture": "qwen3",
+      "tokenizer.chat_template": "{%- if tools %}\n    {{- '<|im_start|>system\\n' }}\n    {%- if messages[0].role == 'system' %}\n        {{- messages[0].content + '\\n\\n' }}\n    {%- endif %}\n    {{- \"# Tools\\n\\nYou may call one or more functions to assist with the user query.\\n\\nYou are provided with function signatures within <tools></tools> XML tags:\\n<tools>\" }}\n    {%- for tool in tools %}\n        {{- \"\\n\" }}\n        {{- tool | tojson }}\n    {%- endfor %}\n    {{- \"\\n</tools>\\n\\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\\n<tool_call>\\n{\\\"name\\\": <function-name>, \\\"arguments\\\": <args-json-object>}\\n</tool_call><|im_end|>\\n\" }}\n{%- else %}\n    {%- if messages[0].role == 'system' %}\n        {{- '<|im_start|>system\\n' + messages[0].content + '<|im_end|>\\n' }}\n    {%- endif %}\n{%- endif %}\n{%- set ns = namespace(multi_step_tool=true, last_query_index=messages|length - 1) %}\n{%- for index in range(ns.last_query_index, -1, -1) %}\n    {%- set message = messages[index] %}\n    {%- if ns.multi_step_tool and message.role == \"user\" and not('<tool_response>' in message.content and '</tool_response>' in message.content) %}\n        {%- set ns.multi_step_tool = false %}\n        {%- set ns.last_query_index = index %}\n    {%- endif %}\n{%- endfor %}\n{%- for message in messages %}\n    {%- if (message.role == \"user\") or (message.role == \"system\" and not loop.first) %}\n        {{- '<|im_start|>' + message.role + '\\n' + message.content + '<|im_end|>' + '\\n' }}\n    {%- elif message.role == \"assistant\" %}\n        {%- set content = message.content %}\n        {%- set reasoning_content = '' %}\n        {%- if message.reasoning_content is defined and message.reasoning_content is not none %}\n            {%- set reasoning_content = message.reasoning_content %}\n        {%- else %}\n            {%- if '</think>' in message.content %}\n                {%- set content = message.content.split('</think>')[-1].lstrip('\\n') %}\n                {%- set reasoning_content = message.content.split('</think>')[0].rstrip('\\n').split('<think>')[-1].lstrip('\\n') %}\n            {%- endif %}\n        {%- endif %}\n        {%- if loop.index0 > ns.last_query_index %}\n            {%- if loop.last or (not loop.last and reasoning_content) %}\n                {{- '<|im_start|>' + message.role + '\\n<think>\\n' + reasoning_content.strip('\\n') + '\\n</think>\\n\\n' + content.lstrip('\\n') }}\n            {%- else %}\n                {{- '<|im_start|>' + message.role + '\\n' + content }}\n            {%- endif %}\n        {%- else %}\n            {{- '<|im_start|>' + message.role + '\\n' + content }}\n        {%- endif %}\n        {%- if message.tool_calls %}\n            {%- for tool_call in message.tool_calls %}\n                {%- if (loop.first and content) or (not loop.first) %}\n                    {{- '\\n' }}\n                {%- endif %}\n                {%- if tool_call.function %}\n                    {%- set tool_call = tool_call.function %}\n                {%- endif %}\n                {{- '<tool_call>\\n{\"name\": \"' }}\n                {{- tool_call.name }}\n                {{- '\", \"arguments\": ' }}\n                {%- if tool_call.arguments is string %}\n                    {{- tool_call.arguments }}\n                {%- else %}\n                    {{- tool_call.arguments | tojson }}\n                {%- endif %}\n                {{- '}\\n</tool_call>' }}\n            {%- endfor %}\n        {%- endif %}\n        {{- '<|im_end|>\\n' }}\n    {%- elif message.role == \"tool\" %}\n        {%- if loop.first or (messages[loop.index0 - 1].role != \"tool\") %}\n            {{- '<|im_start|>user' }}\n        {%- endif %}\n        {{- '\\n<tool_response>\\n' }}\n        {{- message.content }}\n        {{- '\\n</tool_response>' }}\n        {%- if loop.last or (messages[loop.index0 + 1].role != \"tool\") %}\n            {{- '<|im_end|>\\n' }}\n        {%- endif %}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{- '<|im_start|>assistant\\n' }}\n    {%- if enable_thinking is defined and enable_thinking is false %}\n        {{- '<think>\\n\\n</think>\\n\\n' }}\n    {%- endif %}\n{%- endif %}"
+    }
+  },
+  "native_kv_rounding": true,
+  "thinking": false,
+  "torch": "2.15.0+cu132",
+  "cases": [
+    {
+      "name": "original",
+      "question": "Reply with just the number: 2 + 2 =",
+      "expected_math_answer": "4",
+      "rendered_prompt": "<|im_start|>user\nReply with just the number: 2 + 2 =<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "input_ids": [
+        151644,
+        872,
+        198,
+        20841,
+        448,
+        1101,
+        279,
+        1372,
+        25,
+        220,
+        17,
+        488,
+        220,
+        17,
+        284,
+        151645,
+        198,
+        151644,
+        77091,
+        198,
+        151667,
+        271,
+        151668,
+        271
+      ],
+      "token_count": 24,
+      "input_tokens": [
+        "<|im_start|>",
+        "user",
+        "Ċ",
+        "Reply",
+        "Ġwith",
+        "Ġjust",
+        "Ġthe",
+        "Ġnumber",
+        ":",
+        "Ġ",
+        "2",
+        "Ġ+",
+        "Ġ",
+        "2",
+        "Ġ=",
+        "<|im_end|>",
+        "Ċ",
+        "<|im_start|>",
+        "assistant",
+        "Ċ",
+        "<think>",
+        "ĊĊ",
+        "</think>",
+        "ĊĊ"
+      ],
+      "native_teacher_forced_tokens": [
+        19,
+        151645
+      ],
+      "native_prefix_tokens": [
+        19,
+        151645
+      ],
+      "native_tokens": [
+        19,
+        151645
+      ],
+      "reference_tokens": [
+        19,
+        151645
+      ],
+      "native_text": "4",
+      "reference_text": "4",
+      "token_comparison": {
+        "passed": true,
+        "actual_count": 2,
+        "expected_count": 2,
+        "first_mismatch": null
+      },
+      "positions": [
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 19,
+          "expected_argmax": 19,
+          "max_abs_error": 0.004593253135681152,
+          "rms_error": 0.0009876820701984206,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 19.733497619628906,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 19,
+          "native_selection_matches_full_projection": true,
+          "step": 0,
+          "proposed_token": 19,
+          "top_reference": [
+            {
+              "token_id": 19,
+              "logit": 55.423492431640625,
+              "text": "4"
+            },
+            {
+              "token_id": 17,
+              "logit": 35.68999481201172,
+              "text": "2"
+            },
+            {
+              "token_id": 20,
+              "logit": 32.788143157958984,
+              "text": "5"
+            },
+            {
+              "token_id": 21,
+              "logit": 31.328128814697266,
+              "text": "6"
+            },
+            {
+              "token_id": 16,
+              "logit": 30.347103118896484,
+              "text": "1"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 151645,
+          "expected_argmax": 151645,
+          "max_abs_error": 0.002923250198364258,
+          "rms_error": 0.0006373435462579939,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 14.298328399658203,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 151645,
+          "native_selection_matches_full_projection": true,
+          "step": 1,
+          "proposed_token": 151645,
+          "top_reference": [
+            {
+              "token_id": 151645,
+              "logit": 36.56095886230469,
+              "text": "<|im_end|>"
+            },
+            {
+              "token_id": 13,
+              "logit": 22.262630462646484,
+              "text": "."
+            },
+            {
+              "token_id": 151668,
+              "logit": 19.45538902282715,
+              "text": "</think>"
+            },
+            {
+              "token_id": 25521,
+              "logit": 19.141799926757812,
+              "text": " �"
+            },
+            {
+              "token_id": 30543,
+              "logit": 17.652484893798828,
+              "text": "️"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "echo_control",
+      "question": "Reply with exactly this digit: 4",
+      "expected_math_answer": "4",
+      "rendered_prompt": "<|im_start|>user\nReply with exactly this digit: 4<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "input_ids": [
+        151644,
+        872,
+        198,
+        20841,
+        448,
+        6896,
+        419,
+        15723,
+        25,
+        220,
+        19,
+        151645,
+        198,
+        151644,
+        77091,
+        198,
+        151667,
+        271,
+        151668,
+        271
+      ],
+      "token_count": 20,
+      "input_tokens": [
+        "<|im_start|>",
+        "user",
+        "Ċ",
+        "Reply",
+        "Ġwith",
+        "Ġexactly",
+        "Ġthis",
+        "Ġdigit",
+        ":",
+        "Ġ",
+        "4",
+        "<|im_end|>",
+        "Ċ",
+        "<|im_start|>",
+        "assistant",
+        "Ċ",
+        "<think>",
+        "ĊĊ",
+        "</think>",
+        "ĊĊ"
+      ],
+      "native_teacher_forced_tokens": [
+        19,
+        151645
+      ],
+      "native_prefix_tokens": [
+        19,
+        151645
+      ],
+      "native_tokens": [
+        19,
+        151645
+      ],
+      "reference_tokens": [
+        19,
+        151645
+      ],
+      "native_text": "4",
+      "reference_text": "4",
+      "token_comparison": {
+        "passed": true,
+        "actual_count": 2,
+        "expected_count": 2,
+        "first_mismatch": null
+      },
+      "positions": [
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 19,
+          "expected_argmax": 19,
+          "max_abs_error": 0.00786733627319336,
+          "rms_error": 0.0018047082126361577,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 15.052190780639648,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 19,
+          "native_selection_matches_full_projection": true,
+          "step": 0,
+          "proposed_token": 19,
+          "top_reference": [
+            {
+              "token_id": 19,
+              "logit": 39.27688217163086,
+              "text": "4"
+            },
+            {
+              "token_id": 20,
+              "logit": 24.22469139099121,
+              "text": "5"
+            },
+            {
+              "token_id": 21,
+              "logit": 23.191051483154297,
+              "text": "6"
+            },
+            {
+              "token_id": 18,
+              "logit": 23.179119110107422,
+              "text": "3"
+            },
+            {
+              "token_id": 23,
+              "logit": 23.136062622070312,
+              "text": "8"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 151645,
+          "expected_argmax": 151645,
+          "max_abs_error": 0.004792332649230957,
+          "rms_error": 0.0009808752517098398,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 13.791358947753906,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 151645,
+          "native_selection_matches_full_projection": true,
+          "step": 1,
+          "proposed_token": 151645,
+          "top_reference": [
+            {
+              "token_id": 151645,
+              "logit": 34.99226379394531,
+              "text": "<|im_end|>"
+            },
+            {
+              "token_id": 13,
+              "logit": 21.200904846191406,
+              "text": "."
+            },
+            {
+              "token_id": 151668,
+              "logit": 19.44204330444336,
+              "text": "</think>"
+            },
+            {
+              "token_id": 25521,
+              "logit": 17.04087257385254,
+              "text": " �"
+            },
+            {
+              "token_id": 30543,
+              "logit": 16.45397186279297,
+              "text": "️"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fresh",
+      "question": "Reply with just the number: 137 * 29 =",
+      "expected_math_answer": "3973",
+      "rendered_prompt": "<|im_start|>user\nReply with just the number: 137 * 29 =<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "input_ids": [
+        151644,
+        872,
+        198,
+        20841,
+        448,
+        1101,
+        279,
+        1372,
+        25,
+        220,
+        16,
+        18,
+        22,
+        353,
+        220,
+        17,
+        24,
+        284,
+        151645,
+        198,
+        151644,
+        77091,
+        198,
+        151667,
+        271,
+        151668,
+        271
+      ],
+      "token_count": 27,
+      "input_tokens": [
+        "<|im_start|>",
+        "user",
+        "Ċ",
+        "Reply",
+        "Ġwith",
+        "Ġjust",
+        "Ġthe",
+        "Ġnumber",
+        ":",
+        "Ġ",
+        "1",
+        "3",
+        "7",
+        "Ġ*",
+        "Ġ",
+        "2",
+        "9",
+        "Ġ=",
+        "<|im_end|>",
+        "Ċ",
+        "<|im_start|>",
+        "assistant",
+        "Ċ",
+        "<think>",
+        "ĊĊ",
+        "</think>",
+        "ĊĊ"
+      ],
+      "native_teacher_forced_tokens": [
+        19,
+        24,
+        22,
+        18,
+        151645
+      ],
+      "native_prefix_tokens": [
+        19,
+        24,
+        22,
+        18,
+        151645
+      ],
+      "native_tokens": [
+        19,
+        24,
+        22,
+        18,
+        151645
+      ],
+      "reference_tokens": [
+        19,
+        24,
+        22,
+        18,
+        151645
+      ],
+      "native_text": "4973",
+      "reference_text": "4973",
+      "token_comparison": {
+        "passed": true,
+        "actual_count": 5,
+        "expected_count": 5,
+        "first_mismatch": null
+      },
+      "positions": [
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 19,
+          "expected_argmax": 19,
+          "max_abs_error": 0.0074683427810668945,
+          "rms_error": 0.002114094191315779,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 8.262290954589844,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 19,
+          "native_selection_matches_full_projection": true,
+          "step": 0,
+          "proposed_token": 19,
+          "top_reference": [
+            {
+              "token_id": 19,
+              "logit": 42.73933029174805,
+              "text": "4"
+            },
+            {
+              "token_id": 16,
+              "logit": 34.4770393371582,
+              "text": "1"
+            },
+            {
+              "token_id": 10061,
+              "logit": 34.34800720214844,
+              "text": "Let"
+            },
+            {
+              "token_id": 1249,
+              "logit": 32.37043762207031,
+              "text": "To"
+            },
+            {
+              "token_id": 17,
+              "logit": 29.684797286987305,
+              "text": "2"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 24,
+          "expected_argmax": 24,
+          "max_abs_error": 0.0038661956787109375,
+          "rms_error": 0.0008197375829969307,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 16.870023727416992,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 24,
+          "native_selection_matches_full_projection": true,
+          "step": 1,
+          "proposed_token": 24,
+          "top_reference": [
+            {
+              "token_id": 24,
+              "logit": 43.32801055908203,
+              "text": "9"
+            },
+            {
+              "token_id": 23,
+              "logit": 26.45798683166504,
+              "text": "8"
+            },
+            {
+              "token_id": 11,
+              "logit": 23.90768814086914,
+              "text": ","
+            },
+            {
+              "token_id": 22,
+              "logit": 23.49249839782715,
+              "text": "7"
+            },
+            {
+              "token_id": 16,
+              "logit": 23.208627700805664,
+              "text": "1"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 22,
+          "expected_argmax": 22,
+          "max_abs_error": 0.004878997802734375,
+          "rms_error": 0.0013990068235596646,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 16.946210861206055,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 22,
+          "native_selection_matches_full_projection": true,
+          "step": 2,
+          "proposed_token": 22,
+          "top_reference": [
+            {
+              "token_id": 22,
+              "logit": 43.523921966552734,
+              "text": "7"
+            },
+            {
+              "token_id": 21,
+              "logit": 26.57771110534668,
+              "text": "6"
+            },
+            {
+              "token_id": 24,
+              "logit": 24.857921600341797,
+              "text": "9"
+            },
+            {
+              "token_id": 20,
+              "logit": 24.526269912719727,
+              "text": "5"
+            },
+            {
+              "token_id": 23,
+              "logit": 23.496156692504883,
+              "text": "8"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 18,
+          "expected_argmax": 18,
+          "max_abs_error": 0.0054340362548828125,
+          "rms_error": 0.001081160819473074,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 22.587249755859375,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 18,
+          "native_selection_matches_full_projection": true,
+          "step": 3,
+          "proposed_token": 18,
+          "top_reference": [
+            {
+              "token_id": 18,
+              "logit": 44.29409408569336,
+              "text": "3"
+            },
+            {
+              "token_id": 16,
+              "logit": 21.706844329833984,
+              "text": "1"
+            },
+            {
+              "token_id": 33517,
+              "logit": 17.751598358154297,
+              "text": "３"
+            },
+            {
+              "token_id": 151645,
+              "logit": 16.898447036743164,
+              "text": "<|im_end|>"
+            },
+            {
+              "token_id": 15,
+              "logit": 15.006071090698242,
+              "text": "0"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 151645,
+          "expected_argmax": 151645,
+          "max_abs_error": 0.0039348602294921875,
+          "rms_error": 0.0007123809670482586,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 11.13582992553711,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 151645,
+          "native_selection_matches_full_projection": true,
+          "step": 4,
+          "proposed_token": 151645,
+          "top_reference": [
+            {
+              "token_id": 151645,
+              "logit": 34.22013854980469,
+              "text": "<|im_end|>"
+            },
+            {
+              "token_id": 271,
+              "logit": 23.084308624267578,
+              "text": "\n\n"
+            },
+            {
+              "token_id": 25521,
+              "logit": 21.854887008666992,
+              "text": " �"
+            },
+            {
+              "token_id": 13,
+              "logit": 20.627666473388672,
+              "text": "."
+            },
+            {
+              "token_id": 11162,
+              "logit": 17.60637664794922,
+              "text": " �"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "outside",
+      "question": "Reply with just the number: 100003 + 29 =",
+      "expected_math_answer": "100032",
+      "rendered_prompt": "<|im_start|>user\nReply with just the number: 100003 + 29 =<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "input_ids": [
+        151644,
+        872,
+        198,
+        20841,
+        448,
+        1101,
+        279,
+        1372,
+        25,
+        220,
+        16,
+        15,
+        15,
+        15,
+        15,
+        18,
+        488,
+        220,
+        17,
+        24,
+        284,
+        151645,
+        198,
+        151644,
+        77091,
+        198,
+        151667,
+        271,
+        151668,
+        271
+      ],
+      "token_count": 30,
+      "input_tokens": [
+        "<|im_start|>",
+        "user",
+        "Ċ",
+        "Reply",
+        "Ġwith",
+        "Ġjust",
+        "Ġthe",
+        "Ġnumber",
+        ":",
+        "Ġ",
+        "1",
+        "0",
+        "0",
+        "0",
+        "0",
+        "3",
+        "Ġ+",
+        "Ġ",
+        "2",
+        "9",
+        "Ġ=",
+        "<|im_end|>",
+        "Ċ",
+        "<|im_start|>",
+        "assistant",
+        "Ċ",
+        "<think>",
+        "ĊĊ",
+        "</think>",
+        "ĊĊ"
+      ],
+      "native_teacher_forced_tokens": [
+        16,
+        15,
+        15,
+        15,
+        18,
+        17,
+        151645
+      ],
+      "native_prefix_tokens": [
+        16,
+        15,
+        15,
+        15,
+        18,
+        17,
+        151645
+      ],
+      "native_tokens": [
+        16,
+        15,
+        15,
+        15,
+        18,
+        17,
+        151645
+      ],
+      "reference_tokens": [
+        16,
+        15,
+        15,
+        15,
+        18,
+        17,
+        151645
+      ],
+      "native_text": "100032",
+      "reference_text": "100032",
+      "token_comparison": {
+        "passed": true,
+        "actual_count": 7,
+        "expected_count": 7,
+        "first_mismatch": null
+      },
+      "positions": [
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 16,
+          "expected_argmax": 16,
+          "max_abs_error": 0.006928443908691406,
+          "rms_error": 0.001495230169894455,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 18.451618194580078,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 16,
+          "native_selection_matches_full_projection": true,
+          "step": 0,
+          "proposed_token": 16,
+          "top_reference": [
+            {
+              "token_id": 16,
+              "logit": 47.12322998046875,
+              "text": "1"
+            },
+            {
+              "token_id": 16141,
+              "logit": 28.671611785888672,
+              "text": "Answer"
+            },
+            {
+              "token_id": 17,
+              "logit": 28.181032180786133,
+              "text": "2"
+            },
+            {
+              "token_id": 3,
+              "logit": 27.26195526123047,
+              "text": "$"
+            },
+            {
+              "token_id": 785,
+              "logit": 26.96213722229004,
+              "text": "The"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 15,
+          "expected_argmax": 15,
+          "max_abs_error": 0.007419586181640625,
+          "rms_error": 0.0016065580274464526,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 19.81316375732422,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 15,
+          "native_selection_matches_full_projection": true,
+          "step": 1,
+          "proposed_token": 15,
+          "top_reference": [
+            {
+              "token_id": 15,
+              "logit": 53.342525482177734,
+              "text": "0"
+            },
+            {
+              "token_id": 16,
+              "logit": 33.529361724853516,
+              "text": "1"
+            },
+            {
+              "token_id": 17,
+              "logit": 28.885879516601562,
+              "text": "2"
+            },
+            {
+              "token_id": 18,
+              "logit": 27.14490509033203,
+              "text": "3"
+            },
+            {
+              "token_id": 19,
+              "logit": 26.125062942504883,
+              "text": "4"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 15,
+          "expected_argmax": 15,
+          "max_abs_error": 0.0054416656494140625,
+          "rms_error": 0.000988988926231589,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 16.202701568603516,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 15,
+          "native_selection_matches_full_projection": true,
+          "step": 2,
+          "proposed_token": 15,
+          "top_reference": [
+            {
+              "token_id": 15,
+              "logit": 49.447391510009766,
+              "text": "0"
+            },
+            {
+              "token_id": 16,
+              "logit": 33.24468994140625,
+              "text": "1"
+            },
+            {
+              "token_id": 17,
+              "logit": 31.963056564331055,
+              "text": "2"
+            },
+            {
+              "token_id": 18,
+              "logit": 30.04722785949707,
+              "text": "3"
+            },
+            {
+              "token_id": 19,
+              "logit": 28.106975555419922,
+              "text": "4"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 15,
+          "expected_argmax": 15,
+          "max_abs_error": 0.008327960968017578,
+          "rms_error": 0.0015608908800236836,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 18.747756958007812,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 15,
+          "native_selection_matches_full_projection": true,
+          "step": 3,
+          "proposed_token": 15,
+          "top_reference": [
+            {
+              "token_id": 15,
+              "logit": 52.03974151611328,
+              "text": "0"
+            },
+            {
+              "token_id": 17,
+              "logit": 33.29198455810547,
+              "text": "2"
+            },
+            {
+              "token_id": 16,
+              "logit": 32.615421295166016,
+              "text": "1"
+            },
+            {
+              "token_id": 18,
+              "logit": 29.865257263183594,
+              "text": "3"
+            },
+            {
+              "token_id": 19,
+              "logit": 26.488374710083008,
+              "text": "4"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 18,
+          "expected_argmax": 18,
+          "max_abs_error": 0.0081634521484375,
+          "rms_error": 0.0013685271814491574,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 10.196044921875,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 18,
+          "native_selection_matches_full_projection": true,
+          "step": 4,
+          "proposed_token": 18,
+          "top_reference": [
+            {
+              "token_id": 18,
+              "logit": 52.624229431152344,
+              "text": "3"
+            },
+            {
+              "token_id": 15,
+              "logit": 42.428184509277344,
+              "text": "0"
+            },
+            {
+              "token_id": 17,
+              "logit": 28.728973388671875,
+              "text": "2"
+            },
+            {
+              "token_id": 16,
+              "logit": 27.517284393310547,
+              "text": "1"
+            },
+            {
+              "token_id": 19,
+              "logit": 27.194425582885742,
+              "text": "4"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 17,
+          "expected_argmax": 17,
+          "max_abs_error": 0.007809638977050781,
+          "rms_error": 0.0010752399065114904,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 23.032855987548828,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 17,
+          "native_selection_matches_full_projection": true,
+          "step": 5,
+          "proposed_token": 17,
+          "top_reference": [
+            {
+              "token_id": 17,
+              "logit": 53.056427001953125,
+              "text": "2"
+            },
+            {
+              "token_id": 16,
+              "logit": 30.023571014404297,
+              "text": "1"
+            },
+            {
+              "token_id": 18,
+              "logit": 28.26913833618164,
+              "text": "3"
+            },
+            {
+              "token_id": 15,
+              "logit": 27.210918426513672,
+              "text": "0"
+            },
+            {
+              "token_id": 19,
+              "logit": 26.60266876220703,
+              "text": "4"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "logits_within_tolerance": true,
+          "argmax_matches": true,
+          "actual_argmax": 151645,
+          "expected_argmax": 151645,
+          "max_abs_error": 0.004456996917724609,
+          "rms_error": 0.0009366460295038449,
+          "violating_logits": 0,
+          "first_violation": null,
+          "reference_top2_margin": 14.291767120361328,
+          "atol": 0.02,
+          "rtol": 0.002,
+          "vocab_size": 151936,
+          "native_selected": 151645,
+          "native_selection_matches_full_projection": true,
+          "step": 6,
+          "proposed_token": 151645,
+          "top_reference": [
+            {
+              "token_id": 151645,
+              "logit": 34.34815216064453,
+              "text": "<|im_end|>"
+            },
+            {
+              "token_id": 13,
+              "logit": 20.056385040283203,
+              "text": "."
+            },
+            {
+              "token_id": 25521,
+              "logit": 18.640518188476562,
+              "text": " �"
+            },
+            {
+              "token_id": 271,
+              "logit": 18.158302307128906,
+              "text": "\n\n"
+            },
+            {
+              "token_id": 151668,
+              "logit": 18.010330200195312,
+              "text": "</think>"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "legacy_template": false,
+  "thinking_required": false,
+  "template_source": "tokenizer",
+  "native_plan": [
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu",
+    "gpu"
+  ],
+  "context_tokens": 512,
+  "native_device": "cuda:0",
+  "tokenizer_sha256": "a429c8857a5dd281eebb7c91843ba4888a8fe42d63135d3d504170ab72b3fd09",
+  "reference_conditioning": "causal_native_prefix_teacher_forcing"
+}

@@ -208,7 +208,8 @@ public sealed record AppSettings(
     string VoiceDevice = "", string VoiceLanguage = "auto", string VoiceModel = "large-v3-turbo-q5_0",
     string VoiceBackend = "local", string VoiceApiUrl = "", string VoiceApiModel = "whisper-1",
     bool VoiceAutoSend = true, string NetworkAllow = "192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12",
-    int AttachMaxFiles = 5, int AttachMaxFileKb = 128, int AttachMaxTotalKb = 256);
+    int AttachMaxFiles = 5, int AttachMaxFileKb = 128, int AttachMaxTotalKb = 256,
+    int KvCacheRamMb = 2048, int KvCacheDiskMb = 8192);
 
 public sealed record SettingsFolders(string DataDir, string ModelsDir);
 
@@ -227,7 +228,8 @@ public sealed record SettingsUpdate(
     bool? NetworkAccess = null, string? Theme = null, string? VoiceDevice = null, string? VoiceLanguage = null,
     string? VoiceModel = null, string? VoiceBackend = null, string? VoiceApiUrl = null,
     string? VoiceApiModel = null, bool? VoiceAutoSend = null, string? NetworkAllow = null,
-    int? AttachMaxFiles = null, int? AttachMaxFileKb = null, int? AttachMaxTotalKb = null);
+    int? AttachMaxFiles = null, int? AttachMaxFileKb = null, int? AttachMaxTotalKb = null,
+    int? KvCacheRamMb = null, int? KvCacheDiskMb = null);
 
 /// <summary>8.3: обновления — текущая версия, подготовленная, итог прошлого обновления.</summary>
 public sealed record UpdateStatus(

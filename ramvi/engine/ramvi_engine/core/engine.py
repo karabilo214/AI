@@ -21,6 +21,7 @@ import triton
 
 from ramvi_engine.cpu.cpu_layer import CpuLayer
 from ramvi_engine.generation.head import Head
+from ramvi_engine.generation.kv_store import switch as kv_switch
 from ramvi_engine.formats.model import Ckpt
 from ramvi_engine.planning.plan import GiB, make_plan
 from ramvi_engine.kernels.tkernels import attn_k, gemv, qk_rope_cache_k, rmsg_k, rope_attn_k
@@ -569,6 +570,7 @@ class Engine:
             raise ValueError(f"context overflow: needed={P} available={self.maxt}")
         # Последний выданный токен ещё не обязан иметь строку KV.
         max_new = min(max_new, self.maxt - P + 1)
+        kv_switch(self, prompt)  # B.7: кэш другого чата — сохранить; свой — вернуть
         c = min(self.common(prompt), P - 1)
         if cons is not None and not getattr(self, "supports_mask", False):
             raise NotImplementedError("ограничение грамматикой поддержано только для моделей GGUF")

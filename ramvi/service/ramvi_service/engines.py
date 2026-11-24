@@ -137,12 +137,14 @@ class EngineManager:
         context: Callable[[], int] = lambda: 2048,
         resident_for: Callable[[Model, int], int | None] = lambda model, context: None,
         preflight: Callable[[Model], tuple[str, str] | None] = lambda model: None,
+        environment: Callable[[], dict[str, str]] = dict,
     ) -> None:
         self.models, self.run_dir = models, Path(run_dir)
         self._loaded_context = 0
         self.context = context  # 4.5: контекст из профиля задачи при каждой загрузке
         self.resident_for = resident_for  # 4.7: сохранённый безопасный план (или None)
         self.preflight = preflight  # 4.8: не запускать то, что точно не поместится
+        self.environment = environment  # B.7: настройки движка из настроек приложения
         self.model_root = model_root
         self._make_engine, self._policy, self._interval = make_engine, policy, interval
         self.request_timeout = request_timeout
@@ -247,6 +249,7 @@ class EngineManager:
                 options: dict[str, Any] = {"maxt": context}
                 if resident is not None:
                     options["resident"] = resident
+                os.environ.update(self.environment())  # процесс движка наследует окружение
                 engine = self._make_engine(model, draft, **options)
                 supervisor = Supervisor(
                     engine,
