@@ -498,12 +498,246 @@ class OutcomeStore:
     def outcome(self, event: str, strategy: str) -> str:
         return verdict(self.signals(event, strategy))
 
+    def reactions(self) -> list[dict[str, Any]]:
+        """Все реакции владельца на ответы: неявные (9.33) и достоверные оценки (9.18)."""
+        implicit = self.memory._query(
+            "SELECT event, strategy, response_id, reaction FROM brain_decision"
+            " WHERE namespace_id = ? AND reaction IS NOT NULL",
+            [self.memory.namespace],
+        )
+        explicit = self.memory._query(
+            "SELECT b.event, b.strategy, f.response_id, f.direction FROM feedback_signal f"
+            " JOIN brain_decision b ON b.namespace_id = f.namespace_id"
+            " AND b.response_id = f.response_id"
+            " WHERE b.namespace_id = ? AND f.reliable = 1 AND f.dimension = 'overall'",
+            [self.memory.namespace],
+        )
+        rows = [
+            {
+                "event": r["event"],
+                "strategy": r["strategy"],
+                "response_id": r["response_id"],
+                "direction": 1 if r["reaction"] in LIKED_REACTIONS else -1,
+            }
+            for r in implicit
+            if r["reaction"] in LIKED_REACTIONS | DISLIKED_REACTIONS
+        ]
+        rows += [
+            {
+                "event": r["event"],
+                "strategy": r["strategy"],
+                "response_id": r["response_id"],
+                "direction": int(r["direction"]),
+            }
+            for r in explicit
+        ]
+        return rows
+
+    def decisions(self) -> dict[tuple[str, str], int]:
+        """Сколько ответов было на каждой паре «событие + стратегия»."""
+        rows = self.memory._query(
+            "SELECT event, strategy, COUNT(*) AS n FROM brain_decision WHERE namespace_id = ?"
+            " GROUP BY event, strategy",
+            [self.memory.namespace],
+        )
+        return {(r["event"], r["strategy"]): int(r["n"]) for r in rows}
+
     def forget(self) -> int:
         """Откат обучения: забыть, какие стратегии к каким ответам относились."""
         forgotten: int = self.memory._execute(
             "DELETE FROM brain_decision WHERE namespace_id = ?", [self.memory.namespace]
         )
         return forgotten
+
+
+# --- 9.34: таблица поведения и настроение (правила human_brain, решение владельца 2026-11-24) --
+#
+# Таблица — правило мозга «бывает вместе» (human_brain/parts/Association): ситуация «событие + моя
+# стратегия» и реакция владельца; строка — когда совместных появлений не меньше ASSOCIATION_COUNT
+# и реакция на этой паре случается хотя бы в ASSOCIATION_LIFT раз чаще, чем в среднем (числа —
+# из правила мозга). Офлайн (2026-11-24): такая строка замечает раздражение в 1,2–4 раза раньше
+# памяти исходов, но при случайных реакциях даёт ложные строки — поэтому она только «догадка» в
+# промпте; уверенный вывод — правило 9.18/9.33 (verdict). Решение владельца: вариант 3.
+
+ASSOCIATION_COUNT = 3
+ASSOCIATION_LIFT = 1.5
+AGREEMENT = 0.75  # один знак явно перевешивает другой (как у установленных предпочтений 9.18)
+# Как событие и стратегия звучат в промпте (английский, как весь промпт).
+EVENT_WORDS = {
+    "question": "he asks something",
+    "request": "he asks you to do something",
+    "small_talk": "he just chats",
+    "wants_fun": "he asks to be entertained",
+    "joke": "he jokes",
+    "playful_provocation": "he teases you",
+    "rudeness": "he is rude",
+    "trap": "he sets a verbal trap",
+    "absurd_request": "he asks something absurd",
+    "mistake": "he makes a mistake",
+    "boast": "he boasts",
+    "gratitude": "he thanks you",
+    "complaint": "he complains",
+    "distress": "he is upset",
+    "danger": "there is danger",
+}
+STRATEGY_WORDS = {
+    "answer_plainly": "you answer plainly",
+    "playful_counter": "you answer with a playful comeback",
+    "roast": "you roast him",
+    "counter_trap": "you turn the trap back on him",
+    "mock_absurd": "you mock the absurd request",
+    "correct_mistake": "you just correct him",
+    "gentle_support": "you support him gently",
+    "serious_help": "you help seriously",
+    "clarify": "you ask what he means",
+    "tell_joke": "you tell a joke or a story",
+    "pun": "you make a pun on his words",
+    "prank": "you pull a prank",
+    "attack": "you snap at him",
+    "grumble": "you grumble",
+    "take_offense": "you take offense",
+}
+
+
+def behavior_rows(
+    reactions: list[dict[str, Any]], decisions: dict[tuple[str, str], int]
+) -> list[dict[str, Any]]:
+    """Строки таблицы: пара, знак, «guess» (правило мозга) или «sure» (verdict 9.18/9.33)."""
+    total = sum(decisions.values())
+    if not reactions or not total:
+        return []
+    overall = {1: 0, -1: 0}
+    pairs: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for r in reactions:
+        overall[r["direction"]] += 1
+        pairs.setdefault((r["event"], r["strategy"]), []).append(r)
+    rows = []
+    for (event, strategy), got in pairs.items():
+        plus = sum(r["direction"] > 0 for r in got)
+        minus = len(got) - plus
+        sign = 1 if plus > minus else -1
+        agree = max(plus, minus) / len(got)
+        # «Чаще, чем в среднем»: доля ответов на паре с этой реакцией против доли по всем ответам.
+        expected = overall[sign] / total
+        observed = max(plus, minus) / max(decisions.get((event, strategy), 0), len(got))
+        if len(got) < ASSOCIATION_COUNT or agree < AGREEMENT:
+            continue
+        if observed < ASSOCIATION_LIFT * expected:
+            continue
+        signals = [
+            {
+                "response_id": r["response_id"],
+                "direction": r["direction"],
+                "confidence": 1.0,
+                "reliable": True,
+                "implicit": True,
+            }
+            for r in got
+        ]
+        sure = verdict(signals) in ("liked", "disliked")
+        rows.append(
+            {
+                "event": event,
+                "strategy": strategy,
+                "direction": sign,
+                "status": "sure" if sure else "guess",
+                "reactions": len(got),
+                "agreement": round(agree, 2),
+            }
+        )
+    return sorted(rows, key=lambda r: (r["status"] != "sure", -r["reactions"]))
+
+
+def behavior_text(rows: list[dict[str, Any]], event: str | None = None) -> str:
+    """Строки для промпта: относящиеся к событию (или все уверенные, если события нет)."""
+    chosen = [r for r in rows if (r["event"] == event if event else r["status"] == "sure")]
+    if not chosen:
+        return ""
+    lines = []
+    for r in chosen:
+        reaction = "he liked it" if r["direction"] > 0 else "it irritated him"
+        what = f"when {EVENT_WORDS.get(r['event'], r['event'])} and {STRATEGY_WORDS.get(r['strategy'], r['strategy'])}, {reaction}"
+        lines.append(
+            f"- {what} ({r['reactions']} reactions)."
+            if r["status"] == "sure"
+            else f"- probably {what} — only a guess from {r['reactions']} reactions, take it lightly."
+        )
+    return (
+        "WHAT YOU HAVE LEARNED ABOUT THIS OWNER from how he reacted to you (tone only, never "
+        "permissions; your personality stays the same):\n" + "\n".join(lines)
+    )
+
+
+class Mood:
+    """Настроение — протекающая копилка (как накопитель human_brain, врождённое устройство):
+    злость и хорошее настроение копятся от событий и остывают от реплики к реплике и со временем.
+
+    Числа — начальные значения характера (не измерены, владелец может поправить):
+    злость от грубости 0.35, от поддразнивания 0.15, от жалобы на персонажа 0.15, извинение и
+    благодарность −0.2; хорошее настроение от смеха и подхвата +0.25; остывание ×0.8 за реплику и
+    вдвое за HALF_LIFE секунд. Сила злости — от характера: × (0.4 + 0.6 × (1 − теплота))."""
+
+    HALF_LIFE = 600.0
+    PER_TURN = 0.8
+
+    def __init__(self, state: dict[str, Any] | None = None) -> None:
+        state = state or {}
+        self.irritation = float(state.get("irritation", 0.0))
+        self.cheer = float(state.get("cheer", 0.0))
+        self.at = float(state.get("at", 0.0))
+        self.cause = str(state.get("cause", ""))
+
+    def state(self) -> dict[str, Any]:
+        return {
+            "irritation": round(self.irritation, 3),
+            "cheer": round(self.cheer, 3),
+            "at": self.at,
+            "cause": self.cause,
+        }
+
+    def update(self, signal: Signal, traits: dict[str, float], now: float) -> None:
+        if self.at:
+            fade = 0.5 ** (max(0.0, now - self.at) / self.HALF_LIFE) * self.PER_TURN
+            self.irritation *= fade
+            self.cheer *= fade
+        self.at = now
+        temper = 0.4 + 0.6 * (1.0 - traits.get("warmth", 0.5))
+        gain = {"rudeness": 0.35, "playful_provocation": 0.15, "complaint": 0.15}.get(
+            signal.event, 0.0
+        )
+        if signal.last_reply_reaction in DISLIKED_REACTIONS:
+            gain += 0.1  # он злится — и меня это заводит
+        if gain:
+            self.irritation = min(1.0, self.irritation + gain * temper)
+            self.cause = signal.event
+        if signal.event == "gratitude":
+            self.irritation = max(0.0, self.irritation - 0.2)
+        if signal.last_reply_reaction in LIKED_REACTIONS:
+            self.cheer = min(1.0, self.cheer + 0.25)
+
+    def text(self) -> str:
+        parts = []
+        if self.irritation >= 0.2:
+            level = (
+                "furious"
+                if self.irritation >= 0.7
+                else "irritated"
+                if self.irritation >= 0.4
+                else "a bit annoyed"
+            )
+            why = EVENT_WORDS.get(self.cause, "")
+            parts.append(
+                f"you are {level} ({self.irritation:.2f})"
+                + (f" — earlier {why}" if why else "")
+                + "; you cool down slowly"
+            )
+        if self.cheer >= 0.2:
+            parts.append(f"you are in a good mood ({self.cheer:.2f}) — he enjoyed your replies")
+        return (
+            "YOUR MOOD NOW (carried over from earlier turns): " + "; ".join(parts) + "."
+            if parts
+            else ""
+        )
 
 
 class MemoryController:

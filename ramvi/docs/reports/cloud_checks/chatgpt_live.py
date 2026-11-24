@@ -73,9 +73,11 @@ def main() -> None:
                 time.sleep(0.3)
             reply = " ".join(e["text"] for e in job["events"] if e.get("type") == "segment")
             decision = (job.get("brain") or {}).get("decision") or {}
+            mood = client.ok("POST", path, {"operation": "behavior", "arguments": {}})["mood"]
             turns.append(
                 {
                     "owner": text,
+                    "mood": {k: mood[k] for k in ("irritation", "cheer")},
                     "reply": reply,
                     "strategy": decision.get("strategy"),
                     "error": job.get("error_detail"),

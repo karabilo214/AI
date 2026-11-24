@@ -1,0 +1,104 @@
+{
+  "state": {
+    "installed": true,
+    "logged_in": true,
+    "login_running": false,
+    "login_failed": false
+  },
+  "models": [
+    "gpt-6.2-sol",
+    "gpt-6.2-astra",
+    "gpt-6.1-terra",
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna"
+  ],
+  "character": [
+    {
+      "owner": "Привет",
+      "mood": {
+        "irritation": 0.0,
+        "cheer": 0.0
+      },
+      "reply": "Привет. Чёрт, даже поздороваться спокойно не дадут.",
+      "strategy": "grumble",
+      "error": null,
+      "seconds": 12.4
+    },
+    {
+      "owner": "Ты тупой, что ли?",
+      "mood": {
+        "irritation": 0.436,
+        "cheer": 0.0
+      },
+      "reply": "Это ты на моё приветствие взъелся? Я, блядь, просто поздоровался.",
+      "strategy": "attack",
+      "error": null,
+      "seconds": 11.1
+    },
+    {
+      "owner": "Да ты реально тупой, железка",
+      "mood": {
+        "irritation": 0.78,
+        "cheer": 0.0
+      },
+      "reply": "Железка — допустим. Но доказывать, что я тупой, повторяя одно и то же, — хреновая стратегия.",
+      "strategy": "take_offense",
+      "error": null,
+      "seconds": 13.6
+    },
+    {
+      "owner": "Ладно, извини, погорячился",
+      "mood": {
+        "irritation": 0.616,
+        "cheer": 0.0
+      },
+      "reply": "Ладно, принято. Но я всё ещё зол, блядь. Давай без нового круга оскорблений.",
+      "strategy": "grumble",
+      "error": null,
+      "seconds": 11.8
+    }
+  ],
+  "spending": [
+    {
+      "at": 1795512309.277452,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16483,
+      "completion_tokens": 264,
+      "cost": null,
+      "state": "done"
+    },
+    {
+      "at": 1795512297.755353,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16366,
+      "completion_tokens": 278,
+      "cost": null,
+      "state": "done"
+    },
+    {
+      "at": 1795512283.921241,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16233,
+      "completion_tokens": 297,
+      "cost": null,
+      "state": "done"
+    },
+    {
+      "at": 1795512273.0413141,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16146,
+      "completion_tokens": 178,
+      "cost": null,
+      "state": "done"
+    }
+  ]
+}

@@ -7,17 +7,21 @@ import threading
 import time
 import uuid
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import Any
 
 from ramvi_character.brain import (
     CONTROLLERS,
+    HOSTILE,
     INLINE_SIGNAL,
     SIGNAL_PROMPT,
     Decision,
     MemoryController,
+    Mood,
     OffController,
     RuleController,
     Signal,
+    behavior_text,
     decision_view,
     parse_signal,
     safe_decision,
@@ -429,6 +433,13 @@ class Dialogue:
                 signal = None
         return self._decide(identifier, signal)
 
+    def _notes(self, event: str | None) -> str:
+        """9.34: что персонаж понял о владельце (строки к событию) и его настроение — в промпт."""
+        mood = getattr(self.owner, "_mood", None)
+        rows = self.owner.behavior() if hasattr(self.owner, "behavior") else []
+        parts = [behavior_text(rows, event), mood.text() if isinstance(mood, Mood) else ""]
+        return "\n".join(p for p in parts if p)
+
     def _decide(self, identifier: str, signal: Signal | None) -> Decision:
         """Решение контроллера по сигналу (отдельный запрос или строка в ответе — single_call)."""
         name = getattr(self.owner, "_brain", "rules")
@@ -453,6 +464,17 @@ class Dialogue:
             if signal is None
             else controller.decide(signal, personality, self.owner._emotions.identifiers())
         )
+        mood = getattr(self.owner, "_mood", None)
+        if signal is not None and isinstance(mood, Mood):
+            # 9.34: настроение копится от событий и остывает; злость усиливает «злые» реакции.
+            mood.update(signal, personality["effective_traits"], time.time())
+            if hasattr(self.owner, "save_mood"):
+                self.owner.save_mood()
+            if decision.strategy in HOSTILE and mood.irritation:
+                decision = replace(
+                    decision,
+                    intensity=round(min(1.0, decision.intensity + 0.3 * mood.irritation), 2),
+                )
         with self.lock:
             if self.job is not None and self.job["id"] == identifier:
                 self.job["brain"] = decision_view(signal, decision)
@@ -559,16 +581,25 @@ class Dialogue:
             )
             if single:
                 try:
-                    prepared = context.build(**parts, guidance=INLINE_SIGNAL)
+                    # Событие ещё неизвестно: настроение и уверенные строки таблицы.
+                    notes = self._notes(None)
+                    prepared = context.build(
+                        **parts, guidance=INLINE_SIGNAL + ("\n" + notes if notes else "")
+                    )
                 except ContextOverflow:
                     single = False
             else:
                 # 9.30: шаг 1 — модель описывает событие, контроллер выбирает реакцию; шаг 2 —
                 # ответ по плану. План не влез (край окна) — ответ без него.
                 decision = self._react(identifier, revision, model, window, user_input, recent)
-                if not decision.fallback:
+                event = ((self.job or {}).get("brain") or {}).get("signal") or {}
+                notes = self._notes(event.get("event"))
+                if not decision.fallback or notes:
+                    plan = "" if decision.fallback else decision.guidance()
                     try:
-                        prepared = context.build(**parts, guidance=decision.guidance())
+                        prepared = context.build(
+                            **parts, guidance="\n".join(x for x in (plan, notes) if x)
+                        )
                     except ContextOverflow:
                         pass
             # Evidence must refer only to sources that survived trimming.

@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from ramvi_character.adaptation import Adaptation
-from ramvi_character.brain import OutcomeStore
+from ramvi_character.brain import Mood, OutcomeStore, behavior_rows
 from ramvi_character.consolidate import Consolidator
 from ramvi_character.context import Budget, ContextOrchestrator, text
 from ramvi_character.delegation import Delegation
@@ -69,6 +69,7 @@ class CharacterModule:
         self._brain_outcomes: OutcomeStore | None = None
         self._brain_recent: list[str] = []  # 9.32: стратегии последних ходов
         self._brain_last_response = ""  # 9.33: ответ, на который отреагирует следующая реплика
+        self._mood = Mood()  # 9.34: настроение персонажа
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})
@@ -110,6 +111,12 @@ class CharacterModule:
             if stored is not None:
                 preferences = stored
         self._presentation_settings = self._validate_presentation(preferences)
+        # 9.34: настроение переживает перезапуск (данные модуля).
+        self._mood = Mood()
+        if context.get("services") is not None:
+            mood = context["services"].call("data.get", {"path": "mood.json"}).get("value")
+            if isinstance(mood, dict):
+                self._mood = Mood(mood)
         self._memory, self._memory_error = None, None
         if context.get("services") is not None:
             try:
@@ -418,6 +425,24 @@ class CharacterModule:
         except Exception:
             pass
 
+    def behavior(self) -> list[dict[str, Any]]:
+        """9.34: строки таблицы поведения (догадки и уверенные) из памяти исходов."""
+        outcomes = self._brain_outcomes
+        if outcomes is None:
+            return []
+        try:
+            return behavior_rows(outcomes.reactions(), outcomes.decisions())
+        except Exception:
+            return []  # таблица необязательна
+
+    def save_mood(self) -> None:
+        services = self._dialogue.services if self._dialogue is not None else None
+        if services is not None:
+            try:
+                services.call("data.set", {"path": "mood.json", "value": self._mood.state()})
+            except Exception:
+                pass  # настроение — необязательное украшение
+
     def application_context(self, external: bool = False) -> dict[str, Any] | None:
         """9.28: что видно в выбранном окне сейчас — выделенный текст и элементы интерфейса;
         нет доступа, окна или системного адаптера — честное состояние вместо догадок."""
@@ -667,7 +692,11 @@ class CharacterModule:
                 return {"brain": self._brain}
             elif operation == "brain_forget":  # 9.31: откат обучения — забыть исходы стратегий
                 forgotten = self._brain_outcomes.forget() if self._brain_outcomes else 0
+                self._mood = Mood()  # 9.34: и настроение
+                self.save_mood()
                 return {"brain": self._brain, "forgotten": forgotten}
+            elif operation == "behavior":  # 9.34: что персонаж понял о владельце и его настроение
+                return {"rows": self.behavior(), "mood": self._mood.state()}
             elif operation == "assistant_view":  # 9.28: что персонаж видит в окне сейчас
                 return {
                     "assistant": copy.deepcopy(self._assistant),
