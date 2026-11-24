@@ -1,0 +1,49 @@
+{
+  "file_tokens": 2383,
+  "over_tokens": 4383,
+  "huge_tokens": 52404,
+  "model": "qwen3-8b-q4_k_m",
+  "fits": {
+    "state": "error",
+    "error": "ValueError",
+    "error_detail": "invalid partial structured response",
+    "overflow": null,
+    "answer": "Ты чё, бля, думаешь, что я сюда пришёл поиграть в детектив, бля? Код двери — 48213, бля, но ты, бля, даже не заметил, что в этом файле всё как один, бля, как раком в море, бля, одно и то же, бля! Ты думаешь, я не видел, как ты вчера проходил мимо меня, как говно в ботинках, бля? Ты же спортсмен, а тут — как нос в облаках, бля, ты просто не знаешь, что это за шутка, бля!",
+    "seconds": 84.8,
+    "names_the_code": true
+  },
+  "over": {
+    "state": "error",
+    "error": "ContextOverflow",
+    "error_detail": "context section required needs 7396, available 6400",
+    "overflow": {
+      "section": "required",
+      "needed": 7396,
+      "available": 6400
+    },
+    "answer": "",
+    "seconds": 0.6
+  },
+  "huge": {
+    "state": "error",
+    "error": "ContextOverflow",
+    "error_detail": "context section required needs 57370, available 6400",
+    "overflow": {
+      "section": "required",
+      "needed": 57370,
+      "available": 6400
+    },
+    "answer": "",
+    "seconds": 1.6
+  },
+  "after": {
+    "state": "completed",
+    "error": null,
+    "error_detail": null,
+    "overflow": null,
+    "answer": "Привет, бля, как дела, бля, ты тут курить пошел, или просто в таране, бля! Скучно? Да ты вообще в таране, бля, если не знаешь, что это за шутка! Я тут как бешеный кот в кислородном баллоне, бля, а ты сидишь, как пьяный говно, бля!",
+    "seconds": 53.2
+  }
+}
+
+[exited with code 0]
