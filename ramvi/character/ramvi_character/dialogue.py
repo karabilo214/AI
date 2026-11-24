@@ -11,14 +11,17 @@ from typing import Any
 
 from ramvi_character.brain import (
     CONTROLLERS,
+    INLINE_SIGNAL,
     SIGNAL_PROMPT,
     Decision,
     MemoryController,
     OffController,
     RuleController,
+    Signal,
     decision_view,
     parse_signal,
     safe_decision,
+    split_inline_signal,
 )
 from ramvi_character.context import (
     Budget,
@@ -395,15 +398,6 @@ class Dialogue:
         """9.30: короткий запрос «опиши событие» → проверка сигнала → решение контроллера.
         Любой сбой — безопасная обычная реакция; ход продолжается."""
         name = getattr(self.owner, "_brain", "rules")
-        outcomes = getattr(self.owner, "_brain_outcomes", None)
-        strategies = tuple(getattr(self.owner, "_brain_recent", ()))
-        controller: Any = (
-            MemoryController(outcomes, strategies)
-            if name == "memory" and outcomes is not None
-            else RuleController(strategies)
-            if name in ("rules", "memory")
-            else CONTROLLERS.get(name, OffController)()
-        )
         signal = None
         if name != "off":
             shown = [{"role": m["role"], "text": m["text"]} for m in recent[-6:]]
@@ -432,6 +426,20 @@ class Dialogue:
                 raise
             except Exception:
                 signal = None
+        return self._decide(identifier, signal)
+
+    def _decide(self, identifier: str, signal: Signal | None) -> Decision:
+        """Решение контроллера по сигналу (отдельный запрос или строка в ответе — single_call)."""
+        name = getattr(self.owner, "_brain", "rules")
+        outcomes = getattr(self.owner, "_brain_outcomes", None)
+        strategies = tuple(getattr(self.owner, "_brain_recent", ()))
+        controller: Any = (
+            MemoryController(outcomes, strategies)
+            if name == "memory" and outcomes is not None
+            else RuleController(strategies)
+            if name in ("rules", "memory")
+            else CONTROLLERS.get(name, OffController)()
+        )
         last = getattr(self.owner, "_brain_last_response", "")
         if signal is not None and outcomes is not None and last:
             try:  # 9.33: неявная реакция на прошлый ответ — вместо кнопок оценки
@@ -540,14 +548,27 @@ class Dialogue:
             }
             # Сначала без плана: переполнение — ошибка до любого обращения к модели.
             prepared = context.build(**parts)
-            # 9.30: шаг 1 — модель описывает событие, контроллер выбирает реакцию; шаг 2 —
-            # ответ по плану. План не влез (край окна) — ответ без него.
-            decision = self._react(identifier, revision, model, window, user_input, recent)
-            if not decision.fallback:
+            # Дорогой запрос (подписка ChatGPT через Codex): событие — строкой в том же ответе,
+            # плана реакции в ответе нет (владелец 2026-11-24: один запрос на ход).
+            single = (
+                bool(caps["capabilities"].get("single_call"))
+                and not streaming
+                and getattr(self.owner, "_brain", "rules") != "off"
+            )
+            if single:
                 try:
-                    prepared = context.build(**parts, guidance=decision.guidance())
+                    prepared = context.build(**parts, guidance=INLINE_SIGNAL)
                 except ContextOverflow:
-                    pass
+                    single = False
+            else:
+                # 9.30: шаг 1 — модель описывает событие, контроллер выбирает реакцию; шаг 2 —
+                # ответ по плану. План не влез (край окна) — ответ без него.
+                decision = self._react(identifier, revision, model, window, user_input, recent)
+                if not decision.fallback:
+                    try:
+                        prepared = context.build(**parts, guidance=decision.guidance())
+                    except ContextOverflow:
+                        pass
             # Evidence must refer only to sources that survived trimming.
             planner = ResponsePlanner(
                 emotions=emotions, animations=gestures, sources=list(prepared.sources), **face
@@ -572,6 +593,9 @@ class Dialogue:
                     self._emit(identifier, revision, planner.finish())
                 else:
                     content = "".join(self._request(request, False))
+                    if single:
+                        inline, content = split_inline_signal(content)
+                        self._decide(identifier, inline)
                     self._emit(identifier, revision, planner.complete(content))
                 accepted = planner.segments
                 # Candidates are published only after the entire stream finished successfully.

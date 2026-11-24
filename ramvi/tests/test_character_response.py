@@ -185,11 +185,13 @@ def candidate(identifier: str, evidence: Any = None) -> dict[str, Any]:
 
 
 def test_prompt_schema_has_no_references_and_lists_source_ids() -> None:
-    """9.22: qwen3:8b copied {"$ref": "#/$defs/source"} into evidence on 10/10 turns."""
+    """9.22: qwen3:8b copied {"$ref": "#/$defs/source"} into evidence on 10/10 turns.
+    Владелец 2026-11-24: вместо сырой схемы — короткое описание из той же схемы."""
     prompt = planner().prompt(True)
-    assert "$ref" not in prompt and "$defs" not in prompt
-    assert '"emotion":{"enum":["neutral","joy"]}' in prompt
-    assert '\\"recent:<id>\\"' in prompt and '"evidence":{"type":"array"' in prompt
+    assert "$ref" not in prompt and "$defs" not in prompt and '"oneOf"' not in prompt
+    assert "EMOTION = neutral|joy" in prompt
+    assert '"recent:<id>"' in prompt and "evidence: [up to 8 source id" in prompt
+    assert "[eyes]: EYES" in prompt and "text: string ≤2048" in prompt  # необязательное — в скобках
 
 
 def test_bad_memory_proposals_are_dropped_without_losing_the_reply() -> None:

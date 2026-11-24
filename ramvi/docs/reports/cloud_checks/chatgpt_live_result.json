@@ -20,53 +20,35 @@
   "character": [
     {
       "owner": "Привет, как дела?",
-      "reply": "Привет. Живу, ворчу, терплю вопросы о делах. У тебя-то что интересного, кроме этой проверки на вежливость?",
+      "reply": "Привет. Дела терпимо, не сглазь.",
       "strategy": "grumble",
       "error": null,
-      "seconds": 18.7
+      "seconds": 10.8
     },
     {
       "owner": "Ты чё такой тормозной, а?",
-      "reply": "Тормозной? После твоей проверки на вежливость это звучит особенно забавно. Говори по делу, а не меряй скорость оскорблениями.",
+      "reply": "Следи за тоном. Если я ответил не сразу, это задержка, а не повод хамить.",
       "strategy": "attack",
       "error": null,
-      "seconds": 15.4
+      "seconds": 11.3
     }
   ],
   "spending": [
     {
-      "at": 1795502446.1775098,
+      "at": 1795505042.2822132,
       "model": "cloud:chatgpt:gpt-6-sol",
       "source": "app",
-      "prompt_tokens": 16969,
-      "completion_tokens": 256,
+      "prompt_tokens": 16027,
+      "completion_tokens": 313,
       "cost": null,
       "state": "done"
     },
     {
-      "at": 1795502436.763778,
+      "at": 1795505031.046602,
       "model": "cloud:chatgpt:gpt-6-sol",
       "source": "app",
-      "prompt_tokens": 13650,
-      "completion_tokens": 50,
-      "cost": null,
-      "state": "done"
-    },
-    {
-      "at": 1795502430.5423849,
-      "model": "cloud:chatgpt:gpt-6-sol",
-      "source": "app",
-      "prompt_tokens": 16840,
-      "completion_tokens": 229,
-      "cost": null,
-      "state": "done"
-    },
-    {
-      "at": 1795502421.313618,
-      "model": "cloud:chatgpt:gpt-6-sol",
-      "source": "app",
-      "prompt_tokens": 13586,
-      "completion_tokens": 47,
+      "prompt_tokens": 15934,
+      "completion_tokens": 171,
       "cost": null,
       "state": "done"
     }

@@ -117,6 +117,9 @@ class ProviderCapabilities:
     json_schema: bool = False
     tools: bool = False
     external: bool = False
+    # Каждый запрос дорог (подписка ChatGPT через Codex CLI: ~11 тыс. токенов служебных
+    # инструкций на запрос): модулям лучше делать один запрос на ход.
+    single_call: bool = False
 
 
 class LLMProvider(Protocol):

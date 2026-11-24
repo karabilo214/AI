@@ -215,3 +215,32 @@ def test_next_message_reaction_is_stored_for_the_previous_reply() -> None:
     finish(m)
     assert outcomes.reactions == [(first, "laughed")]
     m.dispose()
+
+
+def test_costly_model_gets_one_request_per_turn_with_the_event_inline() -> None:
+    """Владелец 2026-11-24: подписка ChatGPT через Codex — один запрос на ход вместо двух."""
+    from ramvi_character.brain import INLINE_SIGNAL
+    from test_character_response import records
+
+    class Costly(Services):
+        def call(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
+            if method == "llm.capabilities":
+                return {
+                    "available": True,
+                    "capabilities": {"streaming": False, "single_call": True},
+                }
+            return super().call(method, payload)
+
+    inline = json.dumps(signal(event="small_talk", last_reply_reaction="laughed"))
+    svc = Costly(
+        output=inline + "\n" + "\n".join(json.dumps(r) for r in records()), streaming=False
+    )
+    m = active(svc)
+    m.dialogue("brain", {"controller": "rules"})
+    m.dialogue("start", {"text": "Привет", "model": "one"})
+    job = finish(m)["job"]
+    assert len(svc.requests) == 1  # без отдельного «опиши событие»
+    assert INLINE_SIGNAL in svc.requests[0]["messages"][0]["content"]
+    assert job["brain"]["signal"]["event"] == "small_talk" and not job.get("fallback")
+    assert [e["text"] for e in job["events"] if e["type"] == "segment"] == ["Привет"]
+    m.dispose()

@@ -19,6 +19,7 @@ import tempfile
 import threading
 import urllib.parse
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -194,7 +195,10 @@ def prompt(request: dict[str, Any]) -> tuple[str, str]:
 class CodexProvider:
     """Провайдер модели подписки ChatGPT через `codex exec` (интерфейс как у CloudProvider)."""
 
-    capabilities = CAPABILITIES
+    # Ответ целиком, без инструментов и картинок; один запрос на ход (служебные инструкции Codex).
+    capabilities = replace(
+        CAPABILITIES, streaming=False, tools=False, image_input=False, single_call=True
+    )
 
     def __init__(
         self,

@@ -315,7 +315,7 @@ def test_segments_carry_the_pack_face_and_a_gesture_for_strong_emotion() -> None
     segment = next(e for e in result["job"]["events"] if e["type"] == "segment")
     assert (segment["expression"], segment["animation"]) == ("furious", "shout")
     prompt = svc.requests[0]["messages"][0]["content"]
-    assert "turn_away" in prompt and '"furious"' in prompt  # модель видит жесты и глаза набора
+    assert "turn_away" in prompt and "|furious" in prompt  # модель видит жесты и глаза набора
     r[1].update({"emotion": "anger", "intensity": 0.2, "animation": "nod"})
     svc = Services(output="\n".join(json.dumps(x) for x in r) + "\n")
     m2 = active(svc)
@@ -343,7 +343,7 @@ def test_owner_allows_profanity_and_the_model_is_told_to_swear() -> None:
     assert "No profanity." not in second and "allowed swearing" in second
     assert "скажи «триста»" in second  # узнаёт ловушку
     assert "обломался" not in second  # но готового ответа нет: модель не повторяет его по кругу
-    assert "Never repeat your earlier replies" in second
+    assert "react to the repetition itself" in second
     assert "Absurd or impossible requests" in second  # не «гавкает», а отвечает по-человечески
     assert "never how you sound" in second  # особые случаи не отменяют характер
     assert "гав" not in second.lower()  # без готовой реплики, которую модель повторяла бы
@@ -388,7 +388,7 @@ def test_reply_parts_carry_their_own_voice_style_to_the_voice() -> None:
         ("Давай попробуем…", "intriguing"),
     ]
     prompt = svc.requests[0]["messages"][0]["content"]
-    assert "intriguing" in prompt and "into segments wherever the emotion" in prompt
+    assert "intriguing" in prompt and "segments wherever emotion or delivery changes" in prompt
     assert "startled" in prompt and "reproachful" in prompt  # вскрик и укор — среди подач
     m.dispose()
 
