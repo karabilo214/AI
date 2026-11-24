@@ -32,6 +32,7 @@ from ramvi_character.context import (
     tokenizer_counter,
 )
 from ramvi_character.pack import GESTURES, load_pack
+from ramvi_character.personality import owner_request
 from ramvi_character.recall import Recall
 from ramvi_character.response import ResponsePlanner, plain_segments, strip_service_phrases
 
@@ -536,6 +537,7 @@ class Dialogue:
                 "task": snapshot["task"] or "Talk with the owner naturally, staying in character.",
                 # Файлы — только в этот ответ; память ищется и пишется по словам владельца.
                 "user_input": with_files(user_input, files),
+                "owner_request": owner_request(snapshot["personality"]),
                 "personality": snapshot["personality"],
                 "state": snapshot["state"],
                 "recent": recent,
@@ -609,11 +611,17 @@ class Dialogue:
                 self._check(identifier, revision)
                 fallback: dict[str, Any] = copy.deepcopy(request)
                 fallback["messages"] = copy.deepcopy(prepared.messages)
-                fallback["messages"][0]["content"] = fallback["messages"][0]["content"].replace(
-                    context.system_prompt,
-                    "Answer the owner in plain text. Respect the profile and owner boundaries. No JSON, tools, or memory writes.",
+                fallback["messages"][0]["content"] = (
+                    fallback["messages"][0]["content"]
+                    .replace(
+                        context.system_prompt,
+                        "Answer the owner in plain text. Respect the profile and owner boundaries. No JSON, tools, or memory writes.",
+                    )
+                    .replace(INLINE_SIGNAL, "")  # простой текст — без строки события
                 )
                 content = "".join(self._request(fallback, streaming))
+                if single:
+                    _, content = split_inline_signal(content)
                 accepted = plain_segments(content)
                 self._emit(identifier, revision, accepted)
                 with self.lock:

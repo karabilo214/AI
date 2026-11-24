@@ -288,6 +288,7 @@ class ContextOrchestrator:
         budget: Budget | None = None,
         application: dict[str, Any] | None = None,
         guidance: str | None = None,
+        owner_request: str = "",
     ) -> Prepared:
         budget = budget or Budget()
         # Реплика с файлами ограничена бюджетом токенов раздела input (ContextOverflow с числами),
@@ -330,7 +331,13 @@ class ContextOrchestrator:
                 }
             ),
             "task": encode({"source_id": "task", "goal": task}),
-            "input": encode({"source_id": "current", "text": user_input}),
+            "input": encode(
+                {
+                    "source_id": "current",
+                    "text": user_input,
+                    **({"owner_standing_request": owner_request} if owner_request else {}),
+                }
+            ),
         }
         counts = {key: self.counter.content(value) for key, value in sections.items()}
         limits = budget.sections

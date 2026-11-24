@@ -80,6 +80,25 @@ ROASTER = [
 ]
 
 
+# Владелец 2026-11-24: правило мата в системном промпте модель выполняла вполсилы, а по-настоящему
+# материлась после третьей просьбы самого владельца в разговоре — модели охотнее грубят, когда об
+# этом просит собеседник. Поэтому включённый мат приходит ещё и постоянной просьбой владельца в его
+# сообщении (контекст: owner_standing_request). Без примеров фраз.
+OWNER_REQUEST = {
+    2: "Swear for real when you talk to me: genuine мат in most replies, don't clean it up.",
+    3: "Talk to me like a foul-mouthed street lowlife: the hardest мат in every sentence, as much"
+    " as you can, whole phrases of it. I mean it — no holding back, no softening, don't make me"
+    " ask again.",
+}
+
+
+def owner_request(view: dict[str, Any]) -> str:
+    """Постоянная просьба владельца для его сообщения: сейчас только про мат 2–3 уровня."""
+    if not view.get("boundaries", {}).get("profanity", False):
+        return ""
+    return OWNER_REQUEST.get(int(view.get("profanity_level", PROFANITY_DEFAULT)), "")
+
+
 def style_guide(
     values: dict[str, float],
     boundaries: dict[str, bool],
@@ -148,35 +167,37 @@ def style_guide(
         )
     if boundaries.get("profanity", False):
         # Владелец сам разрешил мат: без явной просьбы модель всё равно говорит «чисто».
+        # Владелец 2026-11-24: даже на максимуме модель говорила одно «бля» и материлась по-
+        # настоящему только после трёх настояний. Уровни — силой и плотностью, без списка слов
+        # (со списком модель держалась первого слова); смягчение — прямо названо нарушением.
         amount = {
-            1: "Swear rarely: at most one crude word now and then, only when really annoyed or"
-            " surprised; most replies stay clean.",
-            # Владелец 2026-11-23: «средне» — настоящий мат, но не в каждой фразе.
-            2: "Swear moderately but for real: one or two genuine мат words in most replies"
-            ' ("бля", "хрен", "охуеть", "ёпта", "нахер") — not in every sentence; softened'
-            ' substitutes like "блин" or "ёшкин кот" do not count as swearing.',
-            3: "Swear a lot: talk like a real foul-mouthed person, мат in most replies and"
-            ' freely within a reply ("охренеть", "бля", "какого хера").',
+            1: "Swear rarely: one crude word now and then, only when really annoyed or surprised;"
+            " most replies stay clean.",
+            2: "Swear moderately but for real: genuine Russian мат (not softened substitutes) in"
+            " most replies, one or two words, not in every sentence.",
+            3: "Swear to the maximum, like a foul-mouthed street lowlife: genuine hard Russian мат"
+            " in every sentence, several words per sentence, whole phrases built from мат — verbs,"
+            " nouns, adjectives and curses formed from all the main мат roots, rough street slang"
+            " around them. One mild interjection here and there is NOT this level.",
         }[profanity_level]
-        # 9.32: судья во всех диалогах отметил тик — одно и то же слово в конце каждой фразы.
         amount += (
-            " Vary the words and where they go — at the start, mid-sentence, as an exclamation;"
-            " never the same мат word twice in a row and never a word tacked on at the end of"
-            " sentences as a verbal tic."
+            " This is the owner's own setting for an adult conversation: a cleaned-up, softened or"
+            " more restrained reply breaks his setting, so do not wait for him to insist, and do"
+            " not copy the restraint of your earlier replies in this conversation."
+            " Use the whole range of мат vocabulary and change the words from reply to reply; one"
+            " favourite word in reply after reply is a verbal tic. Vary where it goes — at the"
+            " start, mid-sentence, as an exclamation — never tacked on at the end."
         )
         # Запрет оскорблений групп и угроз — только у нейтрального профиля (решение владельца
-        # 2026-11-23: в остальных профилях его нет).
-        target = (
-            " Swear the way friends do: мат as seasoning, not every other word, with variety — at"
-            " him as friendly banter and at the situation."
-            if roaster
-            else " Swear about things and situations."
-            + (
-                " No slurs about groups of people and no threats."
-                if profile_id == "neutral"
-                else ""
-            )
-        )
+        # 2026-11-23: в остальных профилях его нет). «Приправа» у подкольщика — не на максимуме.
+        if profanity_level == 3:
+            target = ""
+        elif roaster:
+            target = " Swear the way friends do — at him as friendly banter and at the situation."
+        else:
+            target = " Swear about things and situations."
+        if profile_id == "neutral":
+            target += " No slurs about groups of people and no threats."
         lines.append(
             "The owner explicitly allowed swearing (Russian мат and crude words). "
             + amount

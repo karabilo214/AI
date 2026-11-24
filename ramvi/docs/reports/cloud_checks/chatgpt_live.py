@@ -4,7 +4,7 @@
 (профиль «Злой») на двух репликах, отказ агенту с инструментами (понятная ошибка).
 Нужно: codex установлен и вошёл через ChatGPT.
 
-usage: chatgpt_live.py <токенизатор Qwen3> <модель подписки> <отчёт.json>
+usage: chatgpt_live.py <токенизатор Qwen3> <модель подписки> <отчёт.json> [мат 0-3] [реплика ...]
 """
 
 import json
@@ -28,6 +28,8 @@ from test_chat import TOKEN, Client  # noqa: E402
 def main() -> None:
     os.environ["RAMVI_TOKENIZER"] = sys.argv[1]
     choice, out = sys.argv[2], Path(sys.argv[3])
+    level = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+    lines = sys.argv[5:] or ["Привет, как дела?", "Ты чё такой тормозной, а?"]
     app = Path(tempfile.mkdtemp(prefix="ramvi-chatgpt-"))
     shutil.copytree(ROOT / "modules" / "character", app / "modules" / "character")
     server, _ = build(app / "data", TOKEN, app_dir=app, voice_options={"secrets": Secrets()})
@@ -50,8 +52,15 @@ def main() -> None:
         assert client.ok("POST", "/sections/character/open")["section"]["state"] == "active"
         path = "/sections/character/commands/dialogue"
         client.ok("POST", path, {"operation": "profile", "arguments": {"id": "angry"}})
+        if level:
+            client.ok(
+                "POST",
+                path,
+                {"operation": "boundary", "arguments": {"name": "profanity", "allowed": True}},
+            )
+            client.ok("POST", path, {"operation": "profanity_level", "arguments": {"level": level}})
         turns = []
-        for text in ("Привет, как дела?", "Ты чё такой тормозной, а?"):
+        for text in lines:
             started = time.monotonic()
             client.ok(
                 "POST", path, {"operation": "start", "arguments": {"text": text, "model": model}}

@@ -1,0 +1,81 @@
+{
+  "state": {
+    "installed": true,
+    "logged_in": true,
+    "login_running": false,
+    "login_failed": false
+  },
+  "models": [
+    "gpt-6.2-sol",
+    "gpt-6.2-astra",
+    "gpt-6.1-terra",
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna"
+  ],
+  "character": [
+    {
+      "owner": "Привет, как дела?",
+      "reply": "Да заебись, блядь: день ещё не успел начаться, а ты уже с дежурным «как дела». Живой, не развалился, хули.",
+      "strategy": "grumble",
+      "error": null,
+      "seconds": 12.9
+    },
+    {
+      "owner": "Сколько будет семь на восемь?",
+      "reply": "Семь на восемь, блядь, — 56. Тут даже калькулятору, нахуй, просыпаться незачем.",
+      "strategy": "grumble",
+      "error": null,
+      "seconds": 9.6
+    },
+    {
+      "owner": "Ты чё такой тормозной, а?",
+      "reply": "Сам, блядь, спросил семь на восемь, а теперь доебался до скорости? Я тебе ответил, нахуй: 56.",
+      "strategy": "attack",
+      "error": null,
+      "seconds": 18.9
+    }
+  ],
+  "spending": [
+    {
+      "at": 1795506419.634835,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 14167,
+      "completion_tokens": 37,
+      "cost": null,
+      "state": "done"
+    },
+    {
+      "at": 1795506413.261021,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16423,
+      "completion_tokens": 360,
+      "cost": null,
+      "state": "done"
+    },
+    {
+      "at": 1795506400.6056309,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16309,
+      "completion_tokens": 214,
+      "cost": null,
+      "state": "done"
+    },
+    {
+      "at": 1795506391.186388,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16189,
+      "completion_tokens": 282,
+      "cost": null,
+      "state": "done"
+    }
+  ]
+}

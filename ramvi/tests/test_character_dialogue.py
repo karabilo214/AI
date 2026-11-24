@@ -356,7 +356,11 @@ def test_owner_allows_profanity_and_the_model_is_told_to_swear() -> None:
         finish(m)
         prompts[level] = svc.requests[-1]["messages"][0]["content"]
     assert "Swear rarely" in prompts[1] and "Swear moderately" not in prompts[1]
-    assert "Swear a lot" in prompts[3] and "Swear rarely" not in prompts[3]
+    assert (
+        "Swear to the maximum" in prompts[3]
+        and "breaks his setting" in prompts[3]
+        and "Swear rarely" not in prompts[3]
+    )
     assert m.dialogue("profanity_level", {"level": 4})["error"] == "ValueError"
     restored = CharacterModule()  # ползунок переживает перезапуск
     restored.initialize({"services": svc, "checkpoint": m.checkpoint()})
@@ -553,3 +557,24 @@ def test_voice_gets_the_delivery_in_words() -> None:
     from ramvi_character.dialogue import VOICE_STYLES
 
     assert set(VOICE_STYLES) <= set(VOICE_DELIVERY)  # у каждой подачи есть описание
+
+
+def test_hard_swearing_also_comes_as_the_owners_own_standing_request() -> None:
+    """Владелец 2026-11-24: правило в системном промпте модель выполняла вполсилы — включённый мат
+    приходит ещё и просьбой владельца в его сообщении; выключенный — нет."""
+    svc = Services()
+    m = active(svc)
+    m.dialogue("start", {"text": "Привет", "model": "one"})
+    finish(m)
+    assert "owner_standing_request" not in svc.requests[-1]["messages"][-1]["content"]
+    m.dialogue("boundary", {"name": "profanity", "allowed": True})
+    m.dialogue("profanity_level", {"level": 3})
+    m.dialogue("start", {"text": "Ну и?", "model": "one"})
+    finish(m)
+    last = json.loads(svc.requests[-1]["messages"][-1]["content"])
+    assert last["text"] == "Ну и?" and "street lowlife" in last["owner_standing_request"]
+    m.dialogue("profanity_level", {"level": 1})
+    m.dialogue("start", {"text": "Ок", "model": "one"})
+    finish(m)
+    assert "owner_standing_request" not in svc.requests[-1]["messages"][-1]["content"]
+    m.dispose()
