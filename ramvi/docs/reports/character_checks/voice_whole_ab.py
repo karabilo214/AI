@@ -4,7 +4,7 @@
 и «whole» (весь текст одним запросом, подача частей описана по порядку). Ошибка озвучки
 не заменяется тишиной, а попадает в отчёт.
 
-usage: voice_whole_ab.py <файл ключей> <ответы.json> <папка WAV>
+usage: voice_whole_ab.py <файл ключей> <ответы.json> <папка WAV> [номера ответов для озвучки по частям, напр. 3]
 """
 
 import json
@@ -49,6 +49,8 @@ def main() -> None:
     keys = read_keys(Path(sys.argv[1]))
     replies = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
     folder = Path(sys.argv[3])
+    # «По частям» — только для указанных ответов (остальные уже озвучены: лимит Gemini 10 в сутки).
+    redo = {int(n) for n in sys.argv[4:]}
     folder.mkdir(parents=True, exist_ok=True)
     providers = json.loads((ROOT / "service/ramvi_service/speech/providers.json").read_text())
     model = next(p["model"] for p in providers["providers"] if p["id"] == "gemini")
@@ -56,14 +58,15 @@ def main() -> None:
     for number, reply in enumerate(replies, 1):
         parts = reply["parts"]
         pcm = b""
-        for part in parts:
+        for part in parts if number in redo else []:
             style = voice_style(part["emotion"], part["intensity"], part["voice_style"])
             pcm += (
                 speak(engine, SpeechRequest(part["text"], voice="Kore", language="ru", style=style))
                 + PAUSE
             )
             time.sleep(3)
-        save(folder / f"reply_{number}_parts.wav", pcm)
+        if number in redo:
+            save(folder / f"reply_{number}_parts.wav", pcm)
         plan = " Then ".join(
             f'"{p["text"]}" — {p["emotion"]} at intensity {p["intensity"]:.2f}: '
             f"{VOICE_DELIVERY.get(p['voice_style'], p['voice_style'])}."
