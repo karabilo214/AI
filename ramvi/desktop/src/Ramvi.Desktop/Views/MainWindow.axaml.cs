@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window, IDisposable
     public MainWindow()
     {
         InitializeComponent();
+        TitleCaption.IsVisible = !OperatingSystem.IsWindows(); // B.2: одно название в полосе заголовка
         Closed += (_, _) => { Dispose(); Model?.Dispose(); };
         Closing += (_, e) =>
         {

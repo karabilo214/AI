@@ -22,7 +22,8 @@
   <Border x:Name="TitleBar" Grid.Row="0" Background="Transparent"
           Height="{Binding $parent[Window].WindowDecorationMargin.Top}"
           chrome:WindowDecorationProperties.ElementRole="TitleBar">
-    <TextBlock Classes="caption" HorizontalAlignment="Center" VerticalAlignment="Center"
+    <!-- B.2: на Windows название рисует сама полоса Avalonia 12 — своё только на других ОС -->
+    <TextBlock x:Name="TitleCaption" Classes="caption" HorizontalAlignment="Center" VerticalAlignment="Center"
                IsHitTestVisible="False" Text="{l:T app.title}" />
   </Border>
   <!-- Раскладка по иллюстрации ТЗ «Главный экран»: меню слева, чат справа (3.16, неоморфизм) -->

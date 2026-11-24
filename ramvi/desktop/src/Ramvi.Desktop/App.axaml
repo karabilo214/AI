@@ -30,11 +30,8 @@
       </FluentTheme.Palettes>
     </FluentTheme>
     <StyleInclude Source="avares://RAMVI/Themes/Styles.axaml" />
-    <!-- B.2: на Windows Avalonia 12 рисует свою полосу заголовка — без второго «RAMVI» (своё
-         название окна уже по центру) и без кнопки «на весь экран» рядом с системными. -->
-    <Style Selector=":is(Control)#PART_TitleTextPanel">
-      <Setter Property="IsVisible" Value="False" />
-    </Style>
+    <!-- B.2: на Windows Avalonia 12 рисует свою полосу заголовка — без кнопки «на весь экран»
+         рядом с системными (второе название убрано в MainWindow). -->
     <Style Selector="Button#PART_FullScreenButton, Button#PART_PopoverFullScreenButton">
       <Setter Property="IsVisible" Value="False" />
     </Style>
