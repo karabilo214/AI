@@ -1,0 +1,77 @@
+{
+  "started": "2026-11-24 18:50:03",
+  "control_blocked": [
+    "https://huggingface.co/: <urlopen error [Errno 11001] offline exam: no DNS>",
+    "http://192.0.2.1/: <urlopen error [Errno 10051] offline exam: network is unreachable>"
+  ],
+  "model": "qwen3-8b-q4_k_m",
+  "chat": {
+    "finish": "stop",
+    "error": null,
+    "answer": "391",
+    "has_391": true,
+    "seconds": 37.2
+  },
+  "memory_with_model": {
+    "free_ram_mb": 7553,
+    "python_processes_mb": [
+      1066,
+      61,
+      13
+    ]
+  },
+  "unload": "skipped (--keep-model)",
+  "memory_after_unload": {
+    "free_ram_mb": 7554,
+    "python_processes_mb": [
+      1066,
+      61,
+      13
+    ]
+  },
+  "voice": [
+    {
+      "file": "10005687533826592442.wav",
+      "audio_s": 13.7,
+      "ref": "Они умеют отлично видеть в темноте при помощи ночного видения и почти незаметно передвигаться. Оцелоты выслеживают добычу, сливаясь с окружающей обстановкой, а затем набрасываются на добычу.",
+      "text": "Они умеют отлично видеть в темноте при помощи ночного видения и почти незаметно передвигаться.Оцелоты выслеживают добычу, сливаясь с окружающей обстановкой, а затем набрасываются на добычу.",
+      "backend": "cpu",
+      "words_matched": "26/26"
+    },
+    {
+      "file": "10042203520901241191.wav",
+      "audio_s": 7.4,
+      "ref": "Он сказал, что создал дверной звонок, работающий от WiFi.",
+      "text": "Он сказал, что создал дверной звонок, работающий от Wi-Fi.",
+      "backend": "cpu",
+      "words_matched": "8/9"
+    },
+    {
+      "file": "10095490839809792710.wav",
+      "audio_s": 11.8,
+      "ref": "В Японии приблизительно 7000 островов (самый большой из которых — Хонсю), что делает Японию 7-м по величине островом в мире!",
+      "text": "В Японии приблизительно 7000 островов, самый большой из которых Хонсю, что делает Японию седьмым по величине островом в мире.",
+      "backend": "cpu",
+      "words_matched": "18/20"
+    }
+  ],
+  "agent_files": {
+    "read": true,
+    "grep": true,
+    "diff": true,
+    "applied": true
+  },
+  "guard": {
+    "processes_guarded": 5,
+    "blocked_total": 2,
+    "blocked_besides_control": [],
+    "commands": [
+      "-c C:\\anm\\release091\\RAMVI\\runtime\\python\\python.exe -P -m ramvi_engine serve --model C:\\Users\\<user>\\.ollama\\models\\blobs\\sha256-a3de86cd1c132c822487ededd47a",
+      "-c C:\\anm\\release091\\RAMVI\\runtime\\python\\python.exe -P -m ramvi_service.voice.worker --model C:\\anm\\offline091\\work\\app\\models\\stt\\ggml-large-v3-turbo-q5_0.bin",
+      "-m --model C:\\anm\\offline091\\work\\app\\models\\stt\\ggml-large-v3-turbo-q5_0.bin --threads 8 --vad C:\\anm\\offline091\\work\\app\\models\\stt\\ggml-silero-v5.1.2.bin",
+      "-m serve --model C:\\Users\\<user>\\.ollama\\models\\blobs\\sha256-a3de86cd1c132c822487ededd47a324c50491393e6565cd14bafa40d0b8e686f --maxt 2048 --tokenizer C:\\anm\\r",
+      "C:\\anm\\offline091\\exam4_offline.py --keep-model"
+    ]
+  },
+  "finished": "2026-11-24 18:51:17"
+}
