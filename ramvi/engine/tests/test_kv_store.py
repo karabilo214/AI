@@ -8,13 +8,16 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import numpy as np
 import pytest
-from ramvi_engine.generation import kv_store
-from ramvi_engine.generation.kv_store import KvStore, kv_buffers, switch
+
+# Лёгкие проверки CI идут без numpy и torch — тогда эти тесты пропускаются.
+np = pytest.importorskip("numpy")
+torch = pytest.importorskip("torch")
+
+from ramvi_engine.generation import kv_store  # noqa: E402
+from ramvi_engine.generation.kv_store import KvStore, kv_buffers, switch  # noqa: E402
 
 MAXT = 64
-torch = pytest.importorskip("torch")  # лёгкие проверки CI идут без torch
 
 
 class FakeEngine:
