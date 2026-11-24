@@ -49,7 +49,7 @@ from ramvi_service.engines import (
 )
 from ramvi_service.guard import Guard
 from ramvi_service.hardware import collect
-from ramvi_service.i18n import load_catalog, render
+from ramvi_service.i18n import translator, with_defaults
 from ramvi_service.model_control import ModelControl
 from ramvi_service.model_fit import ModelFit
 from ramvi_service.model_library import ModelLibrary
@@ -297,12 +297,8 @@ def check_data_dir(data_dir: Path) -> None:
     check_folder(data_dir)
 
 
-def main(argv: list[str] | None = None) -> None:
-    texts = load_catalog(os.environ.get("RAMVI_LANGUAGE", "ru"))  # 3.14: справка на языке
-
-    def t(key: str, **params: Any) -> str:
-        return render(key, texts, **params)
-
+def build_parser(t: Callable[..., str]) -> argparse.ArgumentParser:
+    """B.1: парсер отдельно — тест обходит все команды и проверяет справку."""
     parser = argparse.ArgumentParser(prog="ramvi-service", description=t("cli.service.about"))
     parser.add_argument("--data-dir", required=True, help=t("cli.service.data_dir"))
     parser.add_argument("--port", type=int, default=0, help=t("cli.service.port"))
@@ -311,6 +307,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--headless", action="store_true", help=t("cli.service.headless"))
     parser.add_argument("--model", help=t("cli.service.model"))
     parser.add_argument("--api-port", type=int, help=t("cli.service.api_port"))
+    return with_defaults(parser, t)
+
+
+def main(argv: list[str] | None = None) -> None:
+    t = translator()
+    parser = build_parser(t)
     args = parser.parse_args(argv)
     token = os.environ.get(TOKEN_ENV, "")
     if args.headless and not token:

@@ -13,9 +13,11 @@ import json
 import os
 import sys
 import time
+from collections.abc import Callable
 from multiprocessing import shared_memory
 from typing import Any
 
+from ramvi_service.i18n import translator, with_defaults
 from ramvi_service.voice.models import join_segments
 
 MAX_LINE = 65536
@@ -135,11 +137,17 @@ def run(model: str, threads: int, vad: str | None = None) -> None:
         print(encoded, flush=True)
 
 
+def build_parser(t: Callable[..., str]) -> argparse.ArgumentParser:
+    """B.1: внутренний процесс распознавания речи (запускает сервис)."""
+    parser = argparse.ArgumentParser(prog="ramvi-stt-worker", description=t("cli.stt.about"))
+    parser.add_argument("--model", required=True, help=t("cli.stt.model"))
+    parser.add_argument("--threads", type=int, default=4, help=t("cli.stt.threads"))
+    parser.add_argument("--vad", help=t("cli.stt.vad"))
+    return with_defaults(parser, t)
+
+
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="ramvi-stt-worker")
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--threads", type=int, default=4)
-    parser.add_argument("--vad")
+    parser = build_parser(translator())
     args = parser.parse_args(argv)
     run(args.model, max(1, args.threads), args.vad)
 

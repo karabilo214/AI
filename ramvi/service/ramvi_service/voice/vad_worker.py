@@ -4,16 +4,25 @@ import argparse
 import contextlib
 import json
 import sys
+from collections.abc import Callable
 
+from ramvi_service.i18n import translator, with_defaults
 from ramvi_service.voice.vad import Silero
 from ramvi_service.voice.worker import MAX_LINE, read_shared
 
 
+def build_parser(t: Callable[..., str]) -> argparse.ArgumentParser:
+    """B.1: внутренний процесс поиска речи (запускает сервис); --threads и --vad — для
+    совместимости с командой распознавания, не используются."""
+    parser = argparse.ArgumentParser(prog="ramvi-vad-worker", description=t("cli.vad.about"))
+    parser.add_argument("--model", required=True, help=t("cli.vad.model"))
+    parser.add_argument("--threads", help=t("cli.vad.unused"))
+    parser.add_argument("--vad", help=t("cli.vad.unused"))
+    return with_defaults(parser, t)
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--threads")
-    parser.add_argument("--vad")
+    parser = build_parser(translator())
     args = parser.parse_args()
     with contextlib.redirect_stdout(sys.stderr):
         detector = Silero(args.model)

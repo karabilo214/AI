@@ -23,6 +23,7 @@
 Проверка по сети — только по согласию (`update_check` в настройках, только HTTPS).
 """
 
+import argparse
 import base64
 import hashlib
 import json
@@ -37,7 +38,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from ramvi_service import __version__, ed25519, web
-from ramvi_service.i18n import UserError
+from ramvi_service.i18n import UserError, translator, with_defaults
 
 SCHEMA = "ramvi.update/1"
 PRODUCT = "RAMVI"
@@ -419,15 +420,23 @@ def _fetch(url: str) -> bytes:
     return data
 
 
+def build_parser(t: Callable[..., str]) -> argparse.ArgumentParser:
+    """B.1: справка ramvi-update из каталогов переводов."""
+    parser = argparse.ArgumentParser(prog="ramvi-update", description=t("cli.update.about"))
+    parser.add_argument(
+        "action",
+        choices=["status", "stage", "apply", "rollback", "mark-good"],
+        help=t("cli.update.action"),
+    )
+    parser.add_argument("--app-dir", required=True, type=Path, help=t("cli.update.app_dir"))
+    parser.add_argument("--data-dir", required=True, type=Path, help=t("cli.update.data_dir"))
+    parser.add_argument("--archive", type=Path, help=t("cli.update.archive"))
+    return with_defaults(parser, t)
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI для оболочки: `python -m ramvi_service.updates status|stage|apply|rollback|mark-good`."""
-    import argparse
-
-    parser = argparse.ArgumentParser(prog="ramvi-update")
-    parser.add_argument("action", choices=["status", "stage", "apply", "rollback", "mark-good"])
-    parser.add_argument("--app-dir", required=True, type=Path)
-    parser.add_argument("--data-dir", required=True, type=Path)
-    parser.add_argument("--archive", type=Path)
+    parser = build_parser(translator())
     args = parser.parse_args(argv)
     updater = Updater(args.app_dir, args.data_dir)
     try:

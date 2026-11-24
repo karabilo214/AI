@@ -41,8 +41,8 @@ class WithoutImports(ast.NodeTransformer):
     """Исключить перемещённые импорты из сравнения вычислительных тел."""
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef | None:
-        if node.name == "_planning_config":
-            return None  # separately exercised CLI configuration boundary
+        if node.name in ("_planning_config", "translator", "with_defaults"):
+            return None  # CLI configuration boundary / B.1 перевод справки — не вычисления
         self.generic_visit(node)
         return node
 
@@ -65,6 +65,8 @@ class WithoutImports(ast.NodeTransformer):
             }
         ):
             return None
+        if ast.unparse(node.value) == "with_defaults(ap, t)":
+            return None  # B.1: значения по умолчанию в справке
         if (
             isinstance(node.value, ast.Call)
             and isinstance(node.value.func, ast.Attribute)
@@ -87,6 +89,12 @@ class WithoutImports(ast.NodeTransformer):
     def visit_If(self, node: ast.If) -> ast.If | None:
         if ast.unparse(node.test) == "a.cmd == 'plan' and config.planning is not None":
             return None
+        self.generic_visit(node)
+        return node
+
+    def visit_Assign(self, node: ast.Assign) -> ast.Assign | None:
+        if ast.unparse(node.targets[0]) == "I18N_DIR":
+            return None  # B.1: где лежат каталоги переводов справки
         self.generic_visit(node)
         return node
 
@@ -339,10 +347,13 @@ def allowed_layout_changes(name: str, source: str) -> str:
             "        ParentWatch.from_env()\n"
             "    torch.set_grad_enabled(False)",
         )
-    return driver_jit_87(
+    return cli_help_b1(
         name,
-        release_pages_86(
-            name, tc_cfg_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
+        driver_jit_87(
+            name,
+            release_pages_86(
+                name, tc_cfg_b6(name, multigpu_410(name, mapped_weights_318(name, source)))
+            ),
         ),
     )
 
@@ -539,6 +550,30 @@ def driver_jit_87(name: str, source: str) -> str:
     old, new = DRIVER_JIT_87
     assert source.count(old) == 1, (name, old)
     return source.replace(old, new)
+
+
+# B.1 CLI-HELP-01: справка и ошибки разбора параметров — ключи каталогов переводов.
+CLI_HELP_B1 = (
+    (
+        '    ap = argparse.ArgumentParser(prog="ramvi-engine")',
+        "    t = translator()\n"
+        '    ap = argparse.ArgumentParser(prog="ramvi-engine", description=t("cli.engine.about"))',
+    ),
+    (
+        'ap.error("--model обязателен для serve, chat и plan")',
+        'ap.error(t("cli.engine.need_model"))',
+    ),
+    ('ap.error("maxt > 0, k от 0 до 15, resident >= 0")', 'ap.error(t("cli.engine.bad_numbers"))'),
+)
+
+
+def cli_help_b1(name: str, source: str) -> str:
+    if name != "__main__":
+        return source
+    for old, new in CLI_HELP_B1:
+        assert source.count(old) == 1, (name, old)
+        source = source.replace(old, new)
+    return source
 
 
 def computational_tree(source: str) -> str:

@@ -9,9 +9,11 @@
 один набор ключей, переводы не пустые, у каждого ключа одинаковый набор параметров.
 """
 
+import argparse
 import json
+import os
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -134,3 +136,27 @@ def check_catalogs(
             detail = ", ".join(f"{lang}={sorted(p)}" for lang, p in found.items())
             errors.append(f"{where}: {key} has different parameters: {detail}")
     return errors
+
+
+def translator(language: str | None = None) -> Callable[..., str]:
+    """3.14/B.1: справка консольных команд на языке RAMVI_LANGUAGE (по умолчанию ru)."""
+    texts = load_catalog(language or os.environ.get("RAMVI_LANGUAGE", "ru"))
+
+    def t(key: str, **params: Any) -> str:
+        return render(key, texts, **params)
+
+    return t
+
+
+def with_defaults(
+    parser: argparse.ArgumentParser, t: Callable[..., str]
+) -> argparse.ArgumentParser:
+    """B.1: в справке у параметра — значение по умолчанию (переведённой подписью)."""
+    for action in parser._actions:
+        if (
+            action.help
+            and action.default not in (None, False)
+            and isinstance(action.default, (str, int, float))
+        ):
+            action.help = f"{action.help} ({t('cli.default', value=action.default)})"
+    return parser
