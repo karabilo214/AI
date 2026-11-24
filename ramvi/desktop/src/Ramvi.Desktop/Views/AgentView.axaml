@@ -1,4 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:svc="using:Ramvi.Desktop.Services"
  xmlns:vm="using:Ramvi.Desktop.ViewModels" xmlns:api="using:Ramvi.Desktop.Api" xmlns:l="using:Ramvi.Desktop.Localization"
  x:Class="Ramvi.Desktop.Views.AgentView" x:DataType="vm:AgentViewModel">
  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="20" RowSpacing="10">
@@ -129,7 +130,7 @@
               <StackPanel x:Name="AgentRecordingIndicator" AutomationProperties.AutomationId="AgentRecordingIndicator" Orientation="Horizontal" Spacing="16"
                           HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Button x:Name="AgentBigStopButton" AutomationProperties.AutomationId="AgentBigStopButton" Classes="icon recording big" Command="{Binding Voice.ToggleCommand}"
-                        ToolTip.Tip="{l:T voice.stop_hint}">
+                        ToolTip.Tip="{Binding VoiceStopHint, Source={x:Static svc:Hotkeys.Current}}">
                   <PathIcon Data="{StaticResource icon-stop}" Width="28" Height="28" />
                 </Button>
                 <StackPanel VerticalAlignment="Center" Spacing="6">
@@ -144,7 +145,7 @@
                 </StackPanel>
               </StackPanel>
               <Button x:Name="AgentCancelRecordingButton" AutomationProperties.AutomationId="AgentCancelRecordingButton" Grid.Column="1" Classes="icon flat" VerticalAlignment="Top"
-                      Command="{Binding Voice.CancelCommand}" ToolTip.Tip="{l:T voice.cancel_hint}">
+                      Command="{Binding Voice.CancelCommand}" ToolTip.Tip="{Binding VoiceCancelHint, Source={x:Static svc:Hotkeys.Current}}">
                 <PathIcon Data="{StaticResource icon-close}" Width="12" Height="12" />
               </Button>
             </Grid>

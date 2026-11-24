@@ -91,6 +91,7 @@ public sealed class SettingsViewModel : ObservableObject
         _characterLoad = characterLoad;
         _api = api;
         Sound = new SoundSettingsViewModel(api);
+        Hotkeys = new HotkeysViewModel();
         _models = models ?? [];
         _openModels = openModels;
         _defaultChanged = defaultChanged;
@@ -98,6 +99,7 @@ public sealed class SettingsViewModel : ObservableObject
         [
             new("general", "settings.tab.general"), new("sound", "settings.tab.sound"),
             new("models", "settings.tab.models"), new("connections", "settings.tab.connections"),
+            new("hotkeys", "settings.tab.hotkeys"),
         ];
         _selectedTab = Tabs[0];
         // «Управлять моделями…» — та же панель, вкладка «Модели» (раньше — раздел бокового меню).
@@ -126,6 +128,7 @@ public sealed class SettingsViewModel : ObservableObject
         {
             IsOpen = false;
             Sound.Stop();
+            Hotkeys.Cancel();
             return Task.CompletedTask;
         });
         BrowseDataDirCommand = new Command(async () => DataDir = await _pickFolder(DataDir).ConfigureAwait(true) ?? DataDir);
@@ -151,11 +154,12 @@ public sealed class SettingsViewModel : ObservableObject
                 return;
             }
 
-            foreach (var name in new[] { nameof(IsGeneralTab), nameof(IsSoundTab), nameof(IsModelsTab), nameof(IsConnectionsTab), nameof(IsModuleTab), nameof(IsAgentTab), nameof(IsCharacterTab), nameof(HasFooter) })
+            foreach (var name in new[] { nameof(IsGeneralTab), nameof(IsSoundTab), nameof(IsModelsTab), nameof(IsConnectionsTab), nameof(IsHotkeysTab), nameof(IsModuleTab), nameof(IsAgentTab), nameof(IsCharacterTab), nameof(HasFooter) })
             {
                 Raise(name);
             }
 
+            if (value.Id != "hotkeys") Hotkeys.Cancel(); // ушли с вкладки — назначение отменено
             if (value.Id == "module:character" && IsOpen && _characterLoad is not null) _ = _characterLoad();
             if (value.Id == "module:agent" && IsOpen && _agentLoad is not null) _ = _agentLoad();
             if (value.Id == "connections" && IsOpen) { _ = Connections.LoadAsync(); _ = Cloud.LoadAsync(); }
@@ -199,6 +203,11 @@ public sealed class SettingsViewModel : ObservableObject
 
     /// <summary>5.2: раздел «Звук» — микрофон, язык и модель распознавания речи.</summary>
     public SoundSettingsViewModel Sound { get; }
+
+    /// <summary>B.13: вкладка «Горячие клавиши».</summary>
+    public HotkeysViewModel Hotkeys { get; }
+
+    public bool IsHotkeysTab => _selectedTab?.Id == "hotkeys";
 
     public Command CloseCommand { get; }
 

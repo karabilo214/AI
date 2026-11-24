@@ -40,6 +40,7 @@ public sealed partial class App : Application, IDisposable
             // 3.13: выход — только когда закрыто (а не спрятано) окно RAMVI или выбран «Выйти».
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             _dataDir = settings.DataDirPath(ServiceOptions.AppDirectory);
+            Hotkeys.Current.Use(_dataDir); // B.13: клавиши пользователя из папки данных
             window.Opened += async (_, _) => await ConnectAsync(window).ConfigureAwait(true);
             desktop.ShutdownRequested += async (_, _) => { _tray?.Dispose(); _tray = null; await StopServiceAsync().ConfigureAwait(true); };
         }

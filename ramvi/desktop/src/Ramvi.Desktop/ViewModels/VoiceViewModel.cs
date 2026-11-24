@@ -1,6 +1,7 @@
 using System.Globalization;
 using Ramvi.Desktop.Api;
 using Ramvi.Desktop.Localization;
+using Ramvi.Desktop.Services;
 
 namespace Ramvi.Desktop.ViewModels;
 
@@ -124,7 +125,10 @@ public sealed class VoiceViewModel : ObservableObject
         private set => Set(ref _autoSend, value);
     }
 
-    public string Tip => L[IsRecording ? "voice.stop_hint" : IsTranscribing ? "voice.transcribing" : "voice.start_hint"];
+    /// <summary>Подсказка кнопки с текущей клавишей микрофона (B.13).</summary>
+    public string Tip => IsRecording ? Hotkeys.Current.VoiceStopHint
+        : IsTranscribing ? L["voice.transcribing"]
+        : Hotkeys.Current.VoiceStartHint;
 
     private void SetState(string state)
     {

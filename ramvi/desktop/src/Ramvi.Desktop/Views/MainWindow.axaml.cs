@@ -193,18 +193,26 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
-        var primary = e.KeyModifiers is KeyModifiers.Control or KeyModifiers.Meta;
-        var (command, toInput) = e.Key switch
+        // B.13: идёт назначение клавиши во вкладке «Горячие клавиши» — нажатие и есть клавиша.
+        if (model.Settings.Hotkeys.Capture(e.Key, e.KeyModifiers))
         {
-            Key.M when e.KeyModifiers == KeyModifiers.Control && model.Sections.IsCharacterSelected => (model.Character.Voice.ToggleCommand, false),
-            Key.M when e.KeyModifiers == KeyModifiers.Control => (model.Voice.ToggleCommand, false),
-            Key.Escape when model.Sections.IsCharacterSelected && model.Character.Stop.CanExecute(null) => (model.Character.Stop, true),
-            Key.Escape when model.Character.Voice.IsActive => (model.Character.Voice.EndCommand, false),
-            Key.Escape when model.Voice.IsRecording => (model.Voice.CancelCommand, false),
-            Key.Escape when model.Settings.IsOpen => (model.Settings.CloseCommand, true),
-            Key.Escape when model.IsGenerating => (model.StopCommand, true),
-            Key.N when primary && !model.Settings.IsOpen && !model.Onboarding.IsOpen => (model.NewChatCommand, true),
-            Key.OemComma when primary && !model.Onboarding.IsOpen => (model.OpenSettingsCommand, false),
+            e.Handled = true;
+            return;
+        }
+
+        var keys = Hotkeys.Current;
+        var action = Hotkeys.Actions.FirstOrDefault(a => keys.Matches(a, e.Key, e.KeyModifiers));
+        var (command, toInput) = action switch
+        {
+            Hotkeys.Microphone when model.Sections.IsCharacterSelected => (model.Character.Voice.ToggleCommand, false),
+            Hotkeys.Microphone => (model.Voice.ToggleCommand, false),
+            Hotkeys.Stop when model.Sections.IsCharacterSelected && model.Character.Stop.CanExecute(null) => (model.Character.Stop, true),
+            Hotkeys.Stop when model.Character.Voice.IsActive => (model.Character.Voice.EndCommand, false),
+            Hotkeys.Stop when model.Voice.IsRecording => (model.Voice.CancelCommand, false),
+            Hotkeys.Stop when model.Settings.IsOpen => (model.Settings.CloseCommand, true),
+            Hotkeys.Stop when model.IsGenerating => (model.StopCommand, true),
+            Hotkeys.NewChat when !model.Settings.IsOpen && !model.Onboarding.IsOpen => (model.NewChatCommand, true),
+            Hotkeys.Settings when !model.Onboarding.IsOpen => (model.OpenSettingsCommand, false),
             _ => ((System.Windows.Input.ICommand?)null, false),
         };
         if (command is null)

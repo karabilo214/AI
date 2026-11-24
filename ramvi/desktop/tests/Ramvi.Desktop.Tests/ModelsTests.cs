@@ -248,7 +248,7 @@ public sealed class ModelsTests
         Assert.Empty(model.ModelsScreen.Cards); // экран не грузится, пока вкладку не открыли
 
         await model.Settings.OpenAsync();
-        Assert.Equal(["general", "sound", "models", "connections"], model.Settings.Tabs.Select(t => t.Id));
+        Assert.Equal(["general", "sound", "models", "connections", "hotkeys"], model.Settings.Tabs.Select(t => t.Id));
         Assert.True(model.Settings.IsGeneralTab && model.Settings.HasFooter);
         Assert.Equal("qwen3-8b-q4_k_m", model.Settings.DefaultModel?.Id);
         await model.Settings.ManageModelsCommand.RunAsync(); // «Управлять моделями…» — вкладка «Модели»
@@ -270,7 +270,7 @@ public sealed class ModelsTests
         await model.InitializeAsync();
         model.Settings.AddTab("agent", "section.agent");
         model.Settings.AddTab("agent", "section.agent");
-        Assert.Equal(["general", "sound", "models", "connections", "module:agent"], model.Settings.Tabs.Select(t => t.Id));
+        Assert.Equal(["general", "sound", "models", "connections", "hotkeys", "module:agent"], model.Settings.Tabs.Select(t => t.Id));
         model.Settings.SelectedTab = model.Settings.Tabs[^1];
         // У агента свой экран настроек (6.13) — это не общая заглушка вкладки модуля.
         Assert.True(model.Settings.IsAgentTab && !model.Settings.IsModuleTab && !model.Settings.HasFooter);

@@ -852,6 +852,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         Localizer.Current = Localizer.Load(language);
         Relocalize();
+        Hotkeys.Current.Refresh(); // подсказки с клавишами — на новом языке
     }
 
     /// <summary>Все тексты окна — на текущем языке: разметка обновляется сама, здесь — тексты моделей.</summary>

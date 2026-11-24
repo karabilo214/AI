@@ -52,7 +52,7 @@ public sealed class VoiceTests
 
         await model.Voice.ToggleCommand.RunAsync();
         Assert.True(model.Voice.IsRecording);
-        Assert.Equal(Ru["voice.stop_hint"], model.Voice.Tip);
+        Assert.Equal(Ru.Format("voice.stop_hint", ("key", "Ctrl+M")), model.Voice.Tip);
         await model.Voice.ToggleCommand.RunAsync();
 
         Assert.Equal(["start", "stop"], api.VoiceCalls);
@@ -386,7 +386,7 @@ public sealed class VoiceTests
         var bigStop = window.FindControl<Button>("BigStopButton")!;
         Assert.True(Shown(mic) && mic.IsEffectivelyEnabled);
         Assert.False(Shown(overlay));
-        Assert.Equal(Ru["voice.start_hint"], ToolTip.GetTip(mic));
+        Assert.Equal(Ru.Format("voice.start_hint", ("key", "Ctrl+M")), ToolTip.GetTip(mic));
 
         await model.Voice.ToggleCommand.RunAsync();
         Dispatcher.UIThread.RunJobs();
