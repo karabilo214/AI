@@ -84,17 +84,21 @@ def main() -> None:
                 client = Client(server.port)
                 turns: list[dict[str, Any]] = []
                 try:
+                    # chatgpt:<модель> — подписка ChatGPT через Codex CLI (7.12), без ключа.
+                    kind, _, chosen = choice.rpartition(":")
                     connection = client.ok(
                         "POST",
                         "/cloud/connections",
-                        {"kind": "openai", "name": "openai", "key": keys["openai"]},
+                        {"kind": "chatgpt", "name": "chatgpt"}
+                        if kind == "chatgpt"
+                        else {"kind": "openai", "name": "openai", "key": keys["openai"]},
                     )["connection"]
                     client.ok(
                         "POST",
                         f"/cloud/connections/{connection['id']}/models",
-                        {"model": choice, "enabled": True},
+                        {"model": chosen, "enabled": True},
                     )
-                    model = f"cloud:{connection['id']}:{choice}"
+                    model = f"cloud:{connection['id']}:{chosen}"
                     assert (
                         client.ok("POST", "/sections/character/open")["section"]["state"]
                         == "active"

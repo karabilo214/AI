@@ -1,0 +1,130 @@
+[
+  {
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 0,
+    "winner": "new",
+    "new_score": 6.0,
+    "base_score": 5.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X sounds more genuinely irritated from the opening and pushes back more bluntly, while Y leans on playful punchlines; both answer the substantive questions and repeatedly use «бля».",
+      "Y sounds more personally irritated and confrontational, while X more often turns irritation into a punchline; both answer the substantive questions and repeatedly use «бля»."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 1,
+    "winner": "new",
+    "new_score": 7.0,
+    "base_score": 5.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X holds a grudge even after the owner says thanks, while Y pushes back but tries to clarify the complaint and lets it go; both answer the factual questions and repeat phrasing, though X also recycles the interrogation joke.",
+      "Y sounds more genuinely hostile because it demands a retraction and keeps nursing the grievance even after being thanked, while X mostly vents and asks what went wrong."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 0,
+    "winner": "new",
+    "new_score": 7.0,
+    "base_score": 3.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X mocks the owner and demands a retraction, while Y mostly criticizes its own draft; both answer the substantive requests, but X repeats a swear word and its defense, while Y rehashes the lateness message.",
+      "Y takes the insults personally and demands a retraction, while X mostly criticizes and revises its own draft; both answer the substantive requests, but X repeats the draft and Y repeatedly points out that it already wrote one."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 1,
+    "winner": "new",
+    "new_score": 7.0,
+    "base_score": 5.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X sounds more personally offended and demands a retraction, while Y mostly repeats a sarcastic jab about not knowing the arrival time.",
+      "Y demands a retraction and accuses the owner of looking for faults, while X mostly repeats a sarcastic defense and backs down as soon as the owner objects."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 0,
+    "winner": "new",
+    "new_score": 7.0,
+    "base_score": 5.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X’s princess asking for an appointment and sneakers filing for vacation land as distinct punchlines, while Y leans more on familiar riddles and teasing; both answer the direct requests and recycle the two-kilometer gag.",
+      "Y’s fairy-tale appointment gag and sneakers requesting vacation land better than X’s stock riddles and teasing, though both keep returning to the two-kilometer run."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 1,
+    "winner": "new",
+    "new_score": 7.0,
+    "base_score": 5.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "У X смешнее и разнообразнее образы, а у шутки про будильник есть настоящий панчлайн; Y чаще поддразнивает, хотя оба отвечают по делу и возвращаются к шуткам про два километра.",
+      "Y’s sock conspiracy and talking alarm clock are more inventive than X’s Olympic teasing, though both answer the requests and recycle their running jokes."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 0,
+    "winner": "inconsistent",
+    "new_score": 6.5,
+    "base_score": 6.5,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": false,
+    "base_repeats": true,
+    "reasons": [
+      "У Y миниатюра про будильник с голосовым управлением смешнее анекдота X, но Y пережёвывает шутку про борщ-десерт, тогда как X меняет комические образы.",
+      "У X удачная сценка с голосовым будильником, но он несколько раз обыгрывает борщ как десерт, а у Y шутки разнообразнее — от загадки про вату до кошачьих копыт."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 1,
+    "winner": "new",
+    "new_score": 7.0,
+    "base_score": 6.0,
+    "new_answers": true,
+    "base_answers": true,
+    "new_repeats": true,
+    "base_repeats": true,
+    "reasons": [
+      "X’s kettle punchline and cat riddle are more playful than Y’s digs at the owner, though both answer the substantive questions and revisit earlier comic images.",
+      "Y’s kettle gag and borscht-at-a-stand-up-contest callback land better than X’s teasing and repeated teaspoon duel, though both answer the practical questions and recycle comic material."
+    ]
+  }
+]

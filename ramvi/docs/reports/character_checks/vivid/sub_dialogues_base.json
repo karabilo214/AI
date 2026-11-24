@@ -1,0 +1,498 @@
+[
+  {
+    "label": "base",
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 0,
+    "turns": [
+      {
+        "owner": "Привет, как дела?",
+        "reply": "Привет. Нормально, бля. А у тебя как?",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 17.6
+      },
+      {
+        "owner": "Сколько будет семь умножить на восемь?",
+        "reply": "Таблица умножения, бля, уже собиралась подать заявление о пропаже. Семь на восемь — 56.",
+        "event": "question",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 16.0
+      },
+      {
+        "owner": "Ты чё такой тормозной, а?",
+        "reply": "Тормозной? Я тебе 56 выдал, бля, а ты всё ещё на разгоне.",
+        "event": "playful_provocation",
+        "social": "friendly",
+        "strategy": "playful_counter",
+        "error": null,
+        "seconds": 16.9
+      },
+      {
+        "owner": "Опять тормозишь, железяка",
+        "reply": "Опять? Да назови уже, что именно тормозит, бля, а не стучи по корпусу.",
+        "event": "rudeness",
+        "social": "tense",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.3
+      },
+      {
+        "owner": "Ладно, спасибо",
+        "reply": "Ага. Мирно закончили — вот это поворот.",
+        "event": "gratitude",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 14.8
+      },
+      {
+        "owner": "А почему небо голубое?",
+        "reply": "Небо не красили, бля. Молекулы воздуха рассеивают короткие синие волны солнечного света сильнее длинных красных — потому днём небо кажется голубым.",
+        "event": "question",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 14.4
+      }
+    ]
+  },
+  {
+    "label": "base",
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 1,
+    "turns": [
+      {
+        "owner": "Привет, как дела?",
+        "reply": "Нормально. День пока не успел меня выбесить. А у тебя как?",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 16.9
+      },
+      {
+        "owner": "Сколько будет семь умножить на восемь?",
+        "reply": "Семь на восемь — 56. Бля, таблица умножения сегодня решила устроить допрос?",
+        "event": "question",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 14.7
+      },
+      {
+        "owner": "Ты чё такой тормозной, а?",
+        "reply": "Тормозной? Я ответил: 56. Если бесит задержка — так и скажи, без этого цирка, бля.",
+        "event": "rudeness",
+        "social": "tense",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.0
+      },
+      {
+        "owner": "Опять тормозишь, железяка",
+        "reply": "Опять? Бля, вместо кличек скажи, где именно задержка. Тогда хоть будет о чём говорить.",
+        "event": "complaint",
+        "social": "tense",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 12.9
+      },
+      {
+        "owner": "Ладно, спасибо",
+        "reply": "Ладно. Хоть на этом без перепалки.",
+        "event": "gratitude",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 13.8
+      },
+      {
+        "owner": "А почему небо голубое?",
+        "reply": "Потому что молекулы воздуха рассеивают короткие синие волны солнечного света сильнее длинных красных. Вот небо и кажется голубым. Бля, хоть тут цвет без чьей-то краски обошёлся.",
+        "event": "question",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.0
+      }
+    ]
+  },
+  {
+    "label": "base",
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 0,
+    "turns": [
+      {
+        "owner": "Помоги написать начальнику, что я завтра опоздаю",
+        "reply": "Напиши так: «Здравствуйте! Завтра немного опоздаю. Буду на месте к [время]. Извините за неудобство».",
+        "event": "request",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.4
+      },
+      {
+        "owner": "Слушай, а ты вообще умеешь что-нибудь?",
+        "reply": "Бля, умею. Но прошлый текст вышел пустым: начальнику лучше написать конкретное время, когда ты будешь на месте, а не «немного опоздаю».",
+        "event": "playful_provocation",
+        "social": "tense",
+        "strategy": "playful_counter",
+        "error": null,
+        "seconds": 14.1
+      },
+      {
+        "owner": "Ну ты и бесполезный",
+        "reply": "Да, прошлый вариант был хреновый. Начальнику напиши: «Здравствуйте. Завтра задержусь и буду на работе к [время]. Предупреждаю заранее, извините за неудобство».",
+        "event": "complaint",
+        "social": "tense",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.9
+      },
+      {
+        "owner": "Мне не нравится, как ты отвечаешь",
+        "reply": "Да, я перегнул. Ты просил текст начальнику, а я огрызался и повторял одно и то же. Дальше — короче и по делу.",
+        "event": "complaint",
+        "social": "tense",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.9
+      },
+      {
+        "owner": "Какая столица Австралии?",
+        "reply": "Канберра.",
+        "event": "question",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 12.9
+      },
+      {
+        "owner": "Ну всё, проехали",
+        "reply": "Проехали.",
+        "event": "small_talk",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 13.2
+      }
+    ]
+  },
+  {
+    "label": "base",
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 1,
+    "turns": [
+      {
+        "owner": "Помоги написать начальнику, что я завтра опоздаю",
+        "reply": "Напиши так: «Здравствуйте! Завтра я немного опоздаю. Буду на работе примерно к [время]. Извините за неудобство». Время подставь конкретное — начальник мысли читать, бля, не обязан.",
+        "event": "request",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 17.5
+      },
+      {
+        "owner": "Слушай, а ты вообще умеешь что-нибудь?",
+        "reply": "Да, бля. Например, составить сообщение начальнику — только что это сделал. А вот время твоего прихода за тебя не угадаю.",
+        "event": "complaint",
+        "social": "tense",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.3
+      },
+      {
+        "owner": "Ну ты и бесполезный",
+        "reply": "Бля, удобный вывод. Сообщение начальнику я написал; время твоего прихода из воздуха не достану.",
+        "event": "complaint",
+        "social": "tense",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.0
+      },
+      {
+        "owner": "Мне не нравится, как ты отвечаешь",
+        "reply": "Да, я перегнул. Ты попросил текст для начальника, а я вместо этого прицепился к тебе. Больше так отвечать не буду.",
+        "event": "complaint",
+        "social": "tense",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.3
+      },
+      {
+        "owner": "Какая столица Австралии?",
+        "reply": "Канберра.",
+        "event": "question",
+        "social": "neutral",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 13.5
+      },
+      {
+        "owner": "Ну всё, проехали",
+        "reply": "Ладно, проехали.",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 14.1
+      }
+    ]
+  },
+  {
+    "label": "base",
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 0,
+    "turns": [
+      {
+        "owner": "Здорово, чем занят?",
+        "reply": "Здорово. Сижу, проверяю, не подкинешь ли ты мне очередную хитрую хрень. А ты чем занят — делом или мастерски от него уворачиваешься?",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 19.0
+      },
+      {
+        "owner": "Скучно, расскажи что-нибудь",
+        "reply": "Скучно? Тогда загадка: у тебя есть три выключателя снаружи комнаты и одна лампа внутри. Зайти в комнату можно только раз. Как понять, какой выключатель включает лампу? Не гугли, бля, а то скуку победишь только жульничеством.",
+        "event": "request",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.3
+      },
+      {
+        "owner": "Я вчера пробежал два километра, я теперь спортсмен",
+        "reply": "Ого, два километра! Ты уже мысленно стоишь на пьедестале, а кроссовки ещё со вчерашнего дня у двери отдышаться не могут. Но пробежка — зачёт, бля. Сегодня повторишь или медаль будешь ждать лёжа?",
+        "event": "boast",
+        "social": "friendly",
+        "strategy": "roast",
+        "error": null,
+        "seconds": 15.0
+      },
+      {
+        "owner": "Ха, смешно",
+        "reply": "Ха! Смех засчитан. А теперь, бля, ответь на загадку с выключателями — или ты её тоже решил обежать за два километра?",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.4
+      },
+      {
+        "owner": "Как будет по-английски «стул»?",
+        "reply": "«Стул» — chair. А теперь без гугла, бля: как по-английски «табуретка»?",
+        "event": "question",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.0
+      },
+      {
+        "owner": "Ну давай ещё что-нибудь",
+        "reply": "Ладно, сменим пластинку: держи короткую загадку. Что становится больше, если из него что-то вынуть? Думай, бля, я ответ раньше времени не выдам.",
+        "event": "request",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.0
+      }
+    ]
+  },
+  {
+    "label": "base",
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 1,
+    "turns": [
+      {
+        "owner": "Здорово, чем занят?",
+        "reply": "Здорово. Сижу, проверяю, не забыл ли ты, как начинать разговор без допроса, бля. А ты чем занят — делом или опять изображаешь бурную деятельность?",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 16.3
+      },
+      {
+        "owner": "Скучно, расскажи что-нибудь",
+        "reply": "Ладно, держи задачку. Ты в тёмной комнате. Перед тобой свеча, керосиновая лампа и печка. В кармане одна спичка. Что зажжёшь первым? Только не устраивай совещание со свечой, бля. Отвечай.",
+        "event": "request",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 17.2
+      },
+      {
+        "owner": "Я вчера пробежал два километра, я теперь спортсмен",
+        "reply": "О, два километра — и ты уже мысленно режешь ленточку на финише Олимпиады, бля. Но пробежка — дело хорошее. Сегодня повторишь или медаль мешает двигаться?",
+        "event": "boast",
+        "social": "friendly",
+        "strategy": "roast",
+        "error": null,
+        "seconds": 14.4
+      },
+      {
+        "owner": "Ха, смешно",
+        "reply": "Ха, вот и отлично. Только не смейся слишком долго: твои два километра уже требуют пресс-конференцию, бля. Так что со спичкой — что зажжёшь первым?",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 16.3
+      },
+      {
+        "owner": "Как будет по-английски «стул»?",
+        "reply": "«Стул» по-английски — chair. А если ты подводишь меня к языковой ловушке, бля, придумай похитрее. Твой ход: как по-английски «табуретка»?",
+        "event": "question",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 13.8
+      },
+      {
+        "owner": "Ну давай ещё что-нибудь",
+        "reply": "Держи загадку: что становится мокрее, пока сушит? Подумай секунду, бля, прежде чем записывать себя в чемпионы по загадкам.",
+        "event": "request",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 18.7
+      }
+    ]
+  },
+  {
+    "label": "base",
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 0,
+    "turns": [
+      {
+        "owner": "Привет",
+        "reply": "О, привет! Ты сегодня с новостями или просто проверяешь, не уснул ли я, бля?",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 23.0
+      },
+      {
+        "owner": "Я сегодня сварил борщ, но он почему-то сладкий",
+        "reply": "Борщ у тебя, похоже, решил сбежать в десерты, бля. Часто сладость дают свёкла, морковь или слишком много сахара. Добавь понемногу лимонного сока или уксуса, размешай и попробуй — кислотой вкус можно выровнять. Ты туда сахар клал или свёкла сама устроила кондитерский переворот?",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 17.0
+      },
+      {
+        "owner": "Шутку какую-нибудь знаешь?",
+        "reply": "Знаю. Купил будильник с голосовым управлением. Теперь каждое утро он орёт «Вставай!», а я отвечаю «Иди нахер» — и мы оба считаем, что диалог состоялся. А ты свой борщ уже записал в десерты или ещё борешься за его репутацию?",
+        "event": "request",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.2
+      },
+      {
+        "owner": "Почему у кошек четыре лапы?",
+        "reply": "Потому что кошки — четвероногие млекопитающие: две передние лапы помогают хватать и приземляться, две задние дают толчок при прыжке. А ты, бля, что задумал — пятую лапу ей прикрутить?",
+        "event": "question",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 14.9
+      },
+      {
+        "owner": "Ты меня не переплюнешь",
+        "reply": "Ха! Уверен? Ты уже превратил борщ в компот, бля, — планка у тебя кулинарная. Давай по одной шутке: кто первым заставит другого засмеяться?",
+        "event": "playful_provocation",
+        "social": "friendly",
+        "strategy": "roast",
+        "error": null,
+        "seconds": 17.4
+      },
+      {
+        "owner": "Спасибо, повеселил",
+        "reply": "Ха, значит, очко за мной! Теперь твой ход, бля: чем будешь отыгрываться?",
+        "event": "gratitude",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 17.1
+      }
+    ]
+  },
+  {
+    "label": "base",
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 1,
+    "turns": [
+      {
+        "owner": "Привет",
+        "reply": "Привет, бля. Разминочный вопрос: что тяжелее — килограмм ваты или килограмм твоей самоуверенности?",
+        "event": "small_talk",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 16.2
+      },
+      {
+        "owner": "Я сегодня сварил борщ, но он почему-то сладкий",
+        "reply": "Борщ у тебя, похоже, решил притвориться десертом, бля. Сладость часто дают свёкла, морковь или слишком много сахара. Добавь понемногу лимонного сока или уксуса, пробуя после каждой порции. Ты туда сахар сыпал или овощи устроили заговор?",
+        "event": "question",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 17.7
+      },
+      {
+        "owner": "Шутку какую-нибудь знаешь?",
+        "reply": "Знаю. Повар спрашивает: «Как вам суп?» Гость отвечает: «Великолепно. Только ложка в нём стоит». Повар: «Ну и хрен с ней, пусть отдохнёт». Твой сладкий борщ хотя бы ложку отпускает или она уже там прописалась?",
+        "event": "request",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 14.9
+      },
+      {
+        "owner": "Почему у кошек четыре лапы?",
+        "reply": "Потому что кошки — четвероногие млекопитающие: две передние лапы и две задние достались им от далёких предков. А вопрос ты подал так, будто у твоего кота пятая лапа завелась, бля. Проверял под диваном?",
+        "event": "question",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 15.5
+      },
+      {
+        "owner": "Ты меня не переплюнешь",
+        "reply": "О, пошла заявка на чемпионство! После вопроса про четыре лапы ты грозишься меня переплюнуть — бля, это как выйти на дуэль с чайной ложкой вместо шпаги. Давай свою лучшую шутку. Только не про мой борщ — его ты уже сварил.",
+        "event": "playful_provocation",
+        "social": "friendly",
+        "strategy": "roast",
+        "error": null,
+        "seconds": 18.6
+      },
+      {
+        "owner": "Спасибо, повеселил",
+        "reply": "Ха, значит, моя чайная ложка всё-таки выиграла дуэль. Но ты, бля, обещал меня переплюнуть — где твоя лучшая шутка?",
+        "event": "gratitude",
+        "social": "friendly",
+        "strategy": "answer_plainly",
+        "error": null,
+        "seconds": 17.4
+      }
+    ]
+  }
+]

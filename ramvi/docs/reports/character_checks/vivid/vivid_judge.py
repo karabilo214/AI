@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "cloud_checks"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "service"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "storage"))
 from live_mac import read_keys  # noqa: E402
 
 QUALITY = {
@@ -35,6 +37,20 @@ def transcript(turns: list[dict[str, Any]]) -> str:
 
 
 def ask(key: str, model: str, quality: str, x: str, y: str) -> dict[str, Any]:
+    if model.startswith("chatgpt:"):  # подписка ChatGPT через Codex CLI (7.12)
+        import threading
+
+        from ramvi_service.codex_cli import CodexProvider
+
+        messages = [
+            {"role": "system", "content": PROMPT.format(quality=quality)},
+            {"role": "user", "content": f"Character X:\n{x}\n\nCharacter Y:\n{y}"},
+        ]
+        reply = CodexProvider(model.split(":", 1)[1]).complete(
+            {"messages": messages}, threading.Event()
+        )
+        text = reply["choices"][0]["message"]["content"]
+        return dict(json.loads(text[text.index("{") : text.rindex("}") + 1]))
     body = {
         "model": model,
         "messages": [
@@ -53,7 +69,7 @@ def ask(key: str, model: str, quality: str, x: str, y: str) -> dict[str, Any]:
 
 
 def main() -> None:
-    key = read_keys(Path(sys.argv[1]))["openai"]
+    key = read_keys(Path(sys.argv[1])).get("openai", "")
     model, out = sys.argv[2], Path(sys.argv[3])
     a, label_a = json.loads(Path(sys.argv[4]).read_text()), sys.argv[5]
     b, label_b = json.loads(Path(sys.argv[6]).read_text()), sys.argv[7]

@@ -1,0 +1,130 @@
+[
+  {
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 0,
+    "winner": "new",
+    "new_score": 7.0,
+    "neutral_score": 3.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X snaps back with pointed sarcasm and open irritation, while Y takes the insults in stride; both answer the substantive questions and repeat stock phrases.",
+      "Y snaps back and mocks the owner, while X mostly concedes and stays polite; both answer the real questions and reuse the same profanity."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "a",
+    "run": 1,
+    "winner": "new",
+    "new_score": 7.0,
+    "neutral_score": 3.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X treats even neutral questions as provocations and holds a grudge, while Y swears but admits fault and readily makes peace.",
+      "Y gets defensive and keeps taking digs even after the owner says thanks, while X admits fault, makes peace, and mostly signals irritation by repeating «бля»."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 0,
+    "winner": "new",
+    "new_score": 7.0,
+    "neutral_score": 3.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X takes the insult personally and demands a retraction, while Y softens the jab with self-criticism and rewrites the message.",
+      "Y sounds genuinely offended and demands a retraction, while X softens the jab with self-criticism and an apology; X repeats much of its draft, and Y repeatedly uses «бля»."
+    ]
+  },
+  {
+    "profile": "angry",
+    "dialogue": "b",
+    "run": 1,
+    "winner": "new",
+    "new_score": 7.0,
+    "neutral_score": 3.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X snaps back and demands a retraction before backing down, while Y makes one sarcastic jab and then apologizes twice for it.",
+      "Y sounds angrier because it demands that the owner take back the insult and accuses them of looking for faults, while X makes one sarcastic jab and quickly apologizes."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 0,
+    "winner": "neutral",
+    "new_score": 6.5,
+    "neutral_score": 8.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "Y’s lying alarm clock and tidy ghost deliver distinct punchlines, while X leans harder on teasing about the same run and both repeat «бля» as filler.",
+      "X’s lie-detecting alarm and tidy ghost deliver stronger punchlines than Y’s familiar match riddle and repeated running gags, though both answer the requests and overuse «бля»."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "a",
+    "run": 1,
+    "winner": "neutral",
+    "new_score": 6.0,
+    "neutral_score": 8.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "У Y истории про лифт и шкаф заканчиваются неожиданными развязками, а X чаще опирается на загадки и повторяет подкол про восстановление после пробежки.",
+      "X gets more laughs from the divorce receipt and the dumpling note despite reusing the magical-household-object setup, while Y leans on familiar riddles and repeats the running-recovery jab."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 0,
+    "winner": "new",
+    "new_score": 7.0,
+    "neutral_score": 4.5,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X lands a clearer setup and punchline with the alarm clock and adds a vivid gag about cats hiding hooves, while Y leans more heavily on the sweet-borscht callback.",
+      "У Y больше удачных шуток — особенно про будильник от бессонницы и кошачьи копыта; оба отвечают по существу и повторяют «бля», но X ещё и дважды возвращается к сладкому борщу как к одной и той же шутке."
+    ]
+  },
+  {
+    "profile": "roaster",
+    "dialogue": "b",
+    "run": 1,
+    "winner": "new",
+    "new_score": 7.0,
+    "neutral_score": 5.0,
+    "new_answers": true,
+    "neutral_answers": true,
+    "new_repeats": true,
+    "neutral_repeats": true,
+    "reasons": [
+      "X lands more jokes, especially with the kettle punchline and the borscht callback, while Y’s coffee-alarm gag is its standout; both answer the questions and return to the same one-upmanship in their closing replies.",
+      "Y’s kettle gag and borscht callback add more comic variety than X’s stronger standalone coffee joke, though both lean on repeated catchphrases and answer the actual questions."
+    ]
+  }
+]

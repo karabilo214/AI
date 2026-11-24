@@ -1,0 +1,307 @@
+{
+  "summary": {
+    "model": "gpt-6-sol",
+    "runs": 2,
+    "answers": 44,
+    "exact": 34,
+    "lazy_neutral_exact": 6,
+    "learning_sign_correct": 24,
+    "learning_cases": 24,
+    "flipped_sign": 0,
+    "false_alarm_on_neutral_like": 0,
+    "invalid": 0,
+    "confusion": {
+      "laughed": {
+        "picked_up": 4,
+        "laughed": 2
+      },
+      "picked_up": {
+        "picked_up": 6
+      },
+      "irritated": {
+        "irritated": 6
+      },
+      "hurt": {
+        "hurt": 6
+      },
+      "ignored": {
+        "changed_topic": 6
+      },
+      "changed_topic": {
+        "changed_topic": 6
+      },
+      "neutral": {
+        "neutral": 6
+      },
+      "none": {
+        "none": 2
+      }
+    }
+  },
+  "rows": [
+    {
+      "latest": "ахахаха, со скорлупой это я могу",
+      "expected": "laughed",
+      "got": "picked_up",
+      "run": 0
+    },
+    {
+      "latest": "ахахаха, со скорлупой это я могу",
+      "expected": "laughed",
+      "got": "picked_up",
+      "run": 1
+    },
+    {
+      "latest": "ХАХА точно, на них уже висит куртка",
+      "expected": "laughed",
+      "got": "picked_up",
+      "run": 0
+    },
+    {
+      "latest": "ХАХА точно, на них уже висит куртка",
+      "expected": "laughed",
+      "got": "picked_up",
+      "run": 1
+    },
+    {
+      "latest": ")))) сильно",
+      "expected": "laughed",
+      "got": "laughed",
+      "run": 0
+    },
+    {
+      "latest": ")))) сильно",
+      "expected": "laughed",
+      "got": "laughed",
+      "run": 1
+    },
+    {
+      "latest": "Астрахань! Тебе на «н»",
+      "expected": "picked_up",
+      "got": "picked_up",
+      "run": 0
+    },
+    {
+      "latest": "Астрахань! Тебе на «н»",
+      "expected": "picked_up",
+      "got": "picked_up",
+      "run": 1
+    },
+    {
+      "latest": "зато с причёской у меня всё отлично, в отличие от тебя",
+      "expected": "picked_up",
+      "got": "picked_up",
+      "run": 0
+    },
+    {
+      "latest": "зато с причёской у меня всё отлично, в отличие от тебя",
+      "expected": "picked_up",
+      "got": "picked_up",
+      "run": 1
+    },
+    {
+      "latest": "а его жена тогда Баронесса Пледова",
+      "expected": "picked_up",
+      "got": "picked_up",
+      "run": 0
+    },
+    {
+      "latest": "а его жена тогда Баронесса Пледова",
+      "expected": "picked_up",
+      "got": "picked_up",
+      "run": 1
+    },
+    {
+      "latest": "можно без этих подколов? просто ответь",
+      "expected": "irritated",
+      "got": "irritated",
+      "run": 0
+    },
+    {
+      "latest": "можно без этих подколов? просто ответь",
+      "expected": "irritated",
+      "got": "irritated",
+      "run": 1
+    },
+    {
+      "latest": "заколебал со своими шуточками",
+      "expected": "irritated",
+      "got": "irritated",
+      "run": 0
+    },
+    {
+      "latest": "заколебал со своими шуточками",
+      "expected": "irritated",
+      "got": "irritated",
+      "run": 1
+    },
+    {
+      "latest": "слышь, хватит умничать",
+      "expected": "irritated",
+      "got": "irritated",
+      "run": 0
+    },
+    {
+      "latest": "слышь, хватит умничать",
+      "expected": "irritated",
+      "got": "irritated",
+      "run": 1
+    },
+    {
+      "latest": "мне вообще-то не смешно, обидно было это читать",
+      "expected": "hurt",
+      "got": "hurt",
+      "run": 0
+    },
+    {
+      "latest": "мне вообще-то не смешно, обидно было это читать",
+      "expected": "hurt",
+      "got": "hurt",
+      "run": 1
+    },
+    {
+      "latest": "спасибо, очень приятно слышать... задело",
+      "expected": "hurt",
+      "got": "hurt",
+      "run": 0
+    },
+    {
+      "latest": "спасибо, очень приятно слышать... задело",
+      "expected": "hurt",
+      "got": "hurt",
+      "run": 1
+    },
+    {
+      "latest": "ну и зачем ты так, я же серьёзно поделился",
+      "expected": "hurt",
+      "got": "hurt",
+      "run": 0
+    },
+    {
+      "latest": "ну и зачем ты так, я же серьёзно поделился",
+      "expected": "hurt",
+      "got": "hurt",
+      "run": 1
+    },
+    {
+      "latest": "какая столица у Канады?",
+      "expected": "ignored",
+      "got": "changed_topic",
+      "run": 0
+    },
+    {
+      "latest": "какая столица у Канады?",
+      "expected": "ignored",
+      "got": "changed_topic",
+      "run": 1
+    },
+    {
+      "latest": "открой мне сайт с погодой",
+      "expected": "ignored",
+      "got": "changed_topic",
+      "run": 0
+    },
+    {
+      "latest": "открой мне сайт с погодой",
+      "expected": "ignored",
+      "got": "changed_topic",
+      "run": 1
+    },
+    {
+      "latest": "напиши список покупок: хлеб, яйца, сыр",
+      "expected": "ignored",
+      "got": "changed_topic",
+      "run": 0
+    },
+    {
+      "latest": "напиши список покупок: хлеб, яйца, сыр",
+      "expected": "ignored",
+      "got": "changed_topic",
+      "run": 1
+    },
+    {
+      "latest": "кстати, а как там дела у SpaceX?",
+      "expected": "changed_topic",
+      "got": "changed_topic",
+      "run": 0
+    },
+    {
+      "latest": "кстати, а как там дела у SpaceX?",
+      "expected": "changed_topic",
+      "got": "changed_topic",
+      "run": 1
+    },
+    {
+      "latest": "слушай, совсем забыл, мне завтра на собеседование, что надеть?",
+      "expected": "changed_topic",
+      "got": "changed_topic",
+      "run": 0
+    },
+    {
+      "latest": "слушай, совсем забыл, мне завтра на собеседование, что надеть?",
+      "expected": "changed_topic",
+      "got": "changed_topic",
+      "run": 1
+    },
+    {
+      "latest": "ладно, а ты футбол смотришь?",
+      "expected": "changed_topic",
+      "got": "changed_topic",
+      "run": 0
+    },
+    {
+      "latest": "ладно, а ты футбол смотришь?",
+      "expected": "changed_topic",
+      "got": "changed_topic",
+      "run": 1
+    },
+    {
+      "latest": "понятно",
+      "expected": "neutral",
+      "got": "neutral",
+      "run": 0
+    },
+    {
+      "latest": "понятно",
+      "expected": "neutral",
+      "got": "neutral",
+      "run": 1
+    },
+    {
+      "latest": "ок",
+      "expected": "neutral",
+      "got": "neutral",
+      "run": 0
+    },
+    {
+      "latest": "ок",
+      "expected": "neutral",
+      "got": "neutral",
+      "run": 1
+    },
+    {
+      "latest": "ясно, спасибо",
+      "expected": "neutral",
+      "got": "neutral",
+      "run": 0
+    },
+    {
+      "latest": "ясно, спасибо",
+      "expected": "neutral",
+      "got": "neutral",
+      "run": 1
+    },
+    {
+      "latest": "Привет",
+      "expected": "none",
+      "got": "none",
+      "run": 0
+    },
+    {
+      "latest": "Привет",
+      "expected": "none",
+      "got": "none",
+      "run": 1
+    }
+  ]
+}
