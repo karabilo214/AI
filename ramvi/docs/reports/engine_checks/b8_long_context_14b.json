@@ -1,0 +1,172 @@
+{
+  "model": "qwen3:14b",
+  "rows": [
+    {
+      "context": 4096,
+      "plan": {
+        "schema_version": 1,
+        "mode": "auto",
+        "resident": 22,
+        "reserve_bytes": 923140096,
+        "max_batch": 16,
+        "batch_scope": "speculative_verification_and_prefill_chunks",
+        "draft_enabled": false,
+        "prefill_mode": "legacy",
+        "placement": [
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "gpu",
+          "stream",
+          "hyb",
+          "stream",
+          "hyb",
+          "stream",
+          "hyb",
+          "hyb",
+          "stream",
+          "hyb",
+          "stream",
+          "hyb",
+          "stream",
+          "hyb",
+          "hyb",
+          "stream",
+          "hyb",
+          "stream",
+          "hyb"
+        ],
+        "resources": {
+          "schema_version": 1,
+          "unit": "bytes",
+          "kind": "estimate",
+          "components": {
+            "weights": {
+              "vram": 5219015680,
+              "ram": 0,
+              "mapped": 2592645120
+            },
+            "kv": {
+              "vram": 671088640,
+              "ram": 335544320,
+              "mapped": 0
+            },
+            "persistent": {
+              "vram": 16535816,
+              "ram": 813394176,
+              "mapped": 0
+            },
+            "streaming": {
+              "vram": 439992320,
+              "ram": 3640442880,
+              "mapped": 0
+            },
+            "cpu_workspace": {
+              "vram": 0,
+              "ram": 4839424,
+              "mapped": 0
+            },
+            "draft": {
+              "vram": 0,
+              "ram": 0,
+              "mapped": 0
+            },
+            "reserve": {
+              "vram": 923140096,
+              "ram": 0,
+              "mapped": 0
+            }
+          },
+          "allocated": {
+            "vram": 6346632456,
+            "ram": 4794220800,
+            "mapped": 2592645120
+          },
+          "required": {
+            "vram": 7269772552,
+            "ram": 4794220800,
+            "mapped": 2592645120
+          },
+          "notes": [
+            "stream RAM excludes Arena chunk slack/pinning overhead",
+            "mapped counts distinct embedding and CPU-layer tensors once; GPU repack includes Q4 scale expansion",
+            "excludes loading peaks, allocator overhead, graphs, JIT and long-prefill temporaries; reserve required"
+          ]
+        },
+        "assessment": {
+          "estimated_fit": true,
+          "vram_shortfall": 0,
+          "ram_shortfall": 0,
+          "includes_file_working_set": true,
+          "guaranteed": false
+        },
+        "reasons": [
+          "metadata_candidates_tested=64",
+          "fixed native allocation buffers estimated at batch=16",
+          "prefill auto retains validated legacy default; blocked is opt-in",
+          "hyb without draft: long prompts compute offloaded layers on GPU"
+        ],
+        "estimate_status": "preload_estimate",
+        "optimality": "not_claimed"
+      },
+      "load_s": 32.8,
+      "place": {
+        "gpu": 24,
+        "stream": 7,
+        "cpu": 9,
+        "hyb": 0
+      },
+      "prompt_tokens": 3654,
+      "prompt_s": 118.1,
+      "prompt_tok_s": 30.9,
+      "gen_tokens": 32,
+      "gen_tok_s": 5.59,
+      "vram_peak_gib": 6.27
+    },
+    {
+      "context": 8192,
+      "plan_error": "NoMemoryPlan('no estimated GPU/owned-RAM fit after 158 candidates')",
+      "load_s": 86.0,
+      "place": {
+        "gpu": 0,
+        "stream": 17,
+        "cpu": 23,
+        "hyb": 0
+      },
+      "prompt_tokens": 7340,
+      "prompt_s": 863.8,
+      "prompt_tok_s": 8.5,
+      "gen_tokens": 32,
+      "gen_tok_s": 0.07,
+      "vram_peak_gib": 7.77
+    },
+    {
+      "context": 16384,
+      "plan_error": "NoMemoryPlan('no estimated GPU/owned-RAM fit after 158 candidates')",
+      "error": "AcceleratorError(\"CUDA error: out of memory\\nSearch for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\\nThe CUDA driver logged these messages, which may provide useful details:\\nReturning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemHostAlloc\\n\\n\")"
+    },
+    {
+      "context": 32768,
+      "plan_error": "NoMemoryPlan('no estimated GPU/owned-RAM fit after 158 candidates')",
+      "error": "AcceleratorError(\"CUDA error: out of memory\\nSearch for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\\n\")"
+    }
+  ]
+}
