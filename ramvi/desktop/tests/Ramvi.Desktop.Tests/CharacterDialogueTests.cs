@@ -63,33 +63,6 @@ public sealed class CharacterDialogueTests
         Assert.Equal(["{\"name\":\"profanity\",\"allowed\":false}"], sent);
     }
     [AvaloniaFact]
-    public async Task Rating_buttons_send_dimension_and_direction_for_the_last_reply()
-    {
-        var sent = new List<string>();
-        var api = new FakeChatApi();
-        api.ModuleHandler = (section, command, body) =>
-        {
-            if (command is "voice" or "speech") return Task.FromResult(Json("{\"available\":false}"));
-            var operation = body.GetProperty("operation").GetString()!;
-            if (operation == "feedback") sent.Add(body.GetProperty("arguments").GetRawText());
-            return Task.FromResult(operation switch
-            {
-                "status" => Json(Status),
-                "feedback" => Json("""{"feedback":{"preferences":[{"dimension":"humor","direction":-1,"agreement":1,"reliable":1,"unreliable":0,"responses":1,"established":false}],"signals":[]}}"""),
-                _ => Json("{}")
-            });
-        };
-        using var vm = new CharacterViewModel(() => api, new ObservableCollection<ModelInfo>(api.Models));
-        await vm.LoadAsync();
-        Assert.True(vm.CanRate && vm.RateCommand.CanExecute("humor:-1"));
-        await vm.RateCommand.RunAsync("humor:-1");
-        Assert.Equal("""{"dimension":"humor","direction":-1}""", Assert.Single(sent));
-        Assert.Equal(Ramvi.Desktop.Localization.Localizer.Current["character.feedback_saved"], vm.FeedbackStatus);
-        var shown = Assert.Single(vm.Memory.Preferences).Text;
-        Assert.Contains(Ramvi.Desktop.Localization.Localizer.Current["character.pref_tentative"], shown, StringComparison.Ordinal);
-    }
-
-    [AvaloniaFact]
     public async Task Stop_discards_a_poll_response_that_arrives_late()
     {
         var pending = new TaskCompletionSource<JsonElement>();

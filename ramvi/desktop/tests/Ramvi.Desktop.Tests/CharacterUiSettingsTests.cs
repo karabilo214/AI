@@ -185,11 +185,7 @@ public sealed class CharacterUiSettingsTests
             Assert.Contains("load model-b", api.EngineCalls);
             Assert.True(model.Character.Draft.Length == 0);
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
-            var rating = window.GetVisualDescendants().OfType<CharacterRatingView>().Single().FindControl<StackPanel>("CharacterRating")!;
-            Assert.True(rating.IsEffectivelyVisible);
-            var ratingTop = rating.TranslatePoint(new Avalonia.Point(), window)!.Value;
-            Assert.True(ratingTop.X < dialogue.TranslatePoint(new Avalonia.Point(), window)!.Value.X); // Left, under the character.
-            Assert.True(ratingTop.Y > character.FindControl<CharacterCanvas>("CharacterSurface")!.TranslatePoint(new Avalonia.Point(), window)!.Value.Y);
+            Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => b.CommandParameter is "overall:1"); // 9.33: кнопок оценки нет
             await model.Character.DisconnectCommand.RunAsync();
             Assert.Contains("dialogue:cancel", calls);
         }

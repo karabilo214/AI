@@ -165,7 +165,6 @@
         <Panel IsVisible="{Binding CharacterWindow.IsEmbedded}">
          <views:CharacterView DataContext="{Binding Sections.Current}" Response="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Presentation}" ReplyEnd="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.ReplyEnd}" Playback="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.Playback}" PackPath="{Binding $parent[Window].((vm:MainViewModel)DataContext).Character.PackPath, Mode=TwoWay}"/>
         </Panel>
-        <views:CharacterRatingView Grid.Row="1" DataContext="{Binding Character}"/>
        </Grid>
        <views:CharacterDialogueView Grid.Column="1" DataContext="{Binding Character}"/>
       </Grid>

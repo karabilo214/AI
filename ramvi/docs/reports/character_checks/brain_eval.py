@@ -1,7 +1,7 @@
 """9.31: сравнение контроллеров реакций на синтетических владельцах (без LLM).
 
 Контроллер работает с событиями, поэтому его можно сравнить офлайн: поток событий и оценки
-«владельца» заданы программой. Контроллеры: rules (обучение выключено), memory (правила +
+«владельца» заданы программой. Обратная связь (9.33) — неявная реакция следующей репликой. Контроллеры: rules (обучение выключено), memory (правила +
 память исходов), lazy (ленивая стратегия: всегда answer_plainly). Хранилище — настоящая база
 модуля (миграции персонажа, feedback_signal, brain_decision), правило «устойчиво» — 9.18.
 
@@ -35,7 +35,10 @@ from ramvi_character.memory import MemoryStore  # noqa: E402
 from ramvi_character.personality import Personality  # noqa: E402
 from test_character_memory import DataServices, open_db  # noqa: E402
 
-RATE = 0.6  # с какой вероятностью владелец нажимает оценку (предположение)
+RATE = 0.6  # с какой вероятностью реакция владельца заметна и распознана (предположение)
+# 9.33: кнопок нет — «владелец» реагирует следующей репликой (смех / раздражение); IMPLICIT=False —
+# прежний режим 9.31 с кнопками.
+IMPLICIT = True
 EVENTS = {
     "mistake": 3,
     "trap": 2,
@@ -72,6 +75,7 @@ def signal(event: str) -> Any:
         "social_context": social,
         "current_task": "",
         "owner_reaction": "unknown",
+        "last_reply_reaction": "none",
     }
     return parse_signal(json.dumps(raw))
 
@@ -107,7 +111,10 @@ def run(
             response = f"t{seed}x{turn}"
             outcomes.record(response, event, decision.strategy, decision.controller)
             if verdict and rng.random() < RATE:
-                feedback.add(response, "overall", verdict, "explicit_ui")
+                if IMPLICIT:
+                    outcomes.react(response, "laughed" if verdict > 0 else "irritated")
+                else:
+                    feedback.add(response, "overall", verdict, "explicit_ui")
             if verdict < 0 and key in settled:
                 rejected_after_settled += 1
             if outcomes.outcome(*key) == "disliked":
@@ -134,6 +141,7 @@ def main() -> None:
     turns = int(sys.argv[3]) if len(sys.argv) > 3 else 120
     report: dict[str, Any] = {
         "rate": RATE,
+        "implicit": IMPLICIT,
         "events": EVENTS,
         "seeds": seeds,
         "turns": turns,

@@ -432,6 +432,12 @@ class Dialogue:
                 raise
             except Exception:
                 signal = None
+        last = getattr(self.owner, "_brain_last_response", "")
+        if signal is not None and outcomes is not None and last:
+            try:  # 9.33: неявная реакция на прошлый ответ — вместо кнопок оценки
+                outcomes.react(last, signal.last_reply_reaction)
+            except Exception:
+                pass  # память исходов необязательна
         personality = self.owner._personality.view()
         decision = (
             safe_decision(controller.name)
@@ -606,6 +612,8 @@ class Dialogue:
                 status = "completed"
                 brain = self.job.get("brain") or {}
             outcomes = getattr(self.owner, "_brain_outcomes", None)
+            # 9.33: на этот ответ отреагирует следующая реплика владельца.
+            self.owner._brain_last_response = identifier if brain.get("signal") else ""
             if outcomes is not None and brain.get("signal"):
                 # 9.31: данные для памяти исходов — событие и стратегия этого ответа.
                 try:

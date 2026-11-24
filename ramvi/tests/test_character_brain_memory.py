@@ -39,6 +39,7 @@ def signal(event: str, **changes: Any) -> Any:
         "social_context": "friendly",
         "current_task": "",
         "owner_reaction": "enjoys_banter",
+        "last_reply_reaction": "none",
         **changes,
     }
     parsed = parse_signal(json.dumps(value))
@@ -105,3 +106,30 @@ def test_safety_strategies_are_never_changed_by_memory(db: ModuleDatabase) -> No
         signal("danger", social_context="serious"), roaster(), EMOTIONS
     )
     assert decision.strategy == "serious_help" and not decision.adapted_from
+
+
+def react(
+    outcomes: OutcomeStore, event: str, strategy: str, reaction: str, count: int, start: int = 0
+) -> None:
+    for i in range(start, start + count):
+        outcomes.record(f"i{event}{i}", event, strategy, "rules/1")
+        outcomes.react(f"i{event}{i}", reaction)
+
+
+def test_implicit_reactions_teach_without_buttons_but_need_twice_the_turns(
+    db: ModuleDatabase,
+) -> None:
+    """9.33: раздражение на подколы про ошибки — без единой кнопки; догадка весит половину."""
+    outcomes, _ = stores(db)
+    memory = MemoryController(outcomes)
+    react(outcomes, "mistake", "roast", "irritated", 3)
+    assert outcomes.outcome("mistake", "roast") == "unknown"  # трёх догадок мало
+    react(outcomes, "mistake", "roast", "irritated", 3, start=3)
+    assert outcomes.outcome("mistake", "roast") == "disliked"
+    assert memory.decide(signal("mistake"), roaster(), EMOTIONS).strategy == "correct_mistake"
+    react(outcomes, "small_talk", "tell_joke", "laughed", 6)
+    assert outcomes.outcome("small_talk", "tell_joke") == "liked"
+    react(outcomes, "question", "answer_plainly", "changed_topic", 10)  # неоднозначно — не в счёт
+    assert outcomes.outcome("question", "answer_plainly") == "unknown"
+    with pytest.raises(ValueError):
+        outcomes.react("imistake0", "whatever")

@@ -26,6 +26,7 @@ def signal(event: str, social: str = "friendly") -> Any:
         "social_context": social,
         "current_task": "",
         "owner_reaction": "unknown",
+        "last_reply_reaction": "none",
     }
     return parse_signal(json.dumps(raw))
 

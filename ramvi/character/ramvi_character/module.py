@@ -68,6 +68,7 @@ class CharacterModule:
         self._brain = DEFAULT_BRAIN
         self._brain_outcomes: OutcomeStore | None = None
         self._brain_recent: list[str] = []  # 9.32: стратегии последних ходов
+        self._brain_last_response = ""  # 9.33: ответ, на который отреагирует следующая реплика
 
     def initialize(self, context: dict[str, Any]) -> dict[str, Any]:
         saved = context.get("checkpoint", {})

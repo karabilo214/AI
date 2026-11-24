@@ -26,6 +26,7 @@ def signal(**changes: Any) -> dict[str, Any]:
         "social_context": "friendly",
         "current_task": "english_learning",
         "owner_reaction": "enjoys_banter",
+        "last_reply_reaction": "none",
     }
     value.update(changes)
     return value
@@ -184,3 +185,33 @@ def test_new_character_learns_from_ratings_by_default() -> None:
     from ramvi_character.module import CharacterModule
 
     assert CharacterModule()._brain == "memory"
+
+
+def test_next_message_reaction_is_stored_for_the_previous_reply() -> None:
+    """9.33: «опиши событие» оценивает реакцию на прошлый ответ — она уходит в память исходов."""
+
+    class Outcomes:
+        def __init__(self) -> None:
+            self.reactions: list[tuple[str, str]] = []
+
+        def record(self, *args: str) -> None:
+            pass
+
+        def react(self, response_id: str, reaction: str) -> None:
+            self.reactions.append((response_id, reaction))
+
+        def outcome(self, event: str, strategy: str) -> str:
+            return "unknown"
+
+    svc = Brained(json.dumps(signal(event="small_talk", last_reply_reaction="laughed")))
+    m = active(svc)
+    outcomes = Outcomes()
+    m._brain_outcomes = outcomes  # type: ignore[assignment]
+    m.dialogue("brain", {"controller": "memory"})
+    first = m.dialogue("start", {"text": "Привет", "model": "one"})["response_id"]
+    finish(m)
+    assert outcomes.reactions == []  # на первую реплику реагировать не на что
+    m.dialogue("start", {"text": "Ахаха", "model": "one"})
+    finish(m)
+    assert outcomes.reactions == [(first, "laughed")]
+    m.dispose()
