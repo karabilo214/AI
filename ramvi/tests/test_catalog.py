@@ -181,7 +181,8 @@ def test_unsupported_reasons() -> None:
     assert unsupported_reason(entry()) is None
     assert unsupported_reason(entry(quantization="F16")) is None
     assert unsupported_reason(entry(quantization="Q8_0")) == "quantization"
-    assert unsupported_reason(entry(quantization="Q6_K")) == "quantization"  # не проверен на железе
+    assert unsupported_reason(entry(quantization="Q6_K")) is None  # B.4: проверен на железе
+    assert unsupported_reason(entry(architecture="qwen3moe", quantization="Q6_K")) == "quantization"
     assert unsupported_reason(entry(architecture="qwen3moe", quantization="F16")) == "quantization"
     assert unsupported_reason(entry(architecture="llama")) == "architecture"
     assert unsupported_reason(entry(format="safetensors")) == "format"

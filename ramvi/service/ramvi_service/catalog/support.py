@@ -2,9 +2,9 @@
 
 Подтверждено = движок умеет такие матрицы (`formats.gguf.validate_qwen`) **и** файл
 этого вида проверен на железе: qwen3 Q4_K_M (WIDE30, экзамен 1), qwen3 F16
-(пункт 3.18), qwen3moe Q4_K_M (этап 2). Новый квант добавляется сюда только после
-проверки на железе. Q6_K, Q8_0, Q5_*, BF16 и кванты IQ* скрыты: у одних матриц нет
-ядер движка, другие не проверены целиком.
+(пункт 3.18), qwen3 Q6_K (B.4: сверка с fp32 и с Ollama), qwen3moe Q4_K_M (этап 2).
+Новый квант добавляется сюда только после проверки на железе. Q8_0, Q5_*, BF16 и
+кванты IQ* скрыты: у одних матриц нет ядер движка, другие не проверены целиком.
 """
 
 from ramvi_engine.capabilities import capability_catalog
@@ -12,7 +12,7 @@ from ramvi_engine.capabilities import capability_catalog
 from ramvi_service.catalog.entry import CatalogEntry
 
 CONFIRMED_QUANTS: dict[str, tuple[str, ...]] = {
-    "qwen3": ("Q4_K_M", "F16"),
+    "qwen3": ("Q4_K_M", "Q6_K", "F16"),
     "qwen3moe": ("Q4_K_M",),  # у экспертов движок принимает только Q4_K/Q6_K
 }
 
