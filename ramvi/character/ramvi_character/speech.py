@@ -42,6 +42,55 @@ VOICE_DELIVERY = {
 }
 
 
+# Владелец 2026-11-24 (прослушивание 9.11): ответ из частей одной тональности звучит лучше одним
+# запросом (интонация не рвётся), а при резкой смене подачи — частями (смена слышна). Части одного
+# семейства склеиваются; вскрик и крик — всегда отдельно.
+DELIVERY_FAMILY = {
+    "irritated": "harsh",
+    "sarcastic": "harsh",
+    "grumbling": "harsh",
+    "reproachful": "harsh",
+    "excited": "bright",
+    "playful": "bright",
+    "laughing": "bright",
+    "warm": "bright",
+    "neutral": "even",
+    "calm": "even",
+    "thoughtful": "even",
+    "intriguing": "even",
+    "sad": "low",
+    "weary": "low",
+}
+BURSTS = frozenset({"startled", "shouting", "whisper"})
+
+
+def same_delivery(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Можно ли озвучить две соседние части одним запросом."""
+    a, b = first.get("voice_style", "neutral"), second.get("voice_style", "neutral")
+    if a in BURSTS or b in BURSTS or first.get("_preface") or second.get("_preface"):
+        return False
+    family = DELIVERY_FAMILY.get(a)
+    return family is not None and family == DELIVERY_FAMILY.get(b)
+
+
+def merge_parts(parts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Одна запись для голоса: текст подряд, подача каждой части словами по порядку."""
+    if len(parts) == 1:
+        return parts[0]
+    plan = " Then ".join(
+        f'"{p["text"]}" — {p["emotion"]} at intensity {p["intensity"]:.2f}: '
+        f"{VOICE_DELIVERY.get(p['voice_style'], p['voice_style'])}."
+        for p in parts
+    )
+    return {
+        **parts[0],
+        "text": " ".join(p["text"] for p in parts),
+        "intensity": max(p["intensity"] for p in parts),
+        "_style": "One continuous natural utterance; the delivery changes mid-way. " + plan,
+        "_merged": [p["id"] for p in parts],
+    }
+
+
 def voice_style(emotion: str, intensity: float, delivery: str) -> str:
     """Пометка для облачного голоса: настроение, сила и подача словами."""
     described = VOICE_DELIVERY.get(delivery, delivery)
@@ -335,6 +384,18 @@ class SpeechOutput:
             self.finished = True
             self.changed.notify_all()
 
+    def _take(self) -> tuple[int, str, dict[str, Any]]:
+        """Первая часть очереди и следующие за ней части той же подачи — одним запросом."""
+        generation, identifier, record = self.queue.popleft()
+        parts = [record]
+        while (
+            self.queue
+            and self.queue[0][:2] == (generation, identifier)
+            and same_delivery(parts[-1], self.queue[0][2])
+        ):
+            parts.append(self.queue.popleft()[2])
+        return generation, identifier, merge_parts(parts)
+
     def _next(self) -> tuple[int, str, dict[str, Any]] | None:
         if not self.armed:
             return None
@@ -344,7 +405,7 @@ class SpeechOutput:
         ready = self.finished or len(self.queue) >= self.delivery["buffer"]
         if self.queue and (ready or self.preview_mode):
             self.reaction_used = True  # A fast answer suppresses the waiting phrase.
-            return self.queue.popleft()
+            return self._take()
         # This is a configured grace period, not a measured response latency.
         if (
             self.reaction
@@ -411,7 +472,8 @@ class SpeechOutput:
             "language": "auto",
             "emotion": record["emotion"],
             "intensity": record["intensity"],
-            "style": voice_style(record["emotion"], record["intensity"], record["voice_style"]),
+            "style": record.get("_style")
+            or voice_style(record["emotion"], record["intensity"], record["voice_style"]),
         }
         result: dict[str, Any] = self.services.call(
             "speech.start",
@@ -436,7 +498,7 @@ class SpeechOutput:
             generation, identifier, record = self.queue[0]
             if record.get("_preface") or not self._audio_current(identifier, generation):
                 return None
-            self.queue.popleft()
+            generation, identifier, record = self._take()
             self.changed.notify_all()
         try:
             return self._start(generation, identifier, record)["job_id"], generation

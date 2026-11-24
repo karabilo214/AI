@@ -142,7 +142,7 @@ def test_next_segment_starts_synthesis_while_the_current_one_plays() -> None:
                     "text": f"фраза {i}",
                     "emotion": "joy",
                     "intensity": 0.5,
-                    "voice_style": "neutral",
+                    "voice_style": ("neutral", "irritated")[i - 1],  # разная подача — две фразы
                 },
                 generation,
             )

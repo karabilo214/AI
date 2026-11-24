@@ -86,7 +86,9 @@ def test_complete_mode_holds_eight_phrases_without_blocking_text_and_cancel_disc
         speech.configure({"enabled": True})
         generation = speech.begin("full")
         for index in range(8):
-            assert speech.offer("full", segment(f"s{index}"), generation)
+            # Подача чередуется: части одной подачи голос озвучил бы одним запросом.
+            part = {**segment(f"s{index}"), "voice_style": ("neutral", "irritated")[index % 2]}
+            assert speech.offer("full", part, generation)
         time.sleep(0.05)
         assert not svc.starts and speech.view()["held"] == 8
         speech.finish("full", generation)
@@ -122,7 +124,9 @@ def test_sentence_buffer_short_answer_flush_and_fast_answer_suppresses_reaction(
         assert not svc.starts[0]["preface"]
         generation = speech.begin("stream")
         speech.offer("stream", segment(), generation)
-        speech.offer("stream", segment("s2"), generation)
+        speech.offer(
+            "stream", {**segment("s2"), "voice_style": "irritated"}, generation
+        )  # не склеить
         wait(lambda: len(svc.starts) == 2)
         speech.finish("stream", generation)
         wait(lambda: len(svc.starts) == 3)

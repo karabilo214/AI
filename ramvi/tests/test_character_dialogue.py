@@ -578,3 +578,30 @@ def test_hard_swearing_also_comes_as_the_owners_own_standing_request() -> None:
     finish(m)
     assert "owner_standing_request" not in svc.requests[-1]["messages"][-1]["content"]
     m.dispose()
+
+
+def test_parts_of_one_delivery_are_voiced_together_and_a_change_is_voiced_apart() -> None:
+    """Владелец 2026-11-24: одна тональность — одним запросом, резкая смена и вскрик — отдельно."""
+    from ramvi_character.speech import SpeechOutput
+
+    def part(n: int, style: str) -> dict[str, Any]:
+        return {
+            "id": f"s{n}",
+            "text": f"Часть {n}.",
+            "emotion": "anger",
+            "intensity": 0.5 + n / 10,
+            "voice_style": style,
+        }
+
+    out = SpeechOutput()
+    for n, style in enumerate(["startled", "irritated", "grumbling", "calm", "thoughtful"], 1):
+        out.queue.append((1, "r", part(n, style)))
+    taken = [out._take()[2] for _ in range(3)]
+    assert [t["id"] for t in taken] == ["s1", "s2", "s4"]
+    assert taken[0]["text"] == "Часть 1." and "_style" not in taken[0]  # вскрик — отдельно
+    assert taken[1]["text"] == "Часть 2. Часть 3." and taken[1]["_merged"] == ["s2", "s3"]
+    assert "grumbling under the breath" in taken[1]["_style"] and taken[1]["intensity"] == 0.8
+    assert taken[2]["_merged"] == ["s4", "s5"] and not out.queue
+    out.queue.append((1, "r", part(1, "irritated")))
+    out.queue.append((2, "r", part(2, "irritated")))  # другой ответ — не склеивать
+    assert "_merged" not in out._take()[2]
