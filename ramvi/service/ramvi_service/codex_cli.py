@@ -64,7 +64,7 @@ def _command() -> str:
 
 def _hidden() -> dict[str, Any]:
     if sys.platform == "win32":
-        return {"creationflags": subprocess.CREATE_NO_WINDOW}  # type: ignore[attr-defined]
+        return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
     return {}
 
 
