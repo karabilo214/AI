@@ -1,0 +1,72 @@
+{
+  "state": {
+    "installed": true,
+    "logged_in": true,
+    "login_running": false,
+    "login_failed": false
+  },
+  "models": [
+    "gpt-6.2-sol",
+    "gpt-6.2-astra",
+    "gpt-6.1-terra",
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna"
+  ],
+  "character": [
+    {
+      "owner": "Скучно, расскажи что-нибудь",
+      "reply": "Представь: на совещании объявили, что ищут человека с нестандартным мышлением. Кандидат пришёл через окно. Его не взяли: вакансия была на первом этаже, а он всё равно опоздал. Теперь твоя очередь: назови самую нелепую причину опоздания — посмотрим, переплюнешь ли этого оконного стратега.",
+      "strategy": "tell_joke",
+      "error": null,
+      "seconds": 15.4
+    },
+    {
+      "owner": "Ну давай ещё что-нибудь",
+      "reply": "Ладно, новую историю. Мой будильник предложил «отложить на пять минут». Я согласился — теперь он третий день откладывает наши отношения. А у тебя кто главный по утрам: будильник или переговорщик с подушкой?",
+      "strategy": "prank",
+      "error": null,
+      "seconds": 11.4
+    },
+    {
+      "owner": "Шутку какую-нибудь знаешь?",
+      "reply": "Знаю. Купил умные весы. Встал на них — они спросили: «Вы уверены, что хотите продолжить?» Я нажал «напомнить позже». Вот бы ты так же настойчиво выбирал шутки, как эти весы — момент для разговора.",
+      "strategy": "tell_joke",
+      "error": null,
+      "seconds": 11.4
+    }
+  ],
+  "spending": [
+    {
+      "at": 1795508102.033588,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16432,
+      "completion_tokens": 315,
+      "cost": null,
+      "state": "done"
+    },
+    {
+      "at": 1795508090.8914812,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16301,
+      "completion_tokens": 366,
+      "cost": null,
+      "state": "done"
+    },
+    {
+      "at": 1795508079.2677178,
+      "model": "cloud:chatgpt:gpt-6-sol",
+      "source": "app",
+      "prompt_tokens": 16142,
+      "completion_tokens": 404,
+      "cost": null,
+      "state": "done"
+    }
+  ]
+}

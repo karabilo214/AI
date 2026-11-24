@@ -1,6 +1,6 @@
 {
   "module_id": "character",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "entrypoint": "ramvi_character.module:create",
   "ui": {
     "section": {

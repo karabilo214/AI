@@ -90,3 +90,11 @@ def test_memory_passes_recent_strategies_to_the_rules() -> None:
         signal("small_talk"), view("roaster"), EMOTIONS
     )
     assert d.strategy == "prank" and d.controller == "memory/1"
+
+
+def test_roaster_entertains_with_a_joke_when_asked_to() -> None:
+    """Судья 2026-11-24: на «расскажи что-нибудь» подкольщик загадывал избитые загадки."""
+    first = decide("roaster", "wants_fun")
+    assert first.strategy == "tell_joke"
+    assert decide("roaster", "wants_fun", (first.strategy,)).strategy == "prank"
+    assert decide("angry", "wants_fun").strategy == "grumble"

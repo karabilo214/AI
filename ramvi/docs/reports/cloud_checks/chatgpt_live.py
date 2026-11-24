@@ -4,7 +4,7 @@
 (профиль «Злой») на двух репликах, отказ агенту с инструментами (понятная ошибка).
 Нужно: codex установлен и вошёл через ChatGPT.
 
-usage: chatgpt_live.py <токенизатор Qwen3> <модель подписки> <отчёт.json> [мат 0-3] [реплика ...]
+usage: chatgpt_live.py <токенизатор Qwen3> <модель подписки> <отчёт.json> [мат 0-3 или профиль:мат] [реплика ...]
 """
 
 import json
@@ -28,7 +28,8 @@ from test_chat import TOKEN, Client  # noqa: E402
 def main() -> None:
     os.environ["RAMVI_TOKENIZER"] = sys.argv[1]
     choice, out = sys.argv[2], Path(sys.argv[3])
-    level = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+    profile, _, mat = (sys.argv[4] if len(sys.argv) > 4 else "0").rpartition(":")
+    profile, level = profile or "angry", int(mat)
     lines = sys.argv[5:] or ["Привет, как дела?", "Ты чё такой тормозной, а?"]
     app = Path(tempfile.mkdtemp(prefix="ramvi-chatgpt-"))
     shutil.copytree(ROOT / "modules" / "character", app / "modules" / "character")
@@ -51,7 +52,7 @@ def main() -> None:
         model = f"cloud:{connection['id']}:{choice}"
         assert client.ok("POST", "/sections/character/open")["section"]["state"] == "active"
         path = "/sections/character/commands/dialogue"
-        client.ok("POST", path, {"operation": "profile", "arguments": {"id": "angry"}})
+        client.ok("POST", path, {"operation": "profile", "arguments": {"id": profile}})
         if level:
             client.ok(
                 "POST",

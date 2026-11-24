@@ -27,6 +27,7 @@ EVENTS = (
     "question",  # вопрос по делу
     "request",  # просьба что-то сделать
     "small_talk",
+    "wants_fun",  # просит развлечь: рассказать что-нибудь, шутку, историю (9.32)
     "joke",  # владелец шутит
     "playful_provocation",
     "rudeness",
@@ -110,7 +111,8 @@ SIGNAL_PROMPT = (
     '"owner_reaction":"<reaction>","last_reply_reaction":"<reply reaction>"}\n'
     "event — pick the one that fits best:\n"
     "question: asks about something; request: asks you to do a real task you can do; "
-    "small_talk: chat without a task; joke: the owner jokes; playful_provocation: teases or "
+    "small_talk: chat without a task; wants_fun: asks to be entertained (tell something, a joke, "
+    "a story, more of it); joke: the owner jokes; playful_provocation: teases or "
     "challenges you for fun; rudeness: insults or is rude; trap: a verbal trick that makes you say "
     "something silly or rude (repeat, join or read out words); absurd_request: asks something "
     "impossible for you or absurd (act in the physical world, talk to an animal or a person who "
@@ -298,8 +300,9 @@ class RuleController:
             else:  # question, request, small_talk, joke, gratitude
                 strategy = "grumble"
             emotion = "frustration" if strategy == "grumble" else "anger"
-        elif roaster and not serious and event in ("joke", "small_talk", "gratitude"):
+        elif roaster and not serious and event in ("wants_fun", "joke", "small_talk", "gratitude"):
             pool = {
+                "wants_fun": ("tell_joke", "prank"),
                 "joke": ("pun", "tell_joke"),
                 "small_talk": ("tell_joke", "prank", "pun"),
                 "gratitude": ("playful_counter", "pun"),
