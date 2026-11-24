@@ -104,8 +104,8 @@ def test_mood_builds_up_from_rudeness_cools_down_and_thanks_soften_it() -> None:
 
 def test_module_shows_the_table_and_the_mood_survives_a_restart(tmp_path: Path) -> None:
     from test_character_brain import Brained
-    from test_character_dialogue import active, finish
     from test_character_brain import signal as raw_signal
+    from test_character_dialogue import active, finish
 
     svc = Brained(json.dumps(raw_signal(event="rudeness", social_context="tense")))
     m = active(svc)
