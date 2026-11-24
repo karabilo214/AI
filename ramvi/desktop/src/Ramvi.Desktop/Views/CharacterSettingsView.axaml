@@ -111,6 +111,17 @@
     <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:PreferenceItem"><TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,0,0,4"/></DataTemplate></ItemsControl.ItemTemplate>
    </ItemsControl>
    <WrapPanel><Button x:Name="FeedbackClear" Content="{l:T character.pref_clear}" Command="{Binding ClearFeedbackCommand}" IsEnabled="{Binding !NoPreferences}" Margin="0,0,8,8"/></WrapPanel>
+   <!-- 9.34: что персонаж понял о владельце и его настроение -->
+   <StackPanel x:Name="BehaviorSettings" Spacing="8">
+    <TextBlock Text="{l:T character.behavior_title}" Classes="heading"/>
+    <TextBlock Text="{l:T character.behavior_hint}" TextWrapping="Wrap" Classes="muted"/>
+    <TextBlock x:Name="CharacterMood" TextWrapping="Wrap"><Run Text="{l:T character.mood_title}"/><Run Text=": "/><Run Text="{Binding Mood}"/></TextBlock>
+    <TextBlock Text="{l:T character.behavior_empty}" IsVisible="{Binding NoBehavior}" Classes="muted"/>
+    <ItemsControl x:Name="BehaviorRows" ItemsSource="{Binding Behavior}">
+     <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:BehaviorItem"><TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,0,0,4"/></DataTemplate></ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <WrapPanel><Button x:Name="BehaviorForget" Content="{Binding ForgetBehaviorLabel}" Command="{Binding ForgetBehaviorCommand}" Margin="0,0,8,8"/></WrapPanel>
+   </StackPanel>
    <StackPanel x:Name="AdaptationSettings" IsVisible="{Binding AdaptationAvailable}" Spacing="8">
     <TextBlock Text="{l:T character.adapt_title}" Classes="heading"/>
     <TextBlock Text="{l:T character.adapt_hint}" TextWrapping="Wrap" Classes="muted"/>

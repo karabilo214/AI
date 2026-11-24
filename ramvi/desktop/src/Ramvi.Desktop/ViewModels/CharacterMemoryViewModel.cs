@@ -34,6 +34,56 @@ public sealed class CharacterMemoryViewModel : ObservableObject
         SaveAdaptationCommand = new Command(() => AdaptationAsync("adaptation_save", null));
         UndoAdaptationCommand = new Command(() => AdaptationAsync("adaptation_restore", null), () => AdaptationHistory.Count > 0);
         ResetAdaptationCommand = new Command(ResetOrArmAsync, () => Corrections.Count > 0);
+        ForgetBehaviorCommand = new Command(ForgetBehaviorAsync);
+    }
+
+    // 9.34: что персонаж понял о владельце (таблица поведения) и его настроение.
+    private bool _forgetBehaviorArmed;
+    private string _mood = "";
+    public ObservableCollection<BehaviorItem> Behavior { get; } = [];
+    public bool NoBehavior => Behavior.Count == 0;
+    public string Mood { get => _mood; private set => Set(ref _mood, value); }
+    public Command ForgetBehaviorCommand { get; }
+    public bool ForgetBehaviorArmed { get => _forgetBehaviorArmed; private set { if (Set(ref _forgetBehaviorArmed, value)) Raise(nameof(ForgetBehaviorLabel)); } }
+    public string ForgetBehaviorLabel => Localizer.Current[_forgetBehaviorArmed ? "character.behavior_forget_confirm" : "character.behavior_forget"];
+    private JsonElement? _moodState;
+
+    private async Task BehaviorAsync()
+    {
+        try { ReadBehavior(await _call("behavior", null).ConfigureAwait(true)); }
+        catch (Exception error) when (CharacterViewModel.Handled(error)) { Error = Localizer.Current["character.memory_error"]; }
+    }
+
+    private async Task ForgetBehaviorAsync()
+    {
+        if (!ForgetBehaviorArmed) { ForgetBehaviorArmed = true; return; }
+        ForgetBehaviorArmed = false;
+        try
+        {
+            await _call("brain_forget", null).ConfigureAwait(true);
+            await BehaviorAsync().ConfigureAwait(true);
+        }
+        catch (Exception error) when (CharacterViewModel.Handled(error)) { Error = Localizer.Current["character.memory_error"]; }
+    }
+
+    internal void ReadBehavior(JsonElement result)
+    {
+        Behavior.Clear();
+        foreach (var row in result.GetProperty("rows").EnumerateArray()) Behavior.Add(new BehaviorItem(row));
+        Raise(nameof(NoBehavior));
+        _moodState = result.GetProperty("mood").Clone();
+        Mood = MoodText(_moodState.Value);
+    }
+
+    private static string MoodText(JsonElement mood)
+    {
+        var parts = new List<string>();
+        static string N(double v) => v.ToString("0.00", System.Globalization.CultureInfo.CurrentCulture);
+        var irritation = mood.GetProperty("irritation").GetDouble();
+        var cheer = mood.GetProperty("cheer").GetDouble();
+        if (irritation >= 0.05) parts.Add(Localizer.Current["character.mood_irritated"].Replace("{value}", N(irritation), StringComparison.Ordinal));
+        if (cheer >= 0.05) parts.Add(Localizer.Current["character.mood_cheer"].Replace("{value}", N(cheer), StringComparison.Ordinal));
+        return parts.Count == 0 ? Localizer.Current["character.mood_none"] : string.Join(" · ", parts);
     }
 
     // 9.20: подстройка характера — переключатель, текущие поправки, журнал, точки сохранения.
@@ -85,6 +135,9 @@ public sealed class CharacterMemoryViewModel : ObservableObject
         foreach (var item in Corrections) item.Relocalize();
         foreach (var item in AdaptationHistory) item.Relocalize();
         foreach (var item in SavedPoints) item.Relocalize();
+        foreach (var item in Behavior) item.Relocalize();
+        if (_moodState is { } mood) Mood = MoodText(mood);
+        Raise(nameof(ForgetBehaviorLabel));
     }
 
     /// <summary>Перечитать память и историю; status — уже полученный ответ, если есть.</summary>
@@ -98,6 +151,7 @@ public sealed class CharacterMemoryViewModel : ObservableObject
             {
                 await FeedbackAsync("feedback_view").ConfigureAwait(true);
                 await AdaptationAsync("adaptation", null).ConfigureAwait(true);
+                await BehaviorAsync().ConfigureAwait(true);
             }
         }
         catch (Exception error) when (CharacterViewModel.Handled(error))
@@ -356,6 +410,30 @@ public sealed class PreferenceItem : ObservableObject
                 .Replace("{reliable}", _reliable.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
                 .Replace("{unreliable}", _unreliable.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
             return name + ": " + way + " · " + state + " · " + counts;
+        }
+    }
+}
+
+/// <summary>9.34: строка таблицы поведения — событие, моя реакция, как он отреагировал.</summary>
+public sealed class BehaviorItem(JsonElement row) : ObservableObject
+{
+    private readonly string _event = row.GetProperty("event").GetString() ?? "";
+    private readonly string _strategy = row.GetProperty("strategy").GetString() ?? "";
+    private readonly int _direction = row.GetProperty("direction").GetInt32();
+    private readonly bool _sure = row.GetProperty("status").GetString() == "sure";
+    private readonly int _reactions = row.GetProperty("reactions").GetInt32();
+
+    public string Text
+    {
+        get
+        {
+            var l = Localizer.Current;
+            return l["character.behavior_row"]
+                .Replace("{event}", l["character.behavior_event." + _event], StringComparison.Ordinal)
+                .Replace("{strategy}", l["character.behavior_strategy." + _strategy], StringComparison.Ordinal)
+                .Replace("{reaction}", l[_direction > 0 ? "character.behavior_liked" : "character.behavior_disliked"], StringComparison.Ordinal)
+                .Replace("{status}", l[_sure ? "character.behavior_sure" : "character.behavior_guess"], StringComparison.Ordinal)
+                .Replace("{count}", _reactions.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
         }
     }
 }

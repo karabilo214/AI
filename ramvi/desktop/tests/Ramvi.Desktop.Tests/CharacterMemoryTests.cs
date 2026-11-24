@@ -19,6 +19,7 @@ public sealed class CharacterMemoryTests
         public int HistoryChanged { get; set; }
         public bool Enabled { get; set; } = true;
         public bool Reset { get; set; }
+        public bool Forgotten { get; set; }
 
         private string Adaptation(string operation, JsonObject? arguments)
         {
@@ -29,6 +30,12 @@ public sealed class CharacterMemoryTests
             return "{\"adaptation\":{\"enabled\":" + (Enabled ? "true" : "false") + ",\"profile\":\"sarcastic@1.0.0\",\"corrections\":" + corrections
                 + ",\"applied\":{},\"history\":[{\"id\":\"a1\",\"trait\":\"humor\",\"before\":0.0,\"after\":-0.03,\"action\":\"step\",\"snapshot_id\":\"s1\",\"created_at\":\"2026-11-20T10:00:00Z\",\"reason\":{}}]"
                 + ",\"snapshots\":[{\"id\":\"s2\",\"kind\":\"saved\",\"traits\":{\"humor\":-0.03},\"created_at\":\"2026-11-20T11:00:00Z\"},{\"id\":\"s1\",\"kind\":\"before_step\",\"traits\":{},\"created_at\":\"2026-11-20T10:00:00Z\"}]}}";
+        }
+
+        private string ForgetBrain()
+        {
+            Forgotten = true;
+            return """{"brain":"memory","forgotten":3}""";
         }
 
         public Task<JsonElement> Call(string operation, JsonObject? arguments)
@@ -42,6 +49,10 @@ public sealed class CharacterMemoryTests
                 "history_forget" or "history_clear" => """{"history":{"removed":["t1"],"memory_forgotten":1}}""",
                 "feedback_view" => """{"feedback":{"preferences":[{"dimension":"humor","direction":-1,"agreement":1.0,"reliable":3,"unreliable":2,"responses":2,"established":true}],"signals":[]}}""",
                 "feedback_clear" => """{"feedback":{"preferences":[],"signals":[]}}""",
+                "behavior" => Forgotten
+                    ? """{"rows":[],"mood":{"irritation":0.0,"cheer":0.0,"at":0,"cause":""}}"""
+                    : """{"rows":[{"event":"mistake","strategy":"roast","direction":-1,"status":"guess","reactions":3,"agreement":1.0}],"mood":{"irritation":0.62,"cheer":0.0,"at":1,"cause":"rudeness"}}""",
+                "brain_forget" => ForgetBrain(),
                 "adaptation" or "adaptation_enable" or "adaptation_save" or "adaptation_reset" or "adaptation_restore" => Adaptation(operation, arguments),
                 _ => "{\"memory\":{\"records\":" + Records + "}}",
             };
@@ -198,5 +209,22 @@ public sealed class CharacterMemoryTests
             Assert.Equal("humor: −0.03", model.Corrections[0].Text);
         }
         finally { Localizer.Current = Localizer.Load("ru"); }
+    }
+
+    [Fact]
+    public async Task Learned_behaviour_and_mood_are_shown_and_forgotten_on_the_second_press()
+    {
+        var (model, fake) = Create();
+        await model.RefreshAsync();
+        var row = Assert.Single(model.Behavior).Text;
+        Assert.Equal("Когда он ошибается, а персонаж подкалывает: вас раздражает · догадка · реакций: 3", row);
+        Assert.Contains("злость 0", model.Mood, StringComparison.Ordinal);
+        await model.ForgetBehaviorCommand.RunAsync();
+        Assert.DoesNotContain(fake.Calls, c => c.Operation == "brain_forget"); // первое нажатие — только вопрос
+        Assert.True(model.ForgetBehaviorArmed);
+        await model.ForgetBehaviorCommand.RunAsync();
+        Assert.Contains(fake.Calls, c => c.Operation == "brain_forget");
+        Assert.True(model.NoBehavior);
+        Assert.Equal("спокоен", model.Mood);
     }
 }
