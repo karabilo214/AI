@@ -26,7 +26,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ramvi_storage.repositories import Model, Models, NotFound
 
@@ -35,13 +35,18 @@ from ramvi_service.chat import ChatError
 from ramvi_service.contracts.modules import ProviderCapabilities
 from ramvi_service.redact import mask_secrets
 
+if TYPE_CHECKING:
+    from ramvi_service.codex_cli import CodexProvider
+
 CLOUD = "cloud"  # Model.provider и Model.architecture облачной модели
 SECRET_NS = "cloud"
-KINDS = ("openai", "anthropic", "gemini")
+# chatgpt — подписка ChatGPT через официальный Codex CLI (codex_cli.py): без ключа, адрес справочный.
+KINDS = ("openai", "anthropic", "gemini", "chatgpt")
 DEFAULT_URLS = {
     "openai": "https://api.openai.com/v1",
     "anthropic": "https://api.anthropic.com",
     "gemini": "https://generativelanguage.googleapis.com",
+    "chatgpt": "https://chatgpt.com",
 }
 ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 4096  # Anthropic требует max_tokens в каждом запросе
@@ -1196,7 +1201,11 @@ class CloudConnections:
             return {
                 "kinds": [{"kind": k, "url": DEFAULT_URLS[k]} for k in KINDS],
                 "connections": [
-                    {**c, "has_key": bool(self._key(c["id"])), "models": self._enabled(c["id"])}
+                    {
+                        **c,
+                        "has_key": c["kind"] == "chatgpt" or bool(self._key(c["id"])),
+                        "models": self._enabled(c["id"]),
+                    }
                     for c in self._load()
                 ],
                 "spending": self.spending(),
@@ -1219,6 +1228,11 @@ class CloudConnections:
             raise ChatError("api.bad_request", field="name")
         if key is not None and (not isinstance(key, str) or len(key) > 4096):
             raise ChatError("api.bad_request", field="key")
+        if kind == "chatgpt":
+            # Вход хранит Codex CLI; ключа и своего адреса у подключения нет.
+            if key:
+                raise ChatError("api.bad_request", field="key")
+            key, url = None, DEFAULT_URLS["chatgpt"]
         with self._lock:
             items = self._load()
             identifier = body.get("id")
@@ -1288,6 +1302,10 @@ class CloudConnections:
             if kind not in KINDS:
                 raise ChatError("api.bad_request", field="kind")
             url = str(body.get("url") or DEFAULT_URLS[kind]).strip().rstrip("/")
+        if kind == "chatgpt":
+            from ramvi_service import codex_cli
+
+            return codex_cli.models()
         secret = key or ""
         endpoint, headers = PROTOCOLS[kind].models_request(url, secret)
         host = urllib.parse.urlsplit(endpoint).hostname or ""
@@ -1330,13 +1348,17 @@ class CloudConnections:
                     pass
             return {"id": connection_id, "models": self._enabled(connection_id)}
 
-    def provider(self, model: Model, source: str = "app") -> CloudProvider:
+    def provider(self, model: Model, source: str = "app") -> "CloudProvider | CodexProvider":
         """`source` — кто спросил (приложение или клиент внешнего API), для учёта."""
         connection = self._find(str(model.capabilities.get(CLOUD, "")))
 
         def after(usage: dict[str, int] | None, state: str) -> None:
             self.budget.record(model.id, source, usage, self._prices().get(model.id), state)
 
+        if connection["kind"] == "chatgpt":
+            from ramvi_service.codex_cli import CodexProvider
+
+            return CodexProvider(model.path, before=lambda: self.check(model.id), after=after)
         return CloudProvider(
             connection["kind"],
             connection["url"],

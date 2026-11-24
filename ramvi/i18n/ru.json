@@ -1010,5 +1010,16 @@
   "character.window.size": "Размер персонажа",
   "character.window.size_hint": "Ещё — колесо мыши над персонажем. Перетащить — за самого персонажа.",
   "character.speech_mute": "Выключить озвучку",
-  "character.speech_unmute": "Включить озвучку"
+  "character.speech_unmute": "Включить озвучку",
+  "chatgpt.codex_missing": "Codex CLI не найден. Установите его (npm install -g @openai/codex) и нажмите «Войти через ChatGPT» ещё раз",
+  "chatgpt.models_failed": "Не удалось получить список моделей подписки ChatGPT у Codex CLI",
+  "chatgpt.no_tools": "Подписка ChatGPT (через Codex CLI) не принимает инструменты RAMVI: агент с инструментами на ней не работает. Выберите модель по API",
+  "chatgpt.no_images": "Подписка ChatGPT (через Codex CLI) пока не принимает картинки из RAMVI",
+  "cloud.chatgpt_key": "вход через Codex CLI",
+  "cloud.chatgpt_login": "Войти через ChatGPT",
+  "cloud.chatgpt_note": "Подписка ChatGPT вместо ключа API: вход и запросы идут через официальный Codex CLI. Работают чат и персонаж; агент с инструментами и картинки — нет; ответ приходит целиком.",
+  "cloud.chatgpt_waiting": "Codex открыл браузер — войдите в свою учётную запись ChatGPT. RAMVI ждёт…",
+  "cloud.chatgpt_cancel": "Отменить вход",
+  "cloud.chatgpt_ready": "Подписка ChatGPT подключена. Отметьте модели, которые нужны в выборе модели.",
+  "cloud.chatgpt_failed": "Вход через ChatGPT не завершён"
 }

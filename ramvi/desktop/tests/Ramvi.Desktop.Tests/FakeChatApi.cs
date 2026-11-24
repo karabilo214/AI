@@ -36,6 +36,32 @@ internal sealed class FakeChatApi : IChatApi
     public List<CloudSaveRequest> CloudSaves { get; } = [];
     public ApiException? CloudFail { get; set; }
 
+    // --- Вход через ChatGPT: состояние Codex CLI; LoginPolls — сколько проверок до входа ---
+    public ChatGptState ChatGpt { get; set; } = new(true, false);
+    public int LoginPolls { get; set; } = 2;
+    public List<string> ChatGptCalls { get; } = [];
+
+    public Task<ChatGptState> ChatGptAsync(CancellationToken cancel = default)
+    {
+        ChatGptCalls.Add("status");
+        if (ChatGpt.LoginRunning && --LoginPolls <= 0) ChatGpt = ChatGpt with { LoginRunning = false, LoggedIn = true };
+        return Task.FromResult(ChatGpt);
+    }
+
+    public Task<ChatGptState> ChatGptLoginAsync(CancellationToken cancel = default)
+    {
+        ChatGptCalls.Add("login");
+        ChatGpt = ChatGpt with { LoginRunning = true };
+        return Task.FromResult(ChatGpt);
+    }
+
+    public Task<ChatGptState> ChatGptCancelAsync(CancellationToken cancel = default)
+    {
+        ChatGptCalls.Add("cancel");
+        ChatGpt = ChatGpt with { LoginRunning = false };
+        return Task.FromResult(ChatGpt);
+    }
+
     public CloudSpending Spending { get; set; } = new("USD", new(null, null), 0, 0, 0, 0, [], []);
     public List<(double? Daily, double? Monthly)> LimitCalls { get; } = [];
     public List<(string Connection, CloudPriceRequest Price)> PriceCalls { get; } = [];

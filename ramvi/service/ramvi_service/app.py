@@ -35,7 +35,7 @@ from ramvi_service.catalog import Catalog
 from ramvi_service.catalog.support import capabilities
 from ramvi_service.chat import ChatService, Limits, attachment_limits
 from ramvi_service.client_keys import KeyStore
-from ramvi_service.cloud import CloudConnections, CloudProvider, is_cloud
+from ramvi_service.cloud import CloudConnections, is_cloud
 from ramvi_service.context import ContextProvider
 from ramvi_service.contracts.modules import Authority
 from ramvi_service.control_run import ControlRun
@@ -125,7 +125,7 @@ def build(
     shared_secrets = (voice_options or {}).get("secrets") or os_secrets(data_dir)
     cloud = CloudConnections(data_dir, shared_secrets, Models(db))
 
-    def cloud_for(model_id: str) -> CloudProvider | None:
+    def cloud_for(model_id: str) -> Any:  # CloudProvider или CodexProvider (вход через ChatGPT)
         """7.7: облачная модель идёт в свой сервис, локальный движок не нужен."""
         try:
             model = Models(db).get(model_id)

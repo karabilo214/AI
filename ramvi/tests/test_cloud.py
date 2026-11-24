@@ -937,7 +937,7 @@ def test_agent_task_runs_on_a_cloud_model(tmp_path: Path, cloud: Cloud) -> None:
     connections.enable(saved["id"], "claude-x", True)
     authority = Authority()
 
-    def cloud_for(identifier: str) -> CloudProvider | None:
+    def cloud_for(identifier: str) -> Any:
         model = Models(db).get(identifier)
         return connections.provider(model) if model.provider == "cloud" else None
 

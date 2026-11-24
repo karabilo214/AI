@@ -60,6 +60,13 @@ public interface IChatApi
 
     Task DeleteCloudAsync(string connection, CancellationToken cancel = default) => throw new NotSupportedException();
 
+    /// <summary>Вход через ChatGPT: состояние, запуск входа в Codex CLI, отмена.</summary>
+    Task<ChatGptState> ChatGptAsync(CancellationToken cancel = default) => throw new NotSupportedException();
+
+    Task<ChatGptState> ChatGptLoginAsync(CancellationToken cancel = default) => throw new NotSupportedException();
+
+    Task<ChatGptState> ChatGptCancelAsync(CancellationToken cancel = default) => throw new NotSupportedException();
+
     /// <summary>7.10: лимиты расходов (USD за день и месяц; null — без лимита).</summary>
     Task<CloudSpending> SetCloudLimitsAsync(double? daily, double? monthly, CancellationToken cancel = default) =>
         throw new NotSupportedException();
@@ -315,6 +322,21 @@ public sealed class ChatApiClient : IChatApi, IDisposable
     public Task<CloudPriceResponse> SetCloudPriceAsync(string connection, CloudPriceRequest price, CancellationToken cancel = default) =>
         PostAsync($"cloud/connections/{Id(connection)}/prices", price, ApiJson.Default.CloudPriceRequest,
             ApiJson.Default.CloudPriceResponse, cancel);
+
+    public Task<ChatGptState> ChatGptAsync(CancellationToken cancel = default) =>
+        GetAsync("cloud/chatgpt", ApiJson.Default.ChatGptState, cancel);
+
+    public Task<ChatGptState> ChatGptLoginAsync(CancellationToken cancel = default) => ChatGptPostAsync("cloud/chatgpt/login", cancel);
+
+    public Task<ChatGptState> ChatGptCancelAsync(CancellationToken cancel = default) => ChatGptPostAsync("cloud/chatgpt/cancel", cancel);
+
+    private async Task<ChatGptState> ChatGptPostAsync(string path, CancellationToken cancel)
+    {
+        using var response = await PostRawAsync(path, null, cancel).ConfigureAwait(false);
+        await EnsureAsync(response, cancel).ConfigureAwait(false);
+        return await response.Content.ReadFromJsonAsync(ApiJson.Default.ChatGptState, cancel).ConfigureAwait(false)
+            ?? throw new ApiException("api.internal", null);
+    }
 
     public async Task DeleteCloudAsync(string connection, CancellationToken cancel = default)
     {

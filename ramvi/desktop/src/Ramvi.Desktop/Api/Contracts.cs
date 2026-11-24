@@ -54,6 +54,9 @@ public sealed record CloudKind(string Kind, string Url);
 /// <summary>Подключение: ключ не возвращается — только HasKey.</summary>
 public sealed record CloudConnection(string Id, string Kind, string Name, string Url, bool HasKey, IReadOnlyList<string> Models);
 
+/// <summary>Вход через ChatGPT (Codex CLI): установлен ли codex, вошёл ли, идёт ли вход.</summary>
+public sealed record ChatGptState(bool Installed, bool LoggedIn, bool LoginRunning = false, bool LoginFailed = false);
+
 public sealed record CloudView(IReadOnlyList<CloudKind> Kinds, IReadOnlyList<CloudConnection> Connections, CloudSpending? Spending = null);
 
 // --- 7.10: стоимость и лимиты ---
@@ -408,6 +411,7 @@ public sealed record UnloadResponse(bool Unloaded, EngineStatus Engine);
 [JsonSerializable(typeof(RevokeRequest))]
 [JsonSerializable(typeof(RevokeResponse))]
 [JsonSerializable(typeof(CloudView))]
+[JsonSerializable(typeof(ChatGptState))]
 [JsonSerializable(typeof(CloudSaveRequest))]
 [JsonSerializable(typeof(CloudConnectionResponse))]
 [JsonSerializable(typeof(CloudModelsRequest))]

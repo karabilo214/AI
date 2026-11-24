@@ -99,6 +99,9 @@ class UIServer:
         self.updater: Any = None  # 8.3: Updater комплекта (только при папке приложения)
         self.app_dir: Path | None = None
         self.cloud: Any = None  # 7.7: CloudConnections — облачные модели по API
+        self._chatgpt_login: Any = (
+            None  # вход через ChatGPT (codex_cli.Login), создаётся по запросу
+        )
         self.on_close: list[Callable[[], None]] = []  # после остановки HTTP (база и т.п.)
         self.module_data = module_data
         self.packages: Any = None  # 8.8: ModulePackages (пакеты модулей в папке приложения)
@@ -429,6 +432,8 @@ class UIServer:
             return {"connection": cloud.save(body)}
         if method == "POST" and path == "/cloud/models":  # проверка ключа по значениям формы
             return {"models": cloud.remote_models(body)}
+        if path.startswith("/cloud/chatgpt"):  # вход через ChatGPT (Codex CLI)
+            return self._chatgpt_route(method, path)
         if method == "POST" and path == "/cloud/limits":  # 7.10: лимиты расходов
             return {"spending": cloud.set_limits(body)}
         price = re.fullmatch(r"/cloud/connections/([a-z0-9][a-z0-9_-]{0,31})/prices", path)
@@ -443,6 +448,21 @@ class UIServer:
             if set(body) - {"model", "enabled"} or not isinstance(enabled, bool):
                 raise ChatError("api.bad_request", field="enabled")
             return cloud.enable(match.group(1), body.get("model"), enabled)
+        raise ChatError("api.not_found")
+
+    def _chatgpt_route(self, method: str, path: str) -> Any:
+        """Вход через ChatGPT: состояние, запуск `codex login`, отмена; подключение создаёт окно."""
+        from ramvi_service import codex_cli
+
+        if self._chatgpt_login is None:
+            self._chatgpt_login = codex_cli.Login()
+        login = self._chatgpt_login
+        if method == "GET" and path == "/cloud/chatgpt":
+            return login.view()
+        if method == "POST" and path == "/cloud/chatgpt/login":
+            return login.start()
+        if method == "POST" and path == "/cloud/chatgpt/cancel":
+            return login.cancel()
         raise ChatError("api.not_found")
 
     def _with_cloud(self, models: list[dict[str, Any]]) -> list[dict[str, Any]]:

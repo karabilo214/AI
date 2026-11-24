@@ -61,7 +61,11 @@ public sealed class CloudConnectionRow : ObservableObject
     public CloudConnection Info { get; }
     public string Name => Info.Name;
     public string Host => Uri.TryCreate(Info.Url, UriKind.Absolute, out var url) ? url.Host : Info.Url;
-    public string Key => Info.HasKey ? L["cloud.key_set"] : L["cloud.key_missing"];
+    public string Key => IsChatGpt ? L["cloud.chatgpt_key"] : Info.HasKey ? L["cloud.key_set"] : L["cloud.key_missing"];
+
+    /// <summary>Подписка ChatGPT: ни ключа, ни адреса — изменять нечего.</summary>
+    public bool IsChatGpt => Info.Kind == "chatgpt";
+    public bool CanEdit => !IsChatGpt;
     public string Models => Info.Models.Count == 0
         ? L["cloud.no_models"]
         : L.Format("cloud.models_enabled", ("models", string.Join(", ", Info.Models)));
@@ -215,6 +219,93 @@ public sealed class CloudModelsViewModel : ObservableObject
         SaveCommand = new Command(SaveAsync, () => CanSave);
         NewCommand = new Command(() => { Clear(); return Task.CompletedTask; });
         SaveLimitsCommand = new Command(SaveLimitsAsync);
+        ChatGptLoginCommand = new Command(ChatGptLoginAsync, () => !_chatGptWaiting);
+        ChatGptCancelCommand = new Command(ChatGptCancelAsync, () => _chatGptWaiting);
+    }
+
+    // --- Вход через ChatGPT (подписка через официальный Codex CLI) ---
+    private bool _chatGptWaiting;
+
+    /// <summary>Пауза между проверками входа; тесты ставят меньше.</summary>
+    internal TimeSpan ChatGptPoll { get; set; } = TimeSpan.FromSeconds(1);
+
+    public Command ChatGptLoginCommand { get; }
+    public Command ChatGptCancelCommand { get; }
+
+    public bool ChatGptWaiting
+    {
+        get => _chatGptWaiting;
+        private set
+        {
+            if (Set(ref _chatGptWaiting, value))
+            {
+                ChatGptLoginCommand.Refresh();
+                ChatGptCancelCommand.Refresh();
+            }
+        }
+    }
+
+    private async Task ChatGptLoginAsync()
+    {
+        Error = Message = null;
+        try
+        {
+            var state = await _api().ChatGptAsync().ConfigureAwait(true);
+            if (!state.Installed)
+            {
+                Error = L["chatgpt.codex_missing"];
+                return;
+            }
+
+            if (!state.LoggedIn)
+            {
+                state = await _api().ChatGptLoginAsync().ConfigureAwait(true);
+                ChatGptWaiting = true;
+                Message = L["cloud.chatgpt_waiting"];
+                // Codex сам открыл браузер; ждём, пока вход завершится или его отменят.
+                while (state.LoginRunning && !state.LoggedIn && ChatGptWaiting)
+                {
+                    await Task.Delay(ChatGptPoll).ConfigureAwait(true);
+                    state = await _api().ChatGptAsync().ConfigureAwait(true);
+                }
+
+                ChatGptWaiting = false;
+                if (!state.LoggedIn)
+                {
+                    Message = null;
+                    Error = L["cloud.chatgpt_failed"];
+                    return;
+                }
+            }
+
+            // Подключение ChatGPT одно: уже есть — просто показать его модели.
+            var connection = Connections.FirstOrDefault(c => c.Info.Kind == "chatgpt")?.Info
+                ?? await _api().SaveCloudAsync(new CloudSaveRequest(null, "chatgpt", "ChatGPT", "https://chatgpt.com", null)).ConfigureAwait(true);
+            Show(await _api().CloudAsync().ConfigureAwait(true));
+            Message = L["cloud.chatgpt_ready"];
+            if (Connections.FirstOrDefault(c => c.Info.Id == connection.Id) is { } row)
+            {
+                await SelectAsync(row).ConfigureAwait(true);
+            }
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException or NotSupportedException)
+        {
+            ChatGptWaiting = false;
+            Error = Text(error);
+        }
+    }
+
+    private async Task ChatGptCancelAsync()
+    {
+        ChatGptWaiting = false;
+        try
+        {
+            await _api().ChatGptCancelAsync().ConfigureAwait(true);
+        }
+        catch (Exception error) when (error is ApiException or HttpRequestException or NotSupportedException)
+        {
+            Error = Text(error);
+        }
     }
 
     private static Localizer L => Localizer.Current;
@@ -446,6 +537,7 @@ public sealed class CloudModelsViewModel : ObservableObject
 
     private Task EditAsync(CloudConnectionRow row)
     {
+        if (!row.CanEdit) return Task.CompletedTask;
         _editing = row.Info.Id;
         _kind = Kinds.FirstOrDefault(k => k.Kind == row.Info.Kind && k.Url == row.Info.Url)
             ?? Kinds.First(k => k.Id == (row.Info.Kind == "openai" ? "compatible" : row.Info.Kind));

@@ -4,6 +4,16 @@
  <StackPanel Spacing="10">
   <TextBlock Classes="heading" Text="{l:T cloud.title}"/>
   <TextBlock Classes="muted" TextWrapping="Wrap" Text="{l:T cloud.note}"/>
+  <!-- Подписка ChatGPT вместо ключа API — через официальный Codex CLI -->
+  <Border x:Name="CloudChatGpt" Classes="inset" Padding="14,10">
+   <StackPanel Spacing="6">
+    <WrapPanel>
+     <Button x:Name="ChatGptLogin" Classes="accent" Content="{l:T cloud.chatgpt_login}" Command="{Binding ChatGptLoginCommand}" Margin="0,0,8,0"/>
+     <Button x:Name="ChatGptCancel" Content="{l:T cloud.chatgpt_cancel}" Command="{Binding ChatGptCancelCommand}" IsVisible="{Binding ChatGptWaiting}"/>
+    </WrapPanel>
+    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{l:T cloud.chatgpt_note}"/>
+   </StackPanel>
+  </Border>
   <!-- 7.10: расходы и лимиты -->
   <Border x:Name="CloudSpending" Classes="inset" Padding="14,10">
    <StackPanel Spacing="6">
@@ -41,7 +51,7 @@
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
        <Button Content="{l:T cloud.choose_models}" Command="{Binding ModelsCommand}"/>
-       <Button Content="{l:T cloud.change}" Command="{Binding EditCommand}"/>
+       <Button Content="{l:T cloud.change}" Command="{Binding EditCommand}" IsVisible="{Binding CanEdit}"/>
        <Button Content="{Binding DeleteLabel}" Command="{Binding DeleteCommand}"/>
       </StackPanel>
      </Grid>

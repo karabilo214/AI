@@ -1010,5 +1010,16 @@
   "character.window.size": "Character size",
   "character.window.size_hint": "Or use the mouse wheel over the character. Drag the character itself to move it.",
   "character.speech_mute": "Turn voice off",
-  "character.speech_unmute": "Turn voice on"
+  "character.speech_unmute": "Turn voice on",
+  "chatgpt.codex_missing": "Codex CLI was not found. Install it (npm install -g @openai/codex) and press “Sign in with ChatGPT” again",
+  "chatgpt.models_failed": "Could not get the ChatGPT subscription model list from Codex CLI",
+  "chatgpt.no_tools": "The ChatGPT subscription (via Codex CLI) does not accept RAMVI tools, so the agent with tools does not work on it. Pick an API model",
+  "chatgpt.no_images": "The ChatGPT subscription (via Codex CLI) does not accept images from RAMVI yet",
+  "cloud.chatgpt_key": "signed in via Codex CLI",
+  "cloud.chatgpt_login": "Sign in with ChatGPT",
+  "cloud.chatgpt_note": "Your ChatGPT subscription instead of an API key: sign-in and requests go through the official Codex CLI. Chat and the character work; the agent with tools and images do not; the reply arrives in one piece.",
+  "cloud.chatgpt_waiting": "Codex opened your browser — sign in to your ChatGPT account. RAMVI is waiting…",
+  "cloud.chatgpt_cancel": "Cancel sign-in",
+  "cloud.chatgpt_ready": "ChatGPT subscription connected. Tick the models you want in the model picker.",
+  "cloud.chatgpt_failed": "Sign-in with ChatGPT did not finish"
 }

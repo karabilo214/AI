@@ -40,6 +40,7 @@ def connections(tmp_path: Path, cloud: Cloud) -> Iterator[CloudConnections]:
 
 def provider(store: CloudConnections, source: str = "app") -> CloudProvider:
     remote = store.provider(store.models.get(model_id("c", "gpt-a")), source)
+    assert isinstance(remote, CloudProvider)
     remote.retry_delays = (0.01, 0.01)
     return remote
 

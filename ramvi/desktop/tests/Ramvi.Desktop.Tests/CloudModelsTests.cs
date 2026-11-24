@@ -360,4 +360,46 @@ public sealed class CloudModelsTests
         Assert.Equal("""{"daily":2.5}""", handler.Requests[0].Body);
         Assert.Equal("""{"model":"m"}""", handler.Requests[1].Body);
     }
+
+    [Fact]
+    public async Task ChatGpt_sign_in_waits_for_codex_then_adds_one_connection_with_subscription_models()
+    {
+        var api = new FakeChatApi { RemoteModels = ["gpt-6-sol", "gpt-6-luna"] };
+        var vm = new CloudModelsViewModel(() => api) { ChatGptPoll = TimeSpan.FromMilliseconds(1) };
+        await vm.LoadAsync();
+        await vm.ChatGptLoginCommand.RunAsync();
+        Assert.Equal(["status", "login", "status", "status"], api.ChatGptCalls);
+        var saved = Assert.Single(api.CloudSaves);
+        Assert.Equal(("chatgpt", "ChatGPT", null), (saved.Kind, saved.Name, saved.Key));
+        Assert.Equal(Ru["cloud.chatgpt_ready"], vm.Message);
+        Assert.False(vm.ChatGptWaiting);
+        var row = Assert.Single(vm.Connections);
+        Assert.Same(row, vm.Selected);
+        Assert.False(row.CanEdit);
+        Assert.Equal(Ru["cloud.chatgpt_key"], row.Key);
+        Assert.Equal(["gpt-6-sol", "gpt-6-luna"], vm.Models.Select(m => m.Name));
+        // Повторное нажатие: уже вошли и подключение есть — второго не появляется.
+        await vm.ChatGptLoginCommand.RunAsync();
+        Assert.Single(api.CloudSaves);
+    }
+
+    [Fact]
+    public async Task ChatGpt_sign_in_explains_missing_codex_and_cancel_stops_waiting()
+    {
+        var api = new FakeChatApi { ChatGpt = new ChatGptState(false, false) };
+        var vm = new CloudModelsViewModel(() => api) { ChatGptPoll = TimeSpan.FromMilliseconds(20) };
+        await vm.ChatGptLoginCommand.RunAsync();
+        Assert.Equal(Ru["chatgpt.codex_missing"], vm.Error);
+        Assert.Empty(api.CloudSaves);
+        api.ChatGpt = new ChatGptState(true, false);
+        api.LoginPolls = int.MaxValue;
+        var login = vm.ChatGptLoginCommand.RunAsync();
+        for (var i = 0; i < 100 && !vm.ChatGptWaiting; i++) await Task.Delay(5, TestContext.Current.CancellationToken);
+        Assert.True(vm.ChatGptWaiting && vm.ChatGptCancelCommand.CanExecute(null));
+        await vm.ChatGptCancelCommand.RunAsync();
+        await login;
+        Assert.Contains("cancel", api.ChatGptCalls);
+        Assert.Equal(Ru["cloud.chatgpt_failed"], vm.Error);
+        Assert.Empty(api.CloudSaves);
+    }
 }
