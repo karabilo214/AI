@@ -1,0 +1,34 @@
+{
+  "app": "Blender",
+  "goal": "In the default scene, move the cube slightly to the right (a small move along the X axis), like a user would.",
+  "steps": [
+    {
+      "step": 1,
+      "window": [
+        0,
+        34,
+        1496,
+        853
+      ],
+      "model_s": 7.2,
+      "see": "Куб выделен; его координата X равна 0.",
+      "action": "key",
+      "keys": "g x 0.3 enter",
+      "say": "Сдвигаю куб на 0,3 по оси X."
+    },
+    {
+      "step": 2,
+      "window": [
+        0,
+        34,
+        1496,
+        853
+      ],
+      "model_s": 6.0,
+      "see": "Куб выделен; в Transform указано Location X = 0.3 m.",
+      "action": "done",
+      "say": "Куб сдвинут на 0,3 м вправо по оси X."
+    }
+  ],
+  "result": "done"
+}

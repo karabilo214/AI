@@ -1,0 +1,108 @@
+{
+  "app": "Unity",
+  "goal": "In the open Unity scene find the chat icon of the UI and move it exactly 5 pixels to the right: select that UI object (expand Canvas in the Hierarchy or click it in the Scene/Game view), then in the Inspector increase its Rect Transform Pos X by 5 (for example from 120 to 125) and press enter. Do NOT save the scene. Answer done when Pos X shows the new value.",
+  "steps": [
+    {
+      "step": 1,
+      "window": [
+        0,
+        34,
+        1496,
+        853
+      ],
+      "model_s": 7.0,
+      "see": "Canvas в Hierarchy свёрнут; значок чата виден внизу справа.",
+      "action": "click",
+      "x": 52,
+      "y": 165,
+      "say": "Раскрываю Canvas, чтобы найти объект значка чата."
+    },
+    {
+      "step": 2,
+      "window": [
+        0,
+        34,
+        1496,
+        853
+      ],
+      "model_s": 8.2,
+      "see": "Canvas раскрыт, но объект значка чата в списке не виден.",
+      "action": "click",
+      "x": 94,
+      "y": 98,
+      "say": "Найду значок чата через поиск в Hierarchy."
+    },
+    {
+      "step": 3,
+      "window": [
+        0,
+        34,
+        1496,
+        853
+      ],
+      "model_s": 7.0,
+      "see": "В Hierarchy открыто поле поиска; значок чата виден внизу справа.",
+      "action": "type",
+      "text": "chat",
+      "say": "Ищу объект значка чата в Hierarchy."
+    },
+    {
+      "step": 4,
+      "window": [
+        0,
+        34,
+        1496,
+        853
+      ],
+      "model_s": 6.4,
+      "see": "В Hierarchy виден Canvas и его дочерние объекты; поле поиска вверху.",
+      "action": "click",
+      "x": 94,
+      "y": 98,
+      "say": "Выбираю поле поиска в Hierarchy."
+    },
+    {
+      "step": 5,
+      "window": [
+        0,
+        34,
+        1496,
+        853
+      ],
+      "model_s": 6.7,
+      "see": "Поле поиска Hierarchy находится вверху слева; объект чата ещё не выбран.",
+      "action": "type",
+      "text": "chat",
+      "say": "Ищу объект чата в Hierarchy."
+    },
+    {
+      "step": 6,
+      "window": [
+        0,
+        34,
+        1496,
+        853
+      ],
+      "model_s": 9.7,
+      "see": "Внизу слева виден значок с силуэтами людей и облачком сообщения.",
+      "action": "click",
+      "x": 338,
+      "y": 729,
+      "say": "Выбираю значок чата в окне Game."
+    },
+    {
+      "step": 7,
+      "window": [
+        0,
+        34,
+        1496,
+        853
+      ],
+      "model_s": 9.9,
+      "see": "В окне Game виден значок с людьми слева внизу; значок чата не найден и не выбран.",
+      "action": "ask",
+      "say": "На снимке не вижу значок чата и не могу уверенно выбрать нужный объект. Покажите его расположение или имя в Hierarchy."
+    }
+  ],
+  "result": "ask"
+}

@@ -1,0 +1,35 @@
+{
+  "app": "Unity Hub",
+  "goal": "Open the Unity project named Tanks from the projects list (one click on it opens it). When the editor starts opening, answer done.",
+  "steps": [
+    {
+      "step": 1,
+      "window": [
+        108,
+        68,
+        1280,
+        720
+      ],
+      "model_s": 5.9,
+      "see": "В списке проектов виден Tanks в первой строке.",
+      "action": "click",
+      "x": 402,
+      "y": 276,
+      "say": "Открываю проект Tanks."
+    },
+    {
+      "step": 2,
+      "window": [
+        108,
+        68,
+        1280,
+        720
+      ],
+      "model_s": 5.8,
+      "see": "У проекта Tanks видна синяя полоса загрузки; редактор начинает открываться.",
+      "action": "done",
+      "say": "Готово: проект Tanks открывается."
+    }
+  ],
+  "result": "done"
+}
